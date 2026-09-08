@@ -1,0 +1,44 @@
+{
+  "contractVersion": 1,
+  "mode": "prepare-only",
+  "repositoryRoot": "/",
+  "composeFile": "/docker-compose.production.yml",
+  "operationsComposeFile": "/docker-compose.operations.yml",
+  "services": {
+    "web": { "proxyPort": 3000, "domainInput": "IIOT_WEB_DOMAIN", "health": "/health" },
+    "api": {
+      "proxyPort": 3001,
+      "domainInput": "IIOT_API_DOMAIN",
+      "domainOptional": true,
+      "health": "/health"
+    },
+    "ingestor": { "public": false, "healthPort": 3002, "health": "/health", "replicas": 1 },
+    "mosquitto": {
+      "publicHostInput": "MQTT_PUBLIC_HOST",
+      "tcpPorts": [1883, 8883],
+      "httpProxy": false
+    }
+  },
+  "runtimeSecretsRequired": ["DATABASE_URL", "MQTT_PASSWORD", "MQTT_SIMULATOR_PASSWORD"],
+  "conditionalSecrets": ["DATABASE_SSL_CA_PEM"],
+  "requiredConfiguration": [
+    "DEV_TENANT_ID",
+    "MQTT_TLS_CERT_DIR",
+    "IIOT_WEB_DOMAIN",
+    "MQTT_PUBLIC_HOST"
+  ],
+  "buildSecrets": [],
+  "persistentVolumes": ["mqtt-config", "mqtt-auth", "mqtt-data", "mqtt-log"],
+  "preDeployment": [
+    "confirm_existing_supabase_project_and_table_names",
+    "verify_backup",
+    "configure_mqtt_firewall_and_certificates",
+    "restrict_http_access",
+    "run_db_status",
+    "run_migrations_once",
+    "run_db_status"
+  ],
+  "automaticSeed": false,
+  "automaticMigrations": false,
+  "supabaseAdminApiRequired": false
+}

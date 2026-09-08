@@ -1,0 +1,8 @@
+# Optional overlay. Configure certificate paths in .env first; no certificates are generated.
+services:
+  mosquitto:
+    ports:
+      - '${MQTT_TLS_BIND_ADDRESS:-127.0.0.1}:8883:8883'
+    volumes:
+      - ./infrastructure/mosquitto/config/mosquitto-tls.conf:/mosquitto/config/mosquitto.conf:ro
+      - ${MQTT_TLS_CERT_DIR:?Set the absolute directory containing fullchain.pem and privkey.pem}:/mosquitto/certs:ro

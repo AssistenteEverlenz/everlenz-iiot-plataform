@@ -1,0 +1,125 @@
+# Standalone Coolify definition. Never merge with the local docker-compose.yml.
+x-database: &database
+  NODE_ENV: production
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in Coolify secrets}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-5}
+  DATABASE_SSL_CA_PEM: ${DATABASE_SSL_CA_PEM:-}
+services:
+  mosquitto:
+    build: { context: ., dockerfile: infrastructure/mosquitto/Dockerfile }
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:-ingestor}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD}
+      MQTT_SIMULATOR_USERNAME: ${MQTT_SIMULATOR_USERNAME:-simulator}
+      MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:?Set MQTT_SIMULATOR_PASSWORD}
+    ports:
+      - '${MQTT_TCP_BIND_ADDRESS:-0.0.0.0}:${MQTT_PORT:-1883}:1883'
+      - '${MQTT_TLS_BIND_ADDRESS:-0.0.0.0}:${MQTT_TLS_PORT:-8883}:8883'
+    volumes:
+      - mqtt-config:/mosquitto/config
+      - mqtt-auth:/mosquitto/auth
+      - mqtt-data:/mosquitto/data
+      - mqtt-log:/mosquitto/log
+      - type: bind
+        source: ${MQTT_TLS_CERT_DIR:?Set VPS directory containing broker certificate and key}
+        target: /mosquitto/certs
+        read_only: true
+        bind: { create_host_path: false }
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mosquitto_sub -h 127.0.0.1 -u "$$MQTT_USERNAME" -P "$$MQTT_PASSWORD" -t ''$$SYS/broker/uptime'' -E -W 4',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    stop_grace_period: 30s
+  ingestor:
+    build: { context: ., target: ingestor }
+    init: true
+    environment:
+      <<: *database
+      SERVICE_NAME: ingestor
+      MQTT_INTERNAL_HOST: ${MQTT_INTERNAL_HOST:-mosquitto}
+      MQTT_PORT: 1883
+      MQTT_PROTOCOL: mqtt
+      MQTT_USERNAME: ${MQTT_USERNAME:-ingestor}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-everlenz-ingestor}
+      MQTT_DISCOVERY_MODE: ${MQTT_DISCOVERY_MODE:-false}
+      MQTT_TOPIC_FILTER: ${MQTT_TOPIC_FILTER:-iiot/+/+/+/telemetry,data/POC/group1/A7-001}
+      DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-30}
+      INGESTOR_HEALTH_PORT: 3002
+    depends_on:
+      mosquitto: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 30s
+  api:
+    build: { context: ., target: api }
+    init: true
+    environment:
+      <<: *database
+      SERVICE_NAME: api
+      API_HOST: 0.0.0.0
+      API_PORT: 3001
+      INGESTOR_HEALTH_URL: http://ingestor:3002/health
+      DEV_TENANT_ID: ${DEV_TENANT_ID:?Set the server-side tenant UUID}
+      OPERATOR_RAW_ACCESS: ${OPERATOR_RAW_ACCESS:-false}
+      DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-30}
+    expose: ['3001']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 30s
+  web:
+    build: { context: ., target: web }
+    init: true
+    environment:
+      NODE_ENV: production
+      SERVICE_NAME: web
+      API_INTERNAL_URL: http://api:3001
+    expose: ['3000']
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 30s
+volumes:
+  mqtt-config:
+  mqtt-auth:
+  mqtt-data:
+  mqtt-log:

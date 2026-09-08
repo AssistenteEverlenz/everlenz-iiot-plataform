@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+.env
+.env.*
+!.env.example
+coverage/
+.tools/
+.pnpm-store/
+.runtime/
+*.tsbuildinfo
+infrastructure/mosquitto/data/*
+!infrastructure/mosquitto/data/.gitkeep
+infrastructure/mosquitto/log/*
+!infrastructure/mosquitto/log/.gitkeep
+infrastructure/mosquitto/secrets/

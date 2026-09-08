@@ -1,0 +1,53 @@
+{
+  "name": "everlenz-iiot-platform",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=22.16"
+  },
+  "scripts": {
+    "env:setup": "node scripts/setup.mjs",
+    "dev": "pnpm -r --parallel --filter './apps/api' --filter './apps/ingestor' --filter './apps/web' dev",
+    "build": "pnpm -r build",
+    "lint": "eslint . && pnpm typecheck",
+    "typecheck": "tsc --noEmit && pnpm --filter @iiot/web typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run tests/flow.integration.test.ts tests/migrations.integration.test.ts",
+    "test:e2e": "tsx scripts/e2e.ts",
+    "db:migrate": "tsx packages/database/src/migrate.ts",
+    "db:seed": "tsx packages/database/src/seed.ts",
+    "docker:up": "docker compose --profile development up -d --build --wait",
+    "docker:infra": "docker compose --profile development up -d --wait postgres mosquitto",
+    "docker:down": "docker compose down",
+    "simulator:generic": "tsx apps/simulator/src/index.ts generic",
+    "simulator:haiwell": "tsx apps/simulator/src/index.ts haiwell",
+    "db:status": "tsx packages/database/src/status.ts",
+    "docker:production:config": "docker compose -f docker-compose.production.yml config --quiet",
+    "docker:production:validate": "node scripts/validate-production.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.0",
+    "esbuild": "0.28.2",
+    "eslint": "^9.39.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "mqtt": "^5.14.1",
+    "pg": "^8.16.3",
+    "pino": "^10.1.0",
+    "zod": "^4.1.12"
+  }
+}

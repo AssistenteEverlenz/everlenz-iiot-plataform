@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+.git
+.env
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.crt
+**/*tsbuildinfo
+.tools
+.pnpm-store
+.runtime
+infrastructure/mosquitto/secrets

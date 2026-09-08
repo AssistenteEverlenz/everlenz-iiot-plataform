@@ -1,0 +1,22 @@
+{
+  "name": "@iiot/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@iiot/shared": "workspace:*",
+    "pg": "^8.16.3",
+    "dotenv": "^17.2.3",
+    "pino": "^10.1.0",
+    "zod": "^4.1.12"
+  },
+  "scripts": {
+    "build": "tsc --noEmit -p ../../tsconfig.json && node ../../scripts/build-service.mjs database"
+  },
+  "files": [
+    "src",
+    "dist",
+    "migrations"
+  ]
+}

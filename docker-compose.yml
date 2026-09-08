@@ -1,0 +1,172 @@
+name: everlenz-iiot
+x-app-env: &app-env
+  NODE_ENV: development
+  DATABASE_URL: postgresql://${POSTGRES_USER:-iiot}:${POSTGRES_PASSWORD:?Run pnpm env:setup --local}@postgres:5432/${POSTGRES_DB:-iiot}?sslmode=disable
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-iiot}
+  POSTGRES_USER: ${POSTGRES_USER:-iiot}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run pnpm env:setup first}
+  MQTT_HOST: mosquitto
+  MQTT_PORT: 1883
+  MQTT_USERNAME: ${MQTT_USERNAME:-ingestor}
+  MQTT_PASSWORD: ${MQTT_PASSWORD:?Run pnpm env:setup first}
+  MQTT_SIMULATOR_USERNAME: ${MQTT_SIMULATOR_USERNAME:-simulator}
+  MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:?Run pnpm env:setup first}
+  MQTT_DISCOVERY_MODE: ${MQTT_DISCOVERY_MODE:-false}
+  MQTT_TOPIC_FILTER: ${MQTT_TOPIC_FILTER:-iiot/+/+/+/telemetry,data/POC/group1/A7-001}
+  MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-everlenz-ingestor}
+  DEV_TENANT_ID: ${DEV_TENANT_ID:-11111111-1111-4111-8111-111111111111}
+  OPERATOR_RAW_ACCESS: ${OPERATOR_RAW_ACCESS:-false}
+  DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-30}
+services:
+  postgres:
+    profiles: [development]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-iiot}
+      POSTGRES_USER: ${POSTGRES_USER:-iiot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run pnpm env:setup first}
+    ports: ['127.0.0.1:${POSTGRES_PORT:-5432}:5432']
+    volumes: ['postgres-data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  mqtt-init:
+    image: eclipse-mosquitto:2
+    user: '0:0'
+    entrypoint: ['/bin/sh', '/init/init.sh']
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:-ingestor}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?Run pnpm env:setup first}
+      MQTT_SIMULATOR_USERNAME: ${MQTT_SIMULATOR_USERNAME:-simulator}
+      MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:?Run pnpm env:setup first}
+    volumes:
+      - mqtt-auth:/mosquitto/auth
+      - ./infrastructure/mosquitto/init.sh:/init/init.sh:ro
+    restart: 'no'
+  mosquitto:
+    image: eclipse-mosquitto:2
+    depends_on:
+      mqtt-init: { condition: service_completed_successfully }
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:-ingestor}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?Run pnpm env:setup first}
+    ports: ['${MQTT_BIND_ADDRESS:-127.0.0.1}:${MQTT_PORT:-1883}:1883']
+    volumes:
+      - ./infrastructure/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infrastructure/mosquitto/config/acl:/mosquitto/config/acl:ro
+      - mqtt-auth:/mosquitto/auth:ro
+      - mqtt-data:/mosquitto/data
+      - mqtt-log:/mosquitto/log
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mosquitto_sub -h 127.0.0.1 -u "$$MQTT_USERNAME" -P "$$MQTT_PASSWORD" -t ''$$SYS/broker/uptime'' -E -W 4',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  migrate:
+    profiles: [development]
+    build: { context: ., target: services }
+    environment: *app-env
+    command: ['pnpm', 'db:migrate']
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: 'no'
+  seed:
+    profiles: [development]
+    build: { context: ., target: services }
+    environment: *app-env
+    command: ['pnpm', 'db:seed']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: 'no'
+  ingestor:
+    profiles: [development]
+    build: { context: ., target: services }
+    environment:
+      <<: *app-env
+      INGESTOR_HEALTH_PORT: 3002
+    command: ['pnpm', '--filter', '@iiot/ingestor', 'start']
+    ports: ['127.0.0.1:${INGESTOR_HEALTH_PORT:-3002}:3002']
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      mosquitto: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 7s
+      retries: 10
+    restart: unless-stopped
+  api:
+    profiles: [development]
+    build: { context: ., target: services }
+    environment:
+      <<: *app-env
+      API_HOST: 0.0.0.0
+      API_PORT: 3001
+      INGESTOR_HEALTH_URL: http://ingestor:3002/health
+    ports: ['127.0.0.1:${API_PORT:-3001}:3001']
+    depends_on:
+      ingestor: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 7s
+      retries: 10
+    restart: unless-stopped
+  web:
+    profiles: [development]
+    build: { context: ., target: web }
+    environment:
+      API_INTERNAL_URL: http://api:3001
+      NEXT_TELEMETRY_DISABLED: 1
+    ports: ['127.0.0.1:${WEB_PORT:-3000}:3000']
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+  simulator:
+    profiles: [simulation]
+    build: { context: ., target: services }
+    environment:
+      <<: *app-env
+      SIMULATOR_INTERVAL_MS: ${SIMULATOR_INTERVAL_MS:-2000}
+      SIMULATOR_MODE: ${SIMULATOR_MODE:-haiwell}
+    command: ['pnpm', '--filter', '@iiot/simulator', 'start']
+    depends_on:
+      ingestor: { condition: service_healthy }
+volumes:
+  postgres-data:
+  mqtt-auth:
+  mqtt-data:
+  mqtt-log:

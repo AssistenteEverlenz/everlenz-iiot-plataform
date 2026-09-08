@@ -1,0 +1,16 @@
+# Ingestor is a trusted infrastructure principal spanning tenants.
+user ingestor
+topic read #
+topic read $SYS/broker/uptime
+
+# Test publisher can only write its two registered devices.
+user simulator
+topic write iiot/poc/laboratorio/generic-001/telemetry
+topic write data/POC/group1/A7-001
+
+# Example individual identity. Add its password interactively before using.
+user a7-001
+topic write data/POC/group1/A7-001
+
+# Future devices: append explicit topic permissions for their own tenant/site/device.
+# Do not grant device users write access to iiot/# or other tenants' proprietary mappings.

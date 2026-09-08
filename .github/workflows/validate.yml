@@ -1,0 +1,28 @@
+name: Validate IIoT stack
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm format:check && pnpm test && pnpm test:integration && pnpm build
+        env:
+          IIOT_LOAD_ENV: 'false'
+      - run: pnpm env:setup --local
+      - run: docker compose config --quiet
+      - run: pnpm docker:production:validate
+      - run: pnpm docker:up
+      - run: pnpm test:e2e
+      - if: failure()
+        run: docker compose ps && docker compose logs --tail=100
+      - if: always()
+        run: docker compose down

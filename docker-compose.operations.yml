@@ -1,0 +1,11 @@
+# Explicit one-shot operation, never an application startup dependency.
+services:
+  database-tools:
+    build: { context: ., target: database-tools }
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      DATABASE_SSL_CA_PEM: ${DATABASE_SSL_CA_PEM:-}
+      DATABASE_POOL_MAX: 1
+    restart: 'no'
+    command: ['node', 'dist/status.js']
