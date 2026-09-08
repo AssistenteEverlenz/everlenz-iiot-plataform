@@ -1,5 +1,11 @@
 # Estado do projeto — 8 de setembro de 2026
 
+## Produção ativa
+
+A stack está implantada no projeto Coolify **IOT Plataform Everlenz**, ambiente `production`, a partir da branch `main`. A interface está disponível em `https://iotplataform.everlenz.com.br`; web, API, ingestor e Mosquitto estão saudáveis. O broker atende equipamentos em `mqtt.everlenz.com.br:8883` com TLS e autenticação. A porta sem TLS `1883` está vinculada somente ao localhost da VPS.
+
+O Supabase `bootqaxgxxsdfggqivlj` recebeu as migrations `001_initial.sql` e `002_server_only_access.sql`. O seed inicial criou um tenant, um site, dois dispositivos e oito tags. Um teste real publicou uma mensagem com QoS 1 por MQTT/TLS e confirmou sua persistência e leitura pela API. O certificado MQTT é sincronizado diariamente do armazenamento ACME do Traefik, com recarga do broker quando houver renovação.
+
 ## Preparação Coolify + Supabase
 
 **Arquitetura atual:** equipamentos → Mosquitto self-hosted na VPS/Coolify → ingestor → Supabase PostgreSQL via `pg`/DATABASE_URL → Fastify → Next.js. O projeto existente foi evoluído; adapters, resolução de dispositivos, RAW, amostras, simuladores e testes foram preservados. Não foi implementada autenticação, RLS, comando remoto ou política de remoção RAW.
@@ -36,7 +42,7 @@ Coolify publica web/API pelo proxy HTTP nas portas internas 3000/3001. O ingesto
 - Docker Compose oficial **v5.5.1**, baixado da distribuição oficial e SHA-256 verificado: `config --quiet` aprovado para produção, operações e laboratório. `pnpm docker:production:validate` confirmou quatro serviços, ausência de banco/simulador, portas e escopo de secrets com valores fictícios.
 - Empacotamento `pnpm deploy --prod` e smoke tests dos artefatos isolados de API/ingestor/web/CLI de banco executados. API/ingestor reportaram 503 com dependências indisponíveis; web respondeu 200; db:status compilado tratou configuração ausente sem imprimir secret nem executar migrations.
 
-Não executamos imagens Linux nem deployment Coolify/Supabase reais: este computador ainda não tem Docker Engine e as credenciais remotas não foram fornecidas. A validação Compose é estrutural; handshake TLS real, permissões de volumes, rede da VPS e A7 continuam para homologação. A entrega para esta etapa é a preparação, conforme solicitado, sem acesso remoto ou alteração no Supabase existente.
+As imagens Linux e o deployment real foram validados na VPS Coolify. HTTPS da web e da API respondeu `200`; os quatro containers ficaram saudáveis; o handshake e a autenticação MQTT/TLS foram confirmados externamente; e o fluxo broker → ingestor → Supabase → API foi verificado. A captura do equipamento Haiwell A7 físico continua como próxima homologação, pois seu formato proprietário permanece tratado como hipótese até recebermos uma mensagem RAW real.
 
 ### Próximos passos e handoff
 
