@@ -16,17 +16,13 @@
     "mosquitto": {
       "publicHostInput": "MQTT_PUBLIC_HOST",
       "tcpPorts": [1883, 8883],
-      "httpProxy": false
+      "httpProxy": false,
+      "tlsCertificateDirectory": "/data/coolify/certificates/mqtt.everlenz.com.br"
     }
   },
   "runtimeSecretsRequired": ["DATABASE_URL", "MQTT_PASSWORD", "MQTT_SIMULATOR_PASSWORD"],
   "conditionalSecrets": ["DATABASE_SSL_CA_PEM"],
-  "requiredConfiguration": [
-    "DEV_TENANT_ID",
-    "MQTT_TLS_CERT_DIR",
-    "IIOT_WEB_DOMAIN",
-    "MQTT_PUBLIC_HOST"
-  ],
+  "requiredConfiguration": ["DEV_TENANT_ID", "IIOT_WEB_DOMAIN", "MQTT_PUBLIC_HOST"],
   "buildSecrets": [],
   "persistentVolumes": ["mqtt-config", "mqtt-auth", "mqtt-data", "mqtt-log"],
   "preDeployment": [

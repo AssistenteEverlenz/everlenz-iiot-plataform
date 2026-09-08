@@ -21,7 +21,9 @@ services:
       - mqtt-data:/mosquitto/data
       - mqtt-log:/mosquitto/log
       - type: bind
-        source: ${MQTT_TLS_CERT_DIR:?Set VPS directory containing broker certificate and key}
+        # Coolify rejects environment substitution in bind sources. This path is
+        # provisioned by infrastructure/mosquitto/sync-traefik-cert.py.
+        source: /data/coolify/certificates/mqtt.everlenz.com.br
         target: /mosquitto/certs
         read_only: true
         bind: { create_host_path: false }

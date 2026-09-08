@@ -24,25 +24,25 @@ O Coolify conecta o proxy aos serviços com domínio; `expose` indica a porta in
 1. Selecionar projeto, ambiente, servidor/destination e repositório/branch no Coolify existente. Não instalar outro Coolify nem criar outro Supabase.
 2. Configurar DNS dos hosts HTTP e MQTT para a VPS. MQTT deve resolver diretamente ao servidor, sem proxy HTTP/CDN que não suporte MQTT TCP.
 3. Configurar firewall da VPS/provedor **antes de iniciar o broker**. 8883 aceita somente as origens acordadas; 1883 deve ficar restrita à origem da A7/laboratório ou VPN. Considerar regras efetivas de publicação Docker/DOCKER-USER, não apenas UFW. Se não houver origem controlada, alterar `MQTT_TCP_BIND_ADDRESS=127.0.0.1` e usar túnel/VPN.
-4. Disponibilizar em `MQTT_TLS_CERT_DIR` um diretório absoluto da VPS com `fullchain.pem` e `privkey.pem`, legíveis pelo UID 1883, protegido de outros usuários. O bind usa `create_host_path:false`; caminhos/certificados faltantes impedem startup. Certificado deve corresponder ao MQTT_PUBLIC_HOST. TLS do proxy HTTP Coolify não termina automaticamente TLS MQTT.
+4. Disponibilizar em `/data/coolify/certificates/mqtt.everlenz.com.br` os arquivos `fullchain.pem` e `privkey.pem`, legíveis pelo UID 1883 e protegidos de outros usuários. O caminho é fixo porque o parser do Coolify rejeita substituição de variáveis em origens de bind mounts. `sync-traefik-cert.py` extrai e renova o certificado emitido pelo Traefik. O bind usa `create_host_path:false`; caminhos ou certificados ausentes impedem o startup.
 5. Preencher secrets de runtime conforme a tabela. Não marcar DATABASE_URL ou senhas como build variables; não usar `.env` versionado. Não compartilhar saída expandida de `docker compose config`; preferir `--quiet`.
 
-| Configuração                                      | Serviço                          | Obrigatória agora?                                        |
-| ------------------------------------------------- | -------------------------------- | --------------------------------------------------------- |
-| DATABASE_URL                                      | api, ingestor, operação de banco | Sim, Direct ou Session; senha URL-encoded                 |
-| DATABASE_SSL_CA_PEM                               | mesmos                           | Só se cadeia exigir CA adicional                          |
-| DATABASE_POOL_MAX                                 | api/ingestor                     | Padrão 5 por processo                                     |
-| MQTT_USERNAME / MQTT_PASSWORD                     | broker/ingestor                  | Nome `ingestor`, senha própria forte                      |
-| MQTT_SIMULATOR_USERNAME / MQTT_SIMULATOR_PASSWORD | broker                           | Nome `simulator`, senha separada; nenhum simulador inicia |
-| MQTT_TLS_CERT_DIR                                 | broker                           | Diretório de certificados na VPS                          |
-| DEV_TENANT_ID                                     | api                              | UUID de tenant cadastrado; não é autenticação             |
-| MQTT_DISCOVERY_MODE                               | ingestor                         | false, exceto janela controlada de captura                |
-| OPERATOR_RAW_ACCESS                               | api                              | false; true só para operador protegido na descoberta      |
-| MQTT_TOPIC_FILTER                                 | ingestor                         | Tópicos conhecidos; default inclui seed de laboratório    |
-| MQTT_CLIENT_ID                                    | ingestor                         | Estável e único; uma réplica nesta POC                    |
-| IIOT_WEB_DOMAIN / IIOT_API_DOMAIN                 | configuração Coolify             | Web sim; domínio API opcional                             |
-| MQTT_PUBLIC_HOST                                  | equipamentos/simulador externo   | Host DNS real do broker                                   |
-| SUPABASE_URL/SECRET_KEY e NEXT_PUBLIC_SUPABASE_*  | nenhuma aplicação nesta etapa    | Não necessários agora; reservados                         |
+| Configuração                                      | Serviço                          | Obrigatória agora?                                             |
+| ------------------------------------------------- | -------------------------------- | -------------------------------------------------------------- |
+| DATABASE_URL                                      | api, ingestor, operação de banco | Sim, Direct ou Session; senha URL-encoded                      |
+| DATABASE_SSL_CA_PEM                               | mesmos                           | Só se cadeia exigir CA adicional                               |
+| DATABASE_POOL_MAX                                 | api/ingestor                     | Padrão 5 por processo                                          |
+| MQTT_USERNAME / MQTT_PASSWORD                     | broker/ingestor                  | Nome `ingestor`, senha própria forte                           |
+| MQTT_SIMULATOR_USERNAME / MQTT_SIMULATOR_PASSWORD | broker                           | Nome `simulator`, senha separada; nenhum simulador inicia      |
+| Certificados MQTT                                 | broker                           | Caminho fixo `/data/coolify/certificates/mqtt.everlenz.com.br` |
+| DEV_TENANT_ID                                     | api                              | UUID de tenant cadastrado; não é autenticação                  |
+| MQTT_DISCOVERY_MODE                               | ingestor                         | false, exceto janela controlada de captura                     |
+| OPERATOR_RAW_ACCESS                               | api                              | false; true só para operador protegido na descoberta           |
+| MQTT_TOPIC_FILTER                                 | ingestor                         | Tópicos conhecidos; default inclui seed de laboratório         |
+| MQTT_CLIENT_ID                                    | ingestor                         | Estável e único; uma réplica nesta POC                         |
+| IIOT_WEB_DOMAIN / IIOT_API_DOMAIN                 | configuração Coolify             | Web sim; domínio API opcional                                  |
+| MQTT_PUBLIC_HOST                                  | equipamentos/simulador externo   | Host DNS real do broker                                        |
+| SUPABASE_URL/SECRET_KEY e NEXT_PUBLIC_SUPABASE_*  | nenhuma aplicação nesta etapa    | Não necessários agora; reservados                              |
 
 A API/web ainda não autenticam usuários. Configurar acesso HTTP restrito no proxy/VPN/allowlist antes de liberar domínio, incluindo `/api` no domínio web. O domínio da API pode permanecer sem publicação. A configuração de produção não transforma este MVP em uma plataforma multiusuário aberta.
 

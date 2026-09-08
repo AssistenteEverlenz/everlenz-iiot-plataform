@@ -23,7 +23,7 @@
 
 DATABASE_URL deve ser a URL real de Direct Connection ou Supavisor Session Mode, com senha URL-encoded; não presumimos domínio. TLS é validado; CA adicional pode ser fornecida por DATABASE_SSL_CA_PEM ou FILE. `sslmode=disable` só é aceito explicitamente fora de produção. O build/testes não exigem banco nem secrets.
 
-Servidor: DATABASE_URL, MQTT_PASSWORD e MQTT_SIMULATOR_PASSWORD; CA se necessária. Configuração: DEV_TENANT_ID, MQTT_TLS_CERT_DIR, domínio web, domínio API opcional, MQTT_PUBLIC_HOST e regras de rede. SUPABASE_URL/SECRET_KEY e NEXT_PUBLIC_SUPABASE_URL/PUBLISHABLE_KEY estão preparados, mas não são utilizados nesta versão; não precisamos de chave administrativa Supabase para o deployment.
+Servidor: DATABASE_URL, MQTT_PASSWORD e MQTT_SIMULATOR_PASSWORD; CA se necessária. Configuração: DEV_TENANT_ID, domínio web, domínio API opcional, MQTT_PUBLIC_HOST e regras de rede. No Coolify, o certificado MQTT usa o bind fixo `/data/coolify/certificates/mqtt.everlenz.com.br`, provisionado pelo sincronizador do Traefik. SUPABASE_URL/SECRET_KEY e NEXT_PUBLIC_SUPABASE_URL/PUBLISHABLE_KEY estão preparados, mas não são utilizados nesta versão; não precisamos de chave administrativa Supabase para o deployment.
 
 Coolify publica web/API pelo proxy HTTP nas portas internas 3000/3001. O ingestor não publica porta host. Mosquitto publica **1883:1883** e **8883:8883** por padrão: restringir 1883 por firewall efetivo da VPS/Docker, VPN ou bind controlado antes de iniciar. O ingestor usa `mosquitto:1883` pela rede interna. TLS MQTT exige certificado próprio montado; o proxy HTTP não o fornece automaticamente.
 
