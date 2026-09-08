@@ -1,10 +1,17 @@
 #!/bin/sh
 set -eu
 mkdir -p /mosquitto/config /mosquitto/data /mosquitto/log
-# Initialize once. Deployed config/ACL survive redeploy; upgrades are deliberate.
-for file in mosquitto.conf acl; do
-  if [ ! -f "/mosquitto/config/$file" ]; then cp "/defaults/$file" "/mosquitto/config/$file"; fi
-done
+# The upstream image can pre-populate a fresh volume with its demo config. On the
+# first managed startup, preserve that file and install the authenticated config.
+# The marker keeps later operator changes intact across redeployments.
+if [ ! -f /mosquitto/config/.everlenz-managed-v1 ]; then
+  if [ -f /mosquitto/config/mosquitto.conf ]; then
+    cp /mosquitto/config/mosquitto.conf /mosquitto/config/mosquitto.conf.pre-everlenz
+  fi
+  cp /defaults/mosquitto.conf /mosquitto/config/mosquitto.conf
+  cp /defaults/acl /mosquitto/config/acl
+  touch /mosquitto/config/.everlenz-managed-v1
+fi
 /bin/sh /init/init.sh
 test -s /mosquitto/certs/fullchain.pem && test -s /mosquitto/certs/privkey.pem || {
   echo 'service=mosquitto event=tls_files_missing' >&2; exit 1;

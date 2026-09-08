@@ -13,6 +13,6 @@ else
   mosquitto_passwd -b /mosquitto/auth/passwords "$MQTT_USERNAME" "$MQTT_PASSWORD"
 fi
 mosquitto_passwd -b /mosquitto/auth/passwords "$MQTT_SIMULATOR_USERNAME" "$MQTT_SIMULATOR_PASSWORD"
-chown -R 1883:1883 /mosquitto/auth
-chmod 700 /mosquitto/auth
-chmod 600 /mosquitto/auth/passwords
+chown -R 0:1883 /mosquitto/auth
+chmod 750 /mosquitto/auth
+chmod 640 /mosquitto/auth/passwords
