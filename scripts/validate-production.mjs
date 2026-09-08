@@ -23,6 +23,7 @@ const result = spawnSync(
       DATABASE_SSL_CA_PEM: '',
       MQTT_PASSWORD: 'validation-only',
       MQTT_SIMULATOR_PASSWORD: 'validation-only',
+      MQTT_DEVICE_A7_PASSWORD: 'validation-only',
       DEV_TENANT_ID: '11111111-1111-4111-8111-111111111111',
     },
   },
@@ -40,6 +41,8 @@ for (const name of ['api', 'ingestor', 'web']) {
 assert.ok(!config.services.web.environment.DATABASE_URL);
 assert.ok(!config.services.web.environment.MQTT_PASSWORD);
 assert.ok(!config.services.api.environment.MQTT_PASSWORD);
+assert.ok(!config.services.api.environment.MQTT_DEVICE_A7_PASSWORD);
+assert.equal(config.services.mosquitto.environment.MQTT_DEVICE_A7_USERNAME, 'a7-001');
 assert.equal(config.services.ingestor.environment.MQTT_INTERNAL_HOST, 'mosquitto');
 assert.equal(config.services.ingestor.environment.MQTT_DISCOVERY_MODE, 'false');
 assert.deepEqual(config.services.mosquitto.ports.map((p) => Number(p.target)).sort(), [1883, 8883]);

@@ -20,7 +20,12 @@
       "tlsCertificateDirectory": "/data/coolify/certificates/mqtt.everlenz.com.br"
     }
   },
-  "runtimeSecretsRequired": ["DATABASE_URL", "MQTT_PASSWORD", "MQTT_SIMULATOR_PASSWORD"],
+  "runtimeSecretsRequired": [
+    "DATABASE_URL",
+    "MQTT_PASSWORD",
+    "MQTT_SIMULATOR_PASSWORD",
+    "MQTT_DEVICE_A7_PASSWORD"
+  ],
   "conditionalSecrets": ["DATABASE_SSL_CA_PEM"],
   "requiredConfiguration": ["DEV_TENANT_ID", "IIOT_WEB_DOMAIN", "MQTT_PUBLIC_HOST"],
   "buildSecrets": [],
