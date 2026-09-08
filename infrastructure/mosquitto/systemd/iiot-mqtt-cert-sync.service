@@ -1,0 +1,9 @@
+[Unit]
+Description=Synchronize the Everlenz MQTT certificate from Coolify Traefik
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/iiot-sync-traefik-cert --acme /data/coolify/proxy/acme.json --domain mqtt.everlenz.com.br --output-dir /data/coolify/certificates/mqtt.everlenz.com.br --owner-uid 1883 --owner-gid 1883 --reload-label com.docker.compose.service=mosquitto
+
