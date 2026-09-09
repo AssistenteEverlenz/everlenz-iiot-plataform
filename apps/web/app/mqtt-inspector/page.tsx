@@ -1,16 +1,30 @@
 'use client';
 import { useState } from 'react';
 import { usePoll, type Raw, type Topic, time } from '../../components/data';
+function processingLabel(raw: Raw) {
+  if (raw.processing_status === 'pending') return 'Processando agora';
+  if (raw.processing_status === 'processed') return 'Processada';
+  if (raw.processing_status === 'unrecognized') return 'Não reconhecida';
+  return 'Erro';
+}
+function processingDuration(raw: Raw) {
+  if (!raw.processed_at) return null;
+  const milliseconds = new Date(raw.processed_at).getTime() - new Date(raw.received_at).getTime();
+  return milliseconds < 1000
+    ? `${Math.max(0, milliseconds)} ms`
+    : `${(milliseconds / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} s`;
+}
 export default function Inspector() {
   const [topic, setTopic] = useState(''),
     [status, setStatus] = useState(''),
     [offset, setOffset] = useState(0),
     [chosen, setChosen] = useState<Raw | null>(null),
     [topicOffset, setTopicOffset] = useState(0);
-  const topics = usePoll<Topic[]>(`/mqtt/topics?limit=50&offset=${topicOffset}`);
-  const overview = usePoll<{ operatorRawAccess: boolean }>('/overview');
+  const topics = usePoll<Topic[]>(`/mqtt/topics?limit=50&offset=${topicOffset}`, 5000);
+  const overview = usePoll<{ operatorRawAccess: boolean }>('/overview', 5000);
   const raw = usePoll<Raw[]>(
     `/mqtt/raw?limit=25&offset=${offset}${topic ? `&topic=${encodeURIComponent(topic)}` : ''}${status ? `&processingStatus=${status}` : ''}`,
+    1000,
   );
   const selected = raw.data?.find((r) => r.id === chosen?.id) ?? chosen ?? raw.data?.[0];
   return (
@@ -21,7 +35,7 @@ export default function Inspector() {
           <h1>MQTT Inspector</h1>
           <p>Explore tópicos, payloads originais e resultados dos adapters.</p>
         </div>
-        <span className="pill">POLLING · 5 S</span>
+        <span className="pill">ATUALIZAÇÃO · 1 S</span>
       </div>
       {overview.data?.operatorRawAccess ? (
         <div className="error-banner">
@@ -146,6 +160,9 @@ export default function Inspector() {
                     </td>
                     <td>
                       <span className={`badge ${r.processing_status}`}>{r.processing_status}</span>
+                      <small className="processing-duration">
+                        {processingDuration(r) ?? processingLabel(r)}
+                      </small>
                     </td>
                     <td>{r.qos}</td>
                   </tr>
@@ -185,13 +202,14 @@ export default function Inspector() {
                 <span className="pill">QoS {selected.qos}</span>
                 <span className="pill">RETAIN {String(selected.retain)}</span>
                 <span className={`badge ${selected.processing_status}`}>
-                  {selected.processing_status}
+                  {processingLabel(selected)}
                 </span>
               </div>
               <p>
                 Parser: {selected.parser_used ?? 'Não identificado'}
                 <br />
-                Recebida: {time(selected.received_at)} · RAW #{selected.id}
+                Recebida: {time(selected.received_at)} · processamento{' '}
+                {processingDuration(selected) ?? 'em andamento'} · RAW #{selected.id}
               </p>
               {selected.processing_error && (
                 <div className="error-banner">{selected.processing_error}</div>

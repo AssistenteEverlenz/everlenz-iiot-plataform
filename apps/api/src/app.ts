@@ -538,6 +538,58 @@ export function createApp(
     const view = await dashboardView(db, current, id, deviceIds);
     return view ?? reply.code(404).send({ error: 'Dashboard not found' });
   });
+  app.get('/api/dashboards/:id/statistics', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const current = access.principal(req);
+    const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    const productionWidgets = view.widgets.filter(
+      (widget) => widget.widget_type === 'production' && widget.tag_id,
+    );
+    return Promise.all(
+      productionWidgets.map(async (widget) => {
+        const widgetConfig = widget.config as {
+          productionPeriodMinutes?: unknown;
+          productionMinimumValue?: unknown;
+        };
+        const requestedPeriod = Number(widgetConfig.productionPeriodMinutes ?? 60);
+        const periodMinutes = Math.min(
+          60 * 24 * 31,
+          Math.max(1, Number.isFinite(requestedPeriod) ? requestedPeriod : 60),
+        );
+        const requestedMinimum = Number(widgetConfig.productionMinimumValue ?? 0.1);
+        const minimumValue = Number.isFinite(requestedMinimum) ? requestedMinimum : 0.1;
+        const result = await db.query<{
+          samples: number;
+          ignored_samples: number;
+          minimum: number | null;
+          maximum: number | null;
+          average: number | null;
+          trend_per_second: number | null;
+        }>(
+          `SELECT
+            count(*) FILTER (WHERE value_number >= $5)::int samples,
+            count(*) FILTER (WHERE value_number < $5)::int ignored_samples,
+            min(value_number) FILTER (WHERE value_number >= $5) minimum,
+            max(value_number) FILTER (WHERE value_number >= $5) maximum,
+            avg(value_number) FILTER (WHERE value_number >= $5) average,
+            regr_slope(value_number,extract(epoch from timestamp))
+              FILTER (WHERE value_number >= $5) trend_per_second
+           FROM telemetry_samples
+           WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
+             AND timestamp >= now()-($4::double precision * interval '1 minute')`,
+          [current.tenantId, widget.device_id, widget.tag_id, periodMinutes, minimumValue],
+        );
+        return {
+          widget_id: widget.id,
+          tag_id: widget.tag_id,
+          period_minutes: periodMinutes,
+          minimum_value: minimumValue,
+          ...result.rows[0],
+        };
+      }),
+    );
+  });
   app.patch('/api/dashboards/:id', async (req, reply) => {
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);

@@ -24,15 +24,51 @@ import {
 } from './data';
 
 interface Statistic {
+  widget_id: string;
   tag_id: string;
-  key: string;
-  name: string;
-  unit: string | null;
+  period_minutes: number;
+  minimum_value: number;
   samples: number;
+  ignored_samples: number;
   minimum: number | null;
   maximum: number | null;
   average: number | null;
   trend_per_second: number | null;
+}
+
+type AlarmRange = NonNullable<DashboardWidget['config']['alarmRanges']>[number];
+
+function legacyAlarmRanges(widget: DashboardWidget, min: number, max: number): AlarmRange[] {
+  const low = Math.max(min, Math.min(max, widget.config.warningLow ?? min + (max - min) * 0.6));
+  const high = Math.max(low, Math.min(max, widget.config.warningHigh ?? min + (max - min) * 0.85));
+  return [
+    { id: 'normal', label: 'Normal', start: min, end: low, color: '#19a66f', priority: 0 },
+    { id: 'attention', label: 'Atenção', start: low, end: high, color: '#e3a51f', priority: 1 },
+    { id: 'critical', label: 'Crítico', start: high, end: max, color: '#dc3f45', priority: 2 },
+  ].filter((range) => range.end > range.start);
+}
+
+function visibleGaugeZones(ranges: AlarmRange[], min: number, max: number) {
+  const boundaries = Array.from(
+    new Set([
+      min,
+      max,
+      ...ranges.flatMap((range) => [
+        Math.max(min, Math.min(max, range.start)),
+        Math.max(min, Math.min(max, range.end)),
+      ]),
+    ]),
+  ).sort((a, b) => a - b);
+  return boundaries.slice(0, -1).flatMap((start, index) => {
+    const end = boundaries[index + 1];
+    if (end <= start) return [];
+    const middle = (start + end) / 2;
+    const winner = [...ranges]
+      .sort((a, b) => b.priority - a.priority)
+      .find((range) => middle >= range.start && middle < range.end);
+    if (!winner) return [];
+    return [{ ...winner, start, end }];
+  });
 }
 
 function number(value: number | null | undefined, decimals = 1) {
@@ -43,6 +79,25 @@ function number(value: number | null | undefined, decimals = 1) {
         maximumFractionDigits: decimals,
       });
 }
+
+function formatPeriod(minutes: number) {
+  if (minutes >= 60 * 24 * 28) return 'último mês';
+  if (minutes >= 60 * 24 * 7) return 'últimos 7 dias';
+  if (minutes >= 60 * 24) return 'último dia';
+  if (minutes >= 60) return `últimas ${minutes / 60} h`;
+  return `últimos ${minutes} min`;
+}
+
+const visualizationHelp: Record<DashboardWidget['widget_type'], string> = {
+  value: 'Mostra a leitura atual de uma variável numérica, booleana ou de texto.',
+  line: 'Usa uma variável numérica e desenha sua evolução dentro da janela do painel.',
+  gauge: 'Usa uma variável numérica com escala mínima, máxima e faixas coloridas.',
+  status: 'Usa uma variável booleana: verdadeiro representa operação e falso representa parada.',
+  production:
+    'Usa uma taxa numérica, como ton/h. Calcula média, mínimo e pico no período configurado.',
+  oee: 'O OEE não usa uma única variável. Precisa de tempo planejado, tempo operando, produção total, produção boa e ciclo ideal.',
+  pareto: 'Precisa de eventos de parada com motivo e duração para ordenar as maiores perdas.',
+};
 
 function SixDots() {
   return (
@@ -61,6 +116,7 @@ function Widget({
   statistics,
   edit,
   remove,
+  reset,
   dragStart,
   drop,
 }: {
@@ -70,11 +126,18 @@ function Widget({
   statistics?: Statistic;
   edit: () => void;
   remove: () => void;
+  reset: () => void;
   dragStart: () => void;
   drop: () => void;
 }) {
   const color = widget.config.color ?? '#12b8a6';
-  const numeric = latest?.value_number ?? null;
+  const rawNumeric = latest?.value_number ?? null;
+  const numeric =
+    rawNumeric == null || !widget.config.counterMode
+      ? rawNumeric
+      : rawNumeric < (widget.config.counterBaseline ?? 0)
+        ? rawNumeric
+        : rawNumeric - (widget.config.counterBaseline ?? 0);
   const points = history
     .filter((sample) => sample.tag_id === widget.tag_id && sample.value_number != null)
     .reverse()
@@ -86,28 +149,27 @@ function Widget({
   const max = widget.config.max ?? 100;
   const progress =
     numeric == null ? 0 : Math.max(0, Math.min(100, ((numeric - min) / (max - min || 1)) * 100));
-  const low = widget.config.warningLow ?? min;
-  const high = widget.config.warningHigh ?? max;
-  const alarmLevel =
-    !widget.config.alarmEnabled || numeric == null
-      ? 'off'
-      : numeric >= high
-        ? 'critical'
-        : numeric >= low
-          ? 'warning'
-          : 'normal';
-  const activeColor =
-    alarmLevel === 'critical'
-      ? '#dc3f45'
-      : alarmLevel === 'warning'
-        ? '#e3a51f'
-        : alarmLevel === 'normal'
-          ? '#19a66f'
-          : color;
-  const lowProgress = Math.max(0, Math.min(100, ((low - min) / (max - min || 1)) * 100));
-  const highProgress = Math.max(
-    lowProgress,
-    Math.min(100, ((high - min) / (max - min || 1)) * 100),
+  const ranges = widget.config.alarmRanges?.length
+    ? widget.config.alarmRanges
+    : legacyAlarmRanges(widget, min, max);
+  const currentRange =
+    widget.config.alarmEnabled && numeric != null
+      ? [...ranges]
+          .sort((a, b) => b.priority - a.priority)
+          .find(
+            (range) =>
+              numeric >= range.start &&
+              (numeric < range.end || (range.end === max && numeric <= range.end)),
+          )
+      : undefined;
+  const activeColor = currentRange?.color ?? color;
+  const gaugeZones = visibleGaugeZones(ranges, min, max);
+  const thresholds = Array.from(
+    new Map(
+      ranges
+        .filter((range) => range.end > min && range.end < max)
+        .map((range) => [range.end, range]),
+    ).values(),
   );
   return (
     <article
@@ -115,7 +177,7 @@ function Widget({
       onDragStart={dragStart}
       onDragOver={(event) => event.preventDefault()}
       onDrop={drop}
-      className={`dashboard-widget widget-${widget.width} alarm-${alarmLevel}`}
+      className={`dashboard-widget widget-${widget.width} ${currentRange ? 'alarm-active' : ''}`}
       style={{ '--accent': activeColor } as React.CSSProperties}
     >
       <div className="widget-head">
@@ -135,11 +197,13 @@ function Widget({
           </button>
         </div>
       </div>
-      {alarmLevel === 'warning' && (
-        <div className="widget-alarm-label warning">Faixa de atenção atingida</div>
-      )}
-      {alarmLevel === 'critical' && (
-        <div className="widget-alarm-label critical">Limite superior atingido</div>
+      {currentRange && currentRange.priority > 0 && (
+        <div
+          className="widget-alarm-label"
+          style={{ color: currentRange.color, borderColor: currentRange.color }}
+        >
+          Faixa “{currentRange.label}” atingida
+        </div>
       )}
       {widget.widget_type === 'line' &&
         (points.length ? (
@@ -180,34 +244,22 @@ function Widget({
                     widget.title,
                   ]}
                 />
-                {widget.config.alarmEnabled && (
-                  <>
+                {widget.config.alarmEnabled &&
+                  thresholds.map((range) => (
                     <ReferenceLine
-                      y={low}
-                      stroke="#d99b16"
+                      key={`${range.id}-${range.end}`}
+                      y={range.end}
+                      stroke={range.color}
                       strokeWidth={1.5}
                       strokeDasharray="6 4"
                       label={{
-                        value: `Atenção ${number(low, widget.config.decimals ?? 1)}`,
+                        value: `${range.label} ${number(range.end, widget.config.decimals ?? 1)}`,
                         position: 'insideTopLeft',
-                        fill: '#a36e00',
+                        fill: range.color,
                         fontSize: 10,
                       }}
                     />
-                    <ReferenceLine
-                      y={high}
-                      stroke="#d83f45"
-                      strokeWidth={1.5}
-                      strokeDasharray="6 4"
-                      label={{
-                        value: `Crítico ${number(high, widget.config.decimals ?? 1)}`,
-                        position: 'insideTopLeft',
-                        fill: '#b72d34',
-                        fontSize: 10,
-                      }}
-                    />
-                  </>
-                )}
+                  ))}
                 <Area
                   type="monotone"
                   dataKey="value"
@@ -227,40 +279,36 @@ function Widget({
           <div className="gauge-dial">
             <svg viewBox="0 0 220 132">
               <path className="gauge-track" pathLength="100" d="M 20 108 A 90 90 0 0 1 200 108" />
-              {widget.config.alarmEnabled && (
-                <>
-                  <path
-                    className="gauge-zone gauge-zone-normal"
-                    pathLength="100"
-                    d="M 20 108 A 90 90 0 0 1 200 108"
-                    style={{ strokeDasharray: `${lowProgress} ${100 - lowProgress}` }}
+              {widget.config.alarmEnabled &&
+                gaugeZones.map((zone, index) => {
+                  const start = ((zone.start - min) / (max - min || 1)) * 100;
+                  const length = ((zone.end - zone.start) / (max - min || 1)) * 100;
+                  return (
+                    <path
+                      key={`${zone.id}-${index}`}
+                      className="gauge-zone"
+                      pathLength="100"
+                      d="M 20 108 A 90 90 0 0 1 200 108"
+                      style={{
+                        stroke: zone.color,
+                        strokeDasharray: `${length} ${100 - length}`,
+                        strokeDashoffset: -start,
+                      }}
+                    />
+                  );
+                })}
+              {widget.config.gaugeNeedle !== false && numeric != null && (
+                <g className="gauge-needle">
+                  <line
+                    x1="110"
+                    y1="108"
+                    x2="110"
+                    y2="38"
+                    transform={`rotate(${progress * 1.8 - 90} 110 108)`}
                   />
-                  <path
-                    className="gauge-zone gauge-zone-warning"
-                    pathLength="100"
-                    d="M 20 108 A 90 90 0 0 1 200 108"
-                    style={{
-                      strokeDasharray: `${highProgress - lowProgress} ${100 - (highProgress - lowProgress)}`,
-                      strokeDashoffset: -lowProgress,
-                    }}
-                  />
-                  <path
-                    className="gauge-zone gauge-zone-critical"
-                    pathLength="100"
-                    d="M 20 108 A 90 90 0 0 1 200 108"
-                    style={{
-                      strokeDasharray: `${100 - highProgress} ${highProgress}`,
-                      strokeDashoffset: -highProgress,
-                    }}
-                  />
-                </>
+                  <circle cx="110" cy="108" r="8" />
+                </g>
               )}
-              <path
-                className="gauge-progress"
-                pathLength="100"
-                d="M 20 108 A 90 90 0 0 1 200 108"
-                style={{ stroke: activeColor, strokeDasharray: `${progress} 100` }}
-              />
             </svg>
             <div className="gauge-reading">
               <strong>{number(numeric, widget.config.decimals ?? 1)}</strong>
@@ -280,7 +328,6 @@ function Widget({
           <span className="status-orb" />
           <div>
             <strong>{latest?.value_boolean ? 'Em operação' : 'Parada'}</strong>
-            <small>{time(latest?.timestamp)}</small>
           </div>
         </div>
       )}
@@ -296,7 +343,11 @@ function Widget({
                 : (latest?.value_text ?? '—')}
             <span>{widget.unit}</span>
           </div>
-          <div className="spark-note">Atualizado {time(latest?.timestamp)}</div>
+          {widget.config.counterMode && latest?.value_number != null && (
+            <button className="counter-reset" type="button" onClick={reset}>
+              Zerar contador
+            </button>
+          )}
         </>
       )}
       {widget.widget_type === 'production' && (
@@ -313,9 +364,14 @@ function Widget({
               <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>pico
             </span>
             <span>
-              <b>{statistics?.samples ?? 0}</b>amostras
+              <b>{statistics?.samples ?? 0}</b>amostras válidas
             </span>
           </div>
+          <small className="production-note">
+            Período: {formatPeriod(statistics?.period_minutes ?? 60)} · abaixo de{' '}
+            {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorado
+            {statistics?.ignored_samples ? ` · ${statistics.ignored_samples} descartadas` : ''}
+          </small>
         </>
       )}
       {widget.widget_type === 'oee' && (
@@ -342,10 +398,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const device = usePoll<Device>(deviceId ? `/devices/${deviceId}` : null, refreshMs);
   const latest = usePoll<Sample[]>(deviceId ? `/devices/${deviceId}/latest` : null, refreshMs);
   const signals = usePoll<Signal[]>(deviceId ? `/devices/${deviceId}/signals` : null, 5000);
-  const statistics = usePoll<Statistic[]>(
-    deviceId ? `/devices/${deviceId}/statistics?hours=24` : null,
-    10000,
-  );
+  const statistics = usePoll<Statistic[]>(deviceId ? `/dashboards/${id}/statistics` : null, 30000);
   const windowMinutes = dashboard.data?.time_window_minutes ?? 60;
   const from = new Date(
     Math.floor(Date.now() / 60000) * 60000 - windowMinutes * 60000,
@@ -368,8 +421,11 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [decimals, setDecimals] = useState(1);
   const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
   const [alarmEnabled, setAlarmEnabled] = useState(false);
-  const [warningLow, setWarningLow] = useState(0);
-  const [warningHigh, setWarningHigh] = useState(100);
+  const [alarmRanges, setAlarmRanges] = useState<AlarmRange[]>([]);
+  const [gaugeNeedle, setGaugeNeedle] = useState(true);
+  const [productionPeriodMinutes, setProductionPeriodMinutes] = useState(60);
+  const [productionMinimumValue, setProductionMinimumValue] = useState(0.1);
+  const [counterMode, setCounterMode] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
@@ -377,6 +433,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [savingModal, setSavingModal] = useState(false);
   const [savingRefresh, setSavingRefresh] = useState(false);
   const [removingWidget, setRemovingWidget] = useState<DashboardWidget | null>(null);
+  const [resettingWidget, setResettingWidget] = useState<DashboardWidget | null>(null);
   useEffect(() => {
     if (dashboard.data?.widgets)
       setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
@@ -426,7 +483,16 @@ export function DashboardCanvas({ id }: { id: string }) {
           selectedSignal?.key ||
           (widgetType === 'oee' ? 'OEE' : 'Pareto de perdas'),
         width,
-        config: { color: '#12b8a6', min: 0, max: 100, decimals: 1, gaugeStyle: 'top' },
+        config: {
+          color: '#12b8a6',
+          min: 0,
+          max: 100,
+          decimals: 1,
+          gaugeStyle: 'top',
+          gaugeNeedle: true,
+          productionPeriodMinutes: 60,
+          productionMinimumValue: 0.1,
+        },
       });
       setAdding(false);
       await Promise.all([dashboard.refresh(), signals.refresh()]);
@@ -459,14 +525,30 @@ export function DashboardCanvas({ id }: { id: string }) {
     setDecimals(widget.config.decimals ?? 1);
     setGaugeStyle(widget.config.gaugeStyle ?? 'top');
     setAlarmEnabled(widget.config.alarmEnabled ?? false);
-    setWarningLow(widget.config.warningLow ?? 0);
-    setWarningHigh(widget.config.warningHigh ?? 100);
+    setAlarmRanges(
+      widget.config.alarmRanges?.length
+        ? widget.config.alarmRanges
+        : legacyAlarmRanges(widget, widget.config.min ?? 0, widget.config.max ?? 100),
+    );
+    setGaugeNeedle(widget.config.gaugeNeedle ?? true);
+    setProductionPeriodMinutes(widget.config.productionPeriodMinutes ?? 60);
+    setProductionMinimumValue(widget.config.productionMinimumValue ?? 0.1);
+    setCounterMode(widget.config.counterMode ?? false);
   }
   async function saveWidget(event: React.FormEvent) {
     event.preventDefault();
     if (!editingWidget) return;
-    if (alarmEnabled && warningLow >= warningHigh)
-      return setError('O limite inferior precisa ser menor que o limite superior.');
+    if (maximum <= minimum) return setError('O valor máximo precisa ser maior que o mínimo.');
+    if (
+      alarmEnabled &&
+      alarmRanges.some(
+        (range) =>
+          !range.label.trim() ||
+          range.end <= range.start ||
+          (editingWidget.widget_type === 'gauge' && (range.start < minimum || range.end > maximum)),
+      )
+    )
+      return setError('Revise as faixas: nome, início e fim precisam estar dentro do medidor.');
     setSavingModal(true);
     setError('');
     try {
@@ -479,9 +561,12 @@ export function DashboardCanvas({ id }: { id: string }) {
           max: maximum,
           decimals,
           gaugeStyle,
+          gaugeNeedle,
           alarmEnabled,
-          warningLow,
-          warningHigh,
+          alarmRanges,
+          productionPeriodMinutes,
+          productionMinimumValue,
+          counterMode,
         },
       });
       setEditingWidget(null);
@@ -495,6 +580,14 @@ export function DashboardCanvas({ id }: { id: string }) {
   async function removeWidget(widget: DashboardWidget) {
     await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE');
     setEditingWidget(null);
+    await dashboard.refresh();
+  }
+  async function resetCounter(widget: DashboardWidget) {
+    const current = widget.tag_id ? byTag.get(widget.tag_id)?.value_number : null;
+    if (current == null) throw new Error('O contador ainda não possui um valor numérico válido.');
+    await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'PATCH', {
+      config: { counterMode: true, counterBaseline: current },
+    });
     await dashboard.refresh();
   }
   async function dropWidget(targetId: string) {
@@ -568,7 +661,9 @@ export function DashboardCanvas({ id }: { id: string }) {
         </div>
       </div>
       <div className="editor-bar">
-        <span>Arraste os seis pontos para organizar. A configuração fica salva no seu perfil.</span>
+        <span>
+          Arraste os seis pontos para organizar. A configuração fica salva neste equipamento.
+        </span>
         <label>
           Atualização {savingRefresh && <span className="button-spinner dark" />}
           <select
@@ -597,7 +692,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           <b>Atualização</b> {refreshMs / 1000} s
         </span>
         <span>
-          <b>Último sinal</b> {time(device.data?.last_message_at)}
+          <b>Atualizado em</b> {time(device.data?.last_message_at)}
         </span>
       </div>
       <section className="widget-grid">
@@ -607,9 +702,10 @@ export function DashboardCanvas({ id }: { id: string }) {
             widget={widget}
             latest={widget.tag_id ? byTag.get(widget.tag_id) : undefined}
             history={history.data ?? []}
-            statistics={statistics.data?.find((item) => item.tag_id === widget.tag_id)}
+            statistics={statistics.data?.find((item) => item.widget_id === widget.id)}
             edit={() => startEdit(widget)}
             remove={() => setRemovingWidget(widget)}
+            reset={() => setResettingWidget(widget)}
             dragStart={() => setDraggedId(widget.id)}
             drop={() => void dropWidget(widget.id)}
           />
@@ -690,8 +786,11 @@ export function DashboardCanvas({ id }: { id: string }) {
                       className={widgetType === type ? 'selected' : ''}
                       onClick={() => setWidgetType(type)}
                     >
-                      <span>{icon}</span>
+                      <span className="visualization-symbol">{icon}</span>
                       <b>{label}</b>
+                      <span className="visualization-info" title={visualizationHelp[type]}>
+                        i
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -815,6 +914,63 @@ export function DashboardCanvas({ id }: { id: string }) {
                       ))}
                     </div>
                   </div>
+                  <label className="check-field full-field">
+                    <input
+                      type="checkbox"
+                      checked={gaugeNeedle}
+                      onChange={(event) => setGaugeNeedle(event.target.checked)}
+                    />
+                    Exibir ponteiro no medidor
+                  </label>
+                </>
+              )}
+              {editingWidget.widget_type === 'production' && (
+                <>
+                  <label className="field">
+                    Período analisado
+                    <select
+                      value={productionPeriodMinutes}
+                      onChange={(event) => setProductionPeriodMinutes(Number(event.target.value))}
+                    >
+                      <option value={10}>Últimos 10 minutos</option>
+                      <option value={30}>Últimos 30 minutos</option>
+                      <option value={60}>Última hora</option>
+                      <option value={360}>Últimas 6 horas</option>
+                      <option value={720}>Últimas 12 horas</option>
+                      <option value={1440}>Último dia</option>
+                      <option value={10080}>Últimos 7 dias</option>
+                      <option value={43200}>Último mês</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Desconsiderar valores abaixo de
+                    <input
+                      type="number"
+                      step="any"
+                      value={productionMinimumValue}
+                      onChange={(event) => setProductionMinimumValue(Number(event.target.value))}
+                    />
+                  </label>
+                  <small className="full-field alarm-range-help">
+                    A média operacional ignora períodos parados abaixo desse valor. Mínimo, pico e
+                    quantidade de amostras usam o mesmo filtro.
+                  </small>
+                </>
+              )}
+              {editingWidget.widget_type === 'value' && editingWidget.data_type === 'number' && (
+                <>
+                  <label className="check-field full-field">
+                    <input
+                      type="checkbox"
+                      checked={counterMode}
+                      onChange={(event) => setCounterMode(event.target.checked)}
+                    />
+                    Tratar esta variável como contador acumulativo
+                  </label>
+                  <small className="full-field alarm-range-help">
+                    O botão “Zerar contador” cria uma referência no painel e mantém o CLP intacto.
+                    Os próximos incrementos continuam aparecendo normalmente.
+                  </small>
                 </>
               )}
               <label className="check-field full-field">
@@ -826,28 +982,133 @@ export function DashboardCanvas({ id }: { id: string }) {
                 Ativar alarme visual por limite
               </label>
               {alarmEnabled && (
-                <>
-                  <label className="field">
-                    Limite inferior
-                    <input
-                      type="number"
-                      value={warningLow}
-                      onChange={(event) => setWarningLow(Number(event.target.value))}
-                    />
-                  </label>
-                  <label className="field">
-                    Limite superior
-                    <input
-                      type="number"
-                      value={warningHigh}
-                      onChange={(event) => setWarningHigh(Number(event.target.value))}
-                    />
-                  </label>
-                  <small className="full-field alarm-range-help">
-                    <b>Verde</b> abaixo do limite inferior · <b>Amarelo</b> entre os limites ·{' '}
-                    <b>Vermelho</b> a partir do limite superior.
-                  </small>
-                </>
+                <div className="full-field alarm-ranges-editor">
+                  <div className="alarm-ranges-title">
+                    <div>
+                      <strong>Faixas de operação</strong>
+                      <small>
+                        Em uma sobreposição, a faixa com maior prioridade define a cor e o alerta.
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAlarmRanges((current) => [
+                          ...current,
+                          {
+                            id: crypto.randomUUID(),
+                            label: `Faixa ${current.length + 1}`,
+                            start: minimum,
+                            end: maximum,
+                            color: '#12b8a6',
+                            priority: current.length,
+                          },
+                        ])
+                      }
+                    >
+                      + Adicionar faixa
+                    </button>
+                  </div>
+                  {alarmRanges.map((range) => (
+                    <div className="alarm-range-row" key={range.id}>
+                      <label>
+                        Nome
+                        <input
+                          value={range.label}
+                          onChange={(event) =>
+                            setAlarmRanges((current) =>
+                              current.map((item) =>
+                                item.id === range.id
+                                  ? { ...item, label: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Início
+                        <input
+                          type="number"
+                          step="any"
+                          value={range.start}
+                          onChange={(event) =>
+                            setAlarmRanges((current) =>
+                              current.map((item) =>
+                                item.id === range.id
+                                  ? { ...item, start: Number(event.target.value) }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Final
+                        <input
+                          type="number"
+                          step="any"
+                          value={range.end}
+                          onChange={(event) =>
+                            setAlarmRanges((current) =>
+                              current.map((item) =>
+                                item.id === range.id
+                                  ? { ...item, end: Number(event.target.value) }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Cor
+                        <input
+                          type="color"
+                          value={range.color}
+                          onChange={(event) =>
+                            setAlarmRanges((current) =>
+                              current.map((item) =>
+                                item.id === range.id
+                                  ? { ...item, color: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Prioridade
+                        <input
+                          type="number"
+                          min="0"
+                          value={range.priority}
+                          onChange={(event) =>
+                            setAlarmRanges((current) =>
+                              current.map((item) =>
+                                item.id === range.id
+                                  ? { ...item, priority: Number(event.target.value) }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="alarm-range-remove"
+                        aria-label={`Remover ${range.label}`}
+                        onClick={() =>
+                          setAlarmRanges((current) =>
+                            current.filter((item) => item.id !== range.id),
+                          )
+                        }
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {!alarmRanges.length && <small>Adicione ao menos uma faixa de operação.</small>}
+                </div>
               )}
             </div>
             {error && <div className="form-error">{error}</div>}
@@ -881,10 +1142,22 @@ export function DashboardCanvas({ id }: { id: string }) {
           onConfirm={() => removeWidget(removingWidget)}
         />
       )}
+      {resettingWidget && (
+        <ActionModal
+          title="Zerar contador"
+          description={`O valor exibido em “${resettingWidget.title}” começará novamente em zero e continuará acompanhando os próximos incrementos do equipamento. O valor original no CLP será preservado.`}
+          confirmLabel="Zerar agora"
+          onClose={() => setResettingWidget(null)}
+          onConfirm={() => resetCounter(resettingWidget)}
+        />
+      )}
       {tv && (
-        <button className="tv-exit" onClick={() => setTv(false)}>
-          Sair do modo TV
-        </button>
+        <div className="tv-controls">
+          <span>Atualizado em {time(device.data?.last_message_at)}</span>
+          <button className="tv-exit" onClick={() => setTv(false)}>
+            Sair da TV
+          </button>
+        </div>
       )}
     </div>
   );

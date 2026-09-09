@@ -42,11 +42,13 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(samples.rows).toHaveLength(4);
       expect(samples.rows.some((s) => s.value_number === 70)).toBe(true);
       expect(samples.rows.some((s) => s.value_boolean === true)).toBe(true);
-      const raw = await db.query<{ payload_hex: string; processing_status: string }>(
-        'SELECT * FROM mqtt_messages_raw WHERE id=$1',
-        [result.rawId],
-      );
+      const raw = await db.query<{
+        payload_hex: string;
+        processing_status: string;
+        processed_at: string | null;
+      }>('SELECT * FROM mqtt_messages_raw WHERE id=$1', [result.rawId]);
       expect(raw.rows[0].payload_hex).toBe(Buffer.from(m.payload).toString('hex'));
+      expect(raw.rows[0].processed_at).not.toBeNull();
       const api = createApp(db, { tenantId: TENANT, operatorRaw: false });
       try {
         const response = await api.inject(
@@ -59,6 +61,18 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       }
     },
   );
+  it('processes a burst without leaving a RAW backlog', async () => {
+    const results = [];
+    for (let step = 0; step < 20; step += 1) {
+      const message = simulatedMessage('haiwell', step);
+      results.push(await ingest(message.topic, message.payload));
+    }
+    expect(results.every((result) => result.status === 'processed')).toBe(true);
+    const pending = await db.query<{ count: number }>(
+      "SELECT count(*)::int count FROM mqtt_messages_raw WHERE processing_status='pending'",
+    );
+    expect(pending.rows[0].count).toBe(0);
+  });
   it('preserves unknown binary and invalid JSON, then processes next valid message', async () => {
     const binary = await ingest('unknown/device', Buffer.from([0xff, 0x00, 0xfe]));
     expect(binary.status).toBe('unrecognized');
@@ -230,6 +244,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       const signals = (await api.inject(`/api/devices/${HAIWELL}/signals`)).json() as {
         key: string;
         configured: boolean;
+        tag_id: string;
       }[];
       expect(signals.map((signal) => signal.key)).toEqual(
         expect.arrayContaining(['temperatura', 'corrente_motor', 'velocidade', 'status']),
@@ -242,6 +257,31 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
         widgets: unknown[];
       };
       expect(dashboard.widgets.length).toBeGreaterThanOrEqual(4);
+
+      const production = await api.inject({
+        method: 'POST',
+        url: `/api/dashboards/${dashboards[0].id}/widgets`,
+        payload: {
+          deviceId: HAIWELL,
+          tagId: signals.find((signal) => signal.key === 'temperatura')!.tag_id,
+          widgetType: 'production',
+          title: 'Produção operacional',
+          width: 'large',
+          config: { productionPeriodMinutes: 30, productionMinimumValue: 1 },
+        },
+      });
+      expect(production.statusCode).toBe(201);
+      const dashboardStatistics = (
+        await api.inject(`/api/dashboards/${dashboards[0].id}/statistics`)
+      ).json();
+      expect(dashboardStatistics).toEqual([
+        expect.objectContaining({
+          widget_id: production.json().id,
+          period_minutes: 30,
+          minimum_value: 1,
+          samples: expect.any(Number),
+        }),
+      ]);
 
       const statistics = (
         await api.inject(`/api/devices/${HAIWELL}/statistics?hours=24`)

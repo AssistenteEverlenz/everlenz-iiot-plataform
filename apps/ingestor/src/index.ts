@@ -6,6 +6,21 @@ import { IngestionPipeline } from './pipeline.js';
 import { ingestionHealth } from './health.js';
 const log = logger('ingestor');
 const pipeline = new IngestionPipeline(database);
+let processingSchemaPromise: Promise<void> | undefined;
+function ensureProcessingSchema() {
+  processingSchemaPromise ??= (async () => {
+    await database.query(
+      'ALTER TABLE mqtt_messages_raw ADD COLUMN IF NOT EXISTS processed_at timestamptz',
+    );
+    await database.query(
+      "CREATE INDEX IF NOT EXISTS raw_pending_received ON mqtt_messages_raw(received_at) WHERE processing_status='pending'",
+    );
+  })().catch((error) => {
+    processingSchemaPromise = undefined;
+    throw error;
+  });
+  return processingSchemaPromise;
+}
 let subscribed = false;
 let stopping = false;
 let lastFailure: string | null = null;
@@ -83,6 +98,7 @@ client.handleMessage = (packet, done) => {
   void (async () => {
     while (!stopping) {
       try {
+        await ensureProcessingSchema();
         const result = await pipeline.ingest(message);
         lastFailure = null;
         databaseState(true);

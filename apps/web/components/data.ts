@@ -35,6 +35,7 @@ export interface Raw {
   id: string;
   topic: string;
   received_at: string;
+  processed_at: string | null;
   qos: number;
   retain: boolean;
   payload_text: string | null;
@@ -79,6 +80,19 @@ export interface DashboardWidget {
     alarmEnabled?: boolean;
     warningLow?: number;
     warningHigh?: number;
+    gaugeNeedle?: boolean;
+    alarmRanges?: Array<{
+      id: string;
+      label: string;
+      start: number;
+      end: number;
+      color: string;
+      priority: number;
+    }>;
+    productionPeriodMinutes?: number;
+    productionMinimumValue?: number;
+    counterMode?: boolean;
+    counterBaseline?: number;
   };
   key: string | null;
   tag_name: string | null;
@@ -132,12 +146,21 @@ export function usePoll<T>(path: string | null, intervalMs = 5000) {
     setData(null);
     setError(null);
     if (!path) return;
-    const controller = new AbortController();
-    void refresh(controller.signal);
-    const timer = setInterval(() => void refresh(controller.signal), intervalMs);
+    let disposed = false;
+    let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      const started = Date.now();
+      controller = new AbortController();
+      await refresh(controller.signal);
+      if (!disposed)
+        timer = setTimeout(() => void tick(), Math.max(0, intervalMs - (Date.now() - started)));
+    };
+    void tick();
     return () => {
-      controller.abort();
-      clearInterval(timer);
+      disposed = true;
+      controller?.abort();
+      if (timer) clearTimeout(timer);
     };
   }, [refresh, intervalMs, path]);
   return { data, error, loading: path !== null && data === null, refresh };
