@@ -21,6 +21,7 @@
     "test:load": "node scripts/load-test.mjs",
     "db:migrate": "tsx packages/database/src/migrate.ts",
     "db:seed": "tsx packages/database/src/seed.ts",
+    "user:bootstrap-master": "tsx scripts/bootstrap-master.ts",
     "docker:up": "docker compose --profile development up -d --build --wait",
     "docker:infra": "docker compose --profile development up -d --wait postgres mosquitto",
     "docker:down": "docker compose down",

@@ -6,6 +6,7 @@ import { IngestionPipeline } from '../apps/ingestor/src/pipeline.js';
 import { simulatedMessage } from '../apps/simulator/src/messages.js';
 import { createApp } from '../apps/api/src/app.js';
 import type { Database } from '../packages/database/src/index.js';
+import { hashPassword } from '../packages/shared/src/index.js';
 let db: Database, close: () => Promise<void>, pipeline: IngestionPipeline;
 beforeAll(async () => {
   ({ db, close } = await memoryDatabase());
@@ -266,6 +267,123 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(created.statusCode).toBe(201);
       expect(created.json().device.device_code).toMatch(/^EVL-HAI-/);
       expect(created.json().device.provisioning_status).toBe('awaiting_connection');
+    } finally {
+      await api.close();
+    }
+  });
+  it('authenticates the master, enforces first access and isolates users by device', async () => {
+    const masterPassword = 'InitialMaster9!';
+    const masterHash = await hashPassword(masterPassword);
+    await db.query(
+      `INSERT INTO app_users(tenant_id,email,full_name,role,password_hash,must_change_password)
+       VALUES($1,'master@integration.test','Master Test','master',$2,true)`,
+      [TENANT, masterHash],
+    );
+    const api = createApp(db, { tenantId: TENANT, operatorRaw: false, authRequired: true });
+    try {
+      expect((await api.inject('/api/devices')).statusCode).toBe(401);
+      const masterLogin = await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'master@integration.test', password: masterPassword },
+      });
+      expect(masterLogin.statusCode).toBe(200);
+      const firstMasterToken = masterLogin.json().token as string;
+      expect(
+        (
+          await api.inject({
+            url: '/api/devices',
+            headers: { authorization: `Bearer ${firstMasterToken}` },
+          })
+        ).statusCode,
+      ).toBe(428);
+      const masterChange = await api.inject({
+        method: 'POST',
+        url: '/api/auth/change-password',
+        headers: { authorization: `Bearer ${firstMasterToken}` },
+        payload: { password: 'PermanentMaster9!', confirmation: 'PermanentMaster9!' },
+      });
+      expect(masterChange.statusCode).toBe(200);
+      const masterToken = masterChange.json().token as string;
+      const created = await api.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: { authorization: `Bearer ${masterToken}` },
+        payload: {
+          email: 'client@integration.test',
+          fullName: 'Client Test',
+          status: 'active',
+          deviceIds: [HAIWELL],
+        },
+      });
+      expect(created.statusCode).toBe(201);
+      const clientId = created.json().user.id as string;
+      const clientLogin = await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: {
+          email: 'client@integration.test',
+          password: created.json().temporaryPassword,
+        },
+      });
+      const firstClientToken = clientLogin.json().token as string;
+      const clientChange = await api.inject({
+        method: 'POST',
+        url: '/api/auth/change-password',
+        headers: { authorization: `Bearer ${firstClientToken}` },
+        payload: { password: 'PermanentClient9!', confirmation: 'PermanentClient9!' },
+      });
+      const clientToken = clientChange.json().token as string;
+      const clientDevices = await api.inject({
+        url: '/api/devices',
+        headers: { authorization: `Bearer ${clientToken}` },
+      });
+      expect(clientDevices.json().map((device: { id: string }) => device.id)).toEqual([HAIWELL]);
+      expect(
+        (
+          await api.inject({
+            url: `/api/devices/${GENERIC}/latest`,
+            headers: { authorization: `Bearer ${clientToken}` },
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await api.inject({
+            url: '/api/users',
+            headers: { authorization: `Bearer ${clientToken}` },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await api.inject({
+            method: 'PATCH',
+            url: `/api/users/${clientId}`,
+            headers: { authorization: `Bearer ${masterToken}` },
+            payload: { status: 'inactive' },
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(
+        (
+          await api.inject({
+            url: '/api/devices',
+            headers: { authorization: `Bearer ${clientToken}` },
+          })
+        ).statusCode,
+      ).toBe(401);
+      const masterId = masterLogin.json().user.id as string;
+      expect(
+        (
+          await api.inject({
+            method: 'PATCH',
+            url: `/api/users/${masterId}`,
+            headers: { authorization: `Bearer ${masterToken}` },
+            payload: { status: 'inactive' },
+          })
+        ).statusCode,
+      ).toBe(400);
     } finally {
       await api.close();
     }

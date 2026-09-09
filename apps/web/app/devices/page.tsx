@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { AdminAccess } from '../../components/AdminAccess';
+import { usePlatform } from '../../components/PlatformShell';
 import { mutate, usePoll, type Device } from '../../components/data';
 import { DevicesTable } from '../../components/DevicesTable';
 
@@ -21,6 +21,7 @@ interface CreatedDevice {
 }
 
 export default function Devices() {
+  const { user } = usePlatform();
   const [offset, setOffset] = useState(0);
   const devices = usePoll<Device[]>(`/devices?limit=50&offset=${offset}`);
   const sites = usePoll<Site[]>('/sites');
@@ -64,12 +65,13 @@ export default function Devices() {
           <h1>Dispositivos</h1>
           <p>Inventário, identidade única e conectividade dos equipamentos.</p>
         </div>
-        <div className="toolbar-actions">
-          <AdminAccess />
-          <button className="primary-button" onClick={() => setOpen(true)}>
-            ＋ Novo dispositivo
-          </button>
-        </div>
+        {user.role === 'master' && (
+          <div className="toolbar-actions">
+            <button className="primary-button" onClick={() => setOpen(true)}>
+              ＋ Novo dispositivo
+            </button>
+          </div>
+        )}
       </div>
       {devices.error && <div className="error-banner">{devices.error}</div>}
       <section className="card">

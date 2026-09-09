@@ -4,7 +4,7 @@ Plataforma de monitoramento industrial: MQTT → Mosquitto no Coolify → captur
 
 **Arquitetura atual:** VPS/Coolify existente para Mosquitto, ingestor, API e web; Supabase existente como banco definitivo. PostgreSQL Docker é um laboratório opcional. Não existe banco nem simulador no Compose de produção. Deployment real aguarda os dados listados no [handoff Coolify](docs/deployment/coolify.md). Consulte [PROJECT_STATUS.md](PROJECT_STATUS.md) para os resultados e limites da validação.
 
-O produto inclui painel configurável, descoberta automática de variáveis, cadastro guiado de dispositivos, modo TV e exportação CSV/JSON/PDF. Veja a [visão da plataforma industrial](docs/product/industrial-platform.md) para identidade dos equipamentos, atualização, teste de carga e sinais necessários para OEE, tonelagem e Pareto.
+O produto inclui login seguro, usuários vinculados a equipamentos, painel configurável, descoberta automática de variáveis, cadastro guiado de dispositivos, modo TV, white label e exportação CSV/JSON/PDF. Veja a [visão da plataforma industrial](docs/product/industrial-platform.md) e o [modelo de acesso](docs/architecture/user-access.md).
 
 ## Produção: Coolify + Supabase
 
@@ -100,6 +100,7 @@ Com --local, env:setup preenche DATABASE_URL local somente quando vazia; nunca s
 | `pnpm docker:infra`                 | Apenas banco, inicialização de credenciais e broker                                             |
 | `pnpm db:migrate`                   | Migrations SQL versionadas, transacionais e com lock                                            |
 | `pnpm db:seed`                      | Seed idempotente de desenvolvimento                                                             |
+| `pnpm user:bootstrap-master`        | Cria o primeiro usuário master com senha temporária fornecida pelo ambiente                     |
 | `pnpm dev`                          | API, ingestor e Next.js locais                                                                  |
 | `pnpm simulator:haiwell`            | Publicador no formato experimental                                                              |
 | `pnpm simulator:generic`            | Publicador JSON genérico                                                                        |
@@ -133,7 +134,7 @@ FROM telemetry_samples s JOIN tags t ON t.id=s.tag_id
 ORDER BY s.id DESC LIMIT 12;
 ```
 
-Se mudar usuário/banco no `.env`, ajuste o comando. Migrations e seed podem ser repetidos. Novos equipamentos, tags e mappings são cadastrados via SQL neste MVP; não existe API de escrita nem cadastro web. Use uma nova migration ou script controlado para dados adicionais.
+Se mudar usuário/banco no `.env`, ajuste o comando. Migrations e seed podem ser repetidos. O usuário master pode cadastrar equipamentos pela interface; mappings e ajustes avançados de tags continuam disponíveis por migration ou script controlado.
 
 ## Descoberta da Haiwell
 
@@ -161,9 +162,11 @@ Tópico: `iiot/poc/laboratorio/generic-001/telemetry`.
 
 O timestamp deve ser ISO 8601 com timezone; quando omitido, usa o recebimento. Não se confia em IDs de tenant enviados dentro do payload. O tópico cadastrado resolve o dispositivo; o adapter extrai valores; as tags configuradas definem tipos, escala e unidade.
 
-## API de leitura
+## Autenticação e API
 
-Todas as consultas usam o tenant fixo `DEV_TENANT_ID` no servidor. Headers e query strings não mudam o tenant. Isso é um contexto de desenvolvimento, **não autenticação de usuários**; mantenha web/API em localhost ou numa rede de laboratório controlada. Não publique esse MVP como serviço multiusuário.
+O navegador usa uma sessão aleatória em cookie HttpOnly, `SameSite=Strict`, com duração de 12 horas. A senha é armazenada somente como hash `scrypt`, e todos os usuários devem substituí-la no primeiro acesso. O papel `master` administra usuários, equipamentos, painéis e white label. O papel `user` recebe apenas os equipamentos selecionados no cadastro; a API aplica esse filtro em todas as consultas de dados. Usuários desativados perdem imediatamente as sessões abertas.
+
+Headers e query strings não podem escolher outro tenant. As exportações e a API JSON usam a mesma autorização da sessão. Tokens de serviço para integrações automáticas ainda serão implementados.
 
 | Endpoint                      | Filtros                                                            |
 | ----------------------------- | ------------------------------------------------------------------ |

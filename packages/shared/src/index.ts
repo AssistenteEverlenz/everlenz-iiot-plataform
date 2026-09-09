@@ -1,6 +1,7 @@
 import { config } from 'dotenv';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createHash, randomBytes, scrypt as nodeScrypt, timingSafeEqual } from 'node:crypto';
 import pino from 'pino';
 import { z } from 'zod';
 
@@ -71,6 +72,56 @@ export function logger(service: string) {
       'MQTT_SIMULATOR_PASSWORD',
       'req.headers.authorization',
     ],
+  });
+}
+
+const passwordParameters = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+
+export async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString('base64url');
+  const derived = await derivePassword(password, salt, 64, passwordParameters);
+  return `scrypt$${passwordParameters.N}$${passwordParameters.r}$${passwordParameters.p}$${salt}$${derived.toString('base64url')}`;
+}
+
+export async function verifyPassword(password: string, encoded: string) {
+  const [algorithm, n, r, p, salt, expected] = encoded.split('$');
+  if (algorithm !== 'scrypt' || !n || !r || !p || !salt || !expected) return false;
+  const expectedBuffer = Buffer.from(expected, 'base64url');
+  const derived = await derivePassword(password, salt, expectedBuffer.length, {
+    N: Number(n),
+    r: Number(r),
+    p: Number(p),
+    maxmem: 64 * 1024 * 1024,
+  });
+  return derived.length === expectedBuffer.length && timingSafeEqual(derived, expectedBuffer);
+}
+
+export function sessionToken() {
+  return randomBytes(32).toString('base64url');
+}
+
+export function sessionTokenHash(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+export function temporaryPassword(length = 18) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const bytes = randomBytes(length);
+  const body = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+  return `A9!${body.slice(3)}`;
+}
+
+function derivePassword(
+  password: string,
+  salt: string,
+  length: number,
+  options: { N: number; r: number; p: number; maxmem: number },
+) {
+  return new Promise<Buffer>((resolve, reject) => {
+    nodeScrypt(password, salt, length, options, (error, derived) => {
+      if (error) reject(error);
+      else resolve(derived);
+    });
   });
 }
 export type DataType = 'number' | 'boolean' | 'string';

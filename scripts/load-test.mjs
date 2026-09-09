@@ -9,6 +9,7 @@ const timeoutMs = positiveNumber(process.env.LOAD_TIMEOUT_MS, 5000);
 const latencyLimitMs = positiveNumber(process.env.LOAD_P95_LIMIT_MS, 1500);
 const errorLimit = positiveNumber(process.env.LOAD_ERROR_LIMIT_PERCENT, 2) / 100;
 const warmupRequests = positiveNumber(process.env.LOAD_WARMUP_REQUESTS, 8);
+let sessionCookie = process.env.LOAD_SESSION_COOKIE ?? '';
 const stages = (process.env.LOAD_RPS_STAGES ?? '5,10,20,40,80,160')
   .split(',')
   .map((value) => Number(value.trim()))
@@ -38,6 +39,17 @@ const report = {
   stages: [],
   saturation: null,
 };
+
+if (!sessionCookie && process.env.LOAD_EMAIL && process.env.LOAD_PASSWORD) {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: process.env.LOAD_EMAIL, password: process.env.LOAD_PASSWORD }),
+  });
+  if (!response.ok) throw new Error(`Load-test login failed with HTTP ${response.status}`);
+  sessionCookie = response.headers.get('set-cookie')?.split(';', 1)[0] ?? '';
+  if (!sessionCookie) throw new Error('Load-test login did not return a session cookie');
+}
 
 await Promise.all(
   Array.from({ length: warmupRequests }, (_, index) => request(paths[index % paths.length])),
@@ -118,6 +130,7 @@ async function request(path) {
       headers: {
         accept: 'application/json',
         'user-agent': 'everlenz-load-test/1.0',
+        ...(sessionCookie ? { cookie: sessionCookie } : {}),
       },
     });
     await response.arrayBuffer();

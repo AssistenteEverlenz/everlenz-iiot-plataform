@@ -2,11 +2,11 @@
 
 ## Painel industrial configurável
 
-A versão atual acrescenta o painel **Gestão à Vista**, catálogo automático das variáveis observadas nos payloads MQTT, widgets configuráveis, modo TV, cadastro guiado de equipamentos e exportações CSV/JSON/PDF. Cada dispositivo passou a ter UUID interno e um `device_code` legível e único por tenant. As alterações administrativas usam uma sessão HttpOnly protegida por `IIOT_ADMIN_PASSWORD`; a API de serviço continua restrita à rede interna da stack.
+A versão atual inclui o painel **Gestão à Vista**, catálogo automático das variáveis observadas nos payloads MQTT, widgets configuráveis, modo TV, cadastro guiado de equipamentos e exportações CSV/JSON/PDF. Cada dispositivo possui UUID interno e um `device_code` legível e único por tenant. A autenticação usa contas individuais, sessão HttpOnly e troca obrigatória da senha temporária. O master administra usuários e direciona os equipamentos visíveis para cada conta.
 
-A migration `003_product_platform.sql` foi aplicada ao Supabase em 9 de setembro de 2026. Ela cria o catálogo de sinais, painéis, widgets e parâmetros de produção e adiciona a identidade operacional aos dispositivos. O seed criou o painel padrão com sete widgets para a Haiwell A7.
+As migrations `003_product_platform.sql` e `004_user_access.sql` foram aplicadas ao Supabase em 9 de setembro de 2026. Elas criam o catálogo de sinais, painéis, widgets, parâmetros de produção, contas, sessões, atribuições por equipamento e white label. O seed criou o painel padrão com sete widgets para a Haiwell A7, e o bootstrap criou a primeira conta master com troca obrigatória de senha.
 
-Validação desta entrega: 51 testes unitários e 15 testes de integração aprovados; lint, TypeScript, Prettier e build de produção aprovados. O fluxo administrativo foi conferido com 401 sem sessão, login 200 e alteração autenticada 200. Em produção, o teste progressivo encontrou o último estágio saudável em 20 req/s solicitados e 15,54 req/s efetivos, sem erros e com p95 de 1,22 s. A saturação por latência ocorreu no estágio de 40 req/s, com p95 de 2,12 s, ainda sem respostas perdidas. A aplicação recuperou imediatamente e manteve os healthchecks em 200. O Docker Compose não está instalado neste computador; sua validação operacional permanece no host Coolify.
+Validação desta entrega: 51 testes unitários e 16 testes de integração aprovados; lint, TypeScript, Prettier e build de produção aprovados. O fluxo cobre login, primeiro acesso obrigatório, autorização master, isolamento por equipamento e encerramento das sessões ao desativar uma conta. Em produção, o teste progressivo anterior encontrou o último estágio saudável em 20 req/s solicitados e 15,54 req/s efetivos, sem erros e com p95 de 1,22 s. A saturação por latência ocorreu no estágio de 40 req/s, com p95 de 2,12 s, ainda sem respostas perdidas. A aplicação recuperou imediatamente e manteve os healthchecks em 200. O Docker Compose não está instalado neste computador; sua validação operacional permanece no host Coolify.
 
 Os widgets de OEE e Pareto indicam explicitamente os dados ausentes. O cálculo real depende do mapeamento dos sinais de tempo planejado, máquina rodando/parada, ciclo ideal, contagem total/boa/refugo, tonelagem e motivos/durações de parada. Consulte [plataforma industrial configurável](docs/product/industrial-platform.md).
 
@@ -18,7 +18,7 @@ O Supabase `bootqaxgxxsdfggqivlj` recebeu as migrations `001_initial.sql` e `002
 
 ## Preparação Coolify + Supabase
 
-**Arquitetura atual:** equipamentos → Mosquitto self-hosted na VPS/Coolify → ingestor → Supabase PostgreSQL via `pg`/DATABASE_URL → Fastify → Next.js. O projeto existente foi evoluído; adapters, resolução de dispositivos, RAW, amostras, simuladores e testes foram preservados. Não foi implementada autenticação, RLS, comando remoto ou política de remoção RAW.
+**Arquitetura atual:** equipamentos → Mosquitto self-hosted na VPS/Coolify → ingestor → Supabase PostgreSQL via `pg`/DATABASE_URL → Fastify com autenticação e autorização → Next.js. O projeto existente foi evoluído; adapters, resolução de dispositivos, RAW, amostras, simuladores e testes foram preservados. RLS, comando remoto e política de remoção RAW ainda não foram implementados.
 
 ### Arquivos alterados/criados
 
@@ -97,7 +97,7 @@ Publicador MQTT → Mosquitto → ingestor → RAW durável → DeviceResolver �
 
 RAW usa hexadecimal em todas as mensagens para conservar os bytes exatos. UTF-8 estrito e JSON são representações auxiliares. Erros de JSONB/Unicode/nesting não impedem a gravação inicial RAW. Uma tag inválida impede gravação parcial de amostras da mensagem, mantendo o erro para análise.
 
-SQL direto com pg evita um ORM na ingestão. TelemetryRepository permite ampliar batching. Não há lógica Haiwell na API ou no frontend. FKs compostas impedem associar dispositivos/tags de tenants diferentes; todas as consultas HTTP usam contexto de tenant do servidor, sem aceitar seleção por header/query string. A aplicação ainda não implementa autenticação de usuários.
+SQL direto com pg evita um ORM na ingestão. TelemetryRepository permite ampliar batching. Não há lógica Haiwell na API ou no frontend. FKs compostas impedem associar dispositivos/tags de tenants diferentes; todas as consultas HTTP usam o tenant da sessão e filtram os equipamentos atribuídos, sem aceitar seleção por header/query string.
 
 O backend gera bundles JavaScript com esbuild e roda em Node.js nos containers; `tsx` é usado no desenvolvimento e scripts de banco. Next.js gera build de produção. PGlite executa PostgreSQL em WASM exclusivamente nos testes.
 
@@ -155,7 +155,7 @@ Para desenvolvimento: `pnpm docker:infra`, `pnpm db:migrate`, `pnpm db:seed`, `p
 ## Riscos e próximos passos
 
 - Configuração Docker, permissões de volumes e TLS estão implementadas, porém ainda sem teste de execução neste ambiente. Não tratar imagens/healthchecks como homologados.
-- Autenticação/autorizações de usuários e RLS ainda não existem. Contexto fixo e papel operador são para laboratório; endpoints devem permanecer restritos à máquina/rede controlada.
+- A autorização de aplicação está ativa. RLS e usuários SQL distintos por serviço continuam recomendados como defesa adicional.
 - QoS 1 pode duplicar mensagens. Não existe deduplicação global/exactly-once; uma interrupção pode deixar RAW `pending`. Criar reprocessamento/recuperação antes de produção.
 - QoS entregue ao ingestor é registrado; não prova o QoS original da publicação. `online` significa comunicação recente.
 - Não há garantia de buffering em QoS 0; broker tem limites de pacote e fila. Testar carga, saturação, reconexão e indisponibilidade do banco antes de uso contínuo.

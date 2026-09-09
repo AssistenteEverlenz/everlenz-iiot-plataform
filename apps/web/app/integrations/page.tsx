@@ -46,7 +46,10 @@ export default function Integrations() {
         <section className="integration-card">
           <span className="integration-icon">API</span>
           <h2>API JSON</h2>
-          <p>Consulta paginada para integrações MES, ERP, BI e aplicações de parceiros.</p>
+          <p>
+            Consulta paginada protegida pela sessão do usuário. Tokens de serviço para integrações
+            automáticas serão cadastrados nesta área em uma próxima etapa.
+          </p>
           <pre className="api-example">
             GET /api/telemetry?deviceId={'{UUID}'}&from={'{ISO-8601}'}
           </pre>

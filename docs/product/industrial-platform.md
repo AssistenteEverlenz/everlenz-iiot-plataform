@@ -23,7 +23,7 @@ O cadastro guiado devolve o UUID, o código e uma ficha de conexão com host, po
 
 O menor intervalo disponível no painel é **1 segundo**. Nesse modo, valores atuais são consultados a cada segundo; catálogo a cada 5 segundos; estatísticas a cada 10 segundos; histórico nunca mais rápido que 5 segundos. Isso mantém a sensação de tempo real sem repetir consultas históricas pesadas a cada atualização de valor.
 
-`pnpm test:load` executa uma mistura de consultas reais em estágios crescentes. O teste para ao encontrar mais de 2% de erros ou p95 acima de 1,5 segundo. Esse ponto é tratado como saturação operacional: oferece uma margem mensurável sem provocar deliberadamente indisponibilidade na VPS compartilhada.
+`pnpm test:load` executa uma mistura de consultas reais em estágios crescentes. O teste para ao encontrar mais de 2% de erros ou p95 acima de 1,5 segundo. Esse ponto é tratado como saturação operacional: oferece uma margem mensurável sem provocar deliberadamente indisponibilidade na VPS compartilhada. Em ambiente autenticado, informe `LOAD_SESSION_COOKIE` ou `LOAD_EMAIL` e `LOAD_PASSWORD` de uma conta que já concluiu o primeiro acesso.
 
 No ensaio de 9 de setembro de 2026, o último estágio saudável entregou 15,54 req/s com p95 de 1,22 s e zero erro. A saturação por latência apareceu ao solicitar 40 req/s: 18,57 req/s efetivos e p95 de 2,12 s, ainda com todas as respostas 200. Para a infraestrutura atual, 1 segundo é adequado para até seis painéis ativos simultaneamente com margem; acima disso, use 2 segundos ou adote cache/push antes de ampliar o acesso.
 

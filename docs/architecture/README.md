@@ -35,7 +35,7 @@ Ao sair de discovery, o ingestor remove a assinatura `#` persistente. Mudanças 
 
 FKs compostas impedem relacionamentos site/device/tag/amostra de tenants diferentes. RAW resolvido possui tenant; RAW não resolvido fica em quarentena global. API usa exclusivamente contexto de tenant definido no servidor, com SQL parametrizado. Testes verificam tentativa de acesso usando UUID de outro tenant e headers forjados.
 
-`OPERATOR_RAW_ACCESS` dá visibilidade adicional aos RAWs ainda sem tenant, somente para diagnóstico local. Não expõe RAW resolvido de outro tenant. Não deve ser configurável pelo navegador. O ingestor e o banco de laboratório são infraestrutura confiável com acesso global; não há RLS/roles PostgreSQL por tenant neste MVP. Próxima etapa de produção: autenticação de usuário, autorização central, papel operador explícito, usuário SQL de menor privilégio e RLS como defesa adicional.
+`OPERATOR_RAW_ACCESS` dá visibilidade adicional aos RAWs ainda sem tenant, somente para diagnóstico do master. Não expõe RAW resolvido de outro tenant e não é configurável pelo navegador. A API centraliza autenticação e autorização por equipamento. O ingestor e o banco continuam como infraestrutura confiável com acesso global; usuário SQL de menor privilégio e RLS permanecem como defesa adicional planejada.
 
 ## Evolução
 

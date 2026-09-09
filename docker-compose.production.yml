@@ -107,7 +107,6 @@ services:
       NODE_ENV: production
       SERVICE_NAME: web
       API_INTERNAL_URL: http://api:3001
-      IIOT_ADMIN_PASSWORD: ${IIOT_ADMIN_PASSWORD:?Set IIOT_ADMIN_PASSWORD}
     expose: ['3000']
     healthcheck:
       test:

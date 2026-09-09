@@ -44,7 +44,7 @@ O Coolify conecta o proxy aos serviços com domínio; `expose` indica a porta in
 | MQTT_PUBLIC_HOST                                  | equipamentos/simulador externo   | Host DNS real do broker                                        |
 | SUPABASE_URL/SECRET_KEY e NEXT_PUBLIC_SUPABASE_*  | nenhuma aplicação nesta etapa    | Não necessários agora; reservados                              |
 
-A API/web ainda não autenticam usuários. Configurar acesso HTTP restrito no proxy/VPN/allowlist antes de liberar domínio, incluindo `/api` no domínio web. O domínio da API pode permanecer sem publicação. A configuração de produção não transforma este MVP em uma plataforma multiusuário aberta.
+A web e a API exigem sessão individual. O domínio da API pode permanecer sem publicação porque o frontend encaminha as chamadas autenticadas pela mesma origem. Crie o primeiro master com `pnpm user:bootstrap-master` após aplicar as migrations.
 
 ## Migrations: etapa controlada
 

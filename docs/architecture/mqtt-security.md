@@ -30,7 +30,7 @@ Discovery (`#`) amplia leitura do ingestor, **não autoriza publicação** de eq
 
 MQTT sem TLS não protege credenciais nem payload contra observadores da rede. O Compose publica 1883 em `127.0.0.1` por padrão. Para uma A7 na LAN, configure `MQTT_BIND_ADDRESS` com o IP da interface do laboratório, recrie o broker e libere no firewall somente a origem da A7. Não faça redirecionamento da porta 1883 no roteador para a internet.
 
-API, banco, web e healthcheck também ficam em loopback no Compose. Na rede interna Docker, serviços comunicam por nome. Não confunda isolamento de tenant com autenticação de usuário: qualquer pessoa que acessar a web deste MVP vê o contexto de desenvolvimento configurado.
+API, banco, web e healthcheck também ficam em loopback no Compose. Na rede interna Docker, serviços comunicam por nome. A web exige login e a API combina tenant da sessão com os equipamentos atribuídos ao usuário.
 
 ## TLS 8883
 

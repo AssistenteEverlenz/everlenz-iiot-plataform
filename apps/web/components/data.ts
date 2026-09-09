@@ -93,6 +93,10 @@ export function usePoll<T>(path: string, intervalMs = 5000) {
           signal,
           cache: 'no-store',
         });
+        if (response.status === 401 && typeof window !== 'undefined') {
+          window.location.replace('/login');
+          return;
+        }
         if (!response.ok) throw new Error(`Serviço indisponível (HTTP ${response.status})`);
         setData(await response.json());
         setError(null);
@@ -121,6 +125,7 @@ export async function mutate<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (response.status === 401 && typeof window !== 'undefined') window.location.replace('/login');
   if (!response.ok) {
     const result = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(result.error ?? `Falha na operação (HTTP ${response.status})`);

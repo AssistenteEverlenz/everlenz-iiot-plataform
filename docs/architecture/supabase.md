@@ -45,4 +45,4 @@ No futuro: mapear `auth.uid()` a memberships, derivar contexto do token verifica
 
 Enquanto isso, a migration 002 impede que a chave publicável acesse tabelas IIoT pela Data API mesmo sem RLS. Confira os grants efetivos no projeto real, inclusive roles herdadas, antes de publicar. Migrations futuras devem revogar grants dos novos objetos IIoT na mesma transação. Não alteramos default privileges globais nem desativamos a Data API inteira de um projeto existente. [Segurança da Data API](https://supabase.com/docs/guides/api/securing-your-api).
 
-Web/API continuam sem autenticação de usuário: proteger acesso HTTP no proxy/VPN/allowlist durante a POC. Não confundir TLS ou isolamento SQL com autorização do navegador.
+Web/API usam contas individuais e autorização por equipamento. As roles públicas do Supabase não recebem acesso às tabelas IIoT; RLS e credenciais SQL separadas continuam recomendadas como defesa adicional.

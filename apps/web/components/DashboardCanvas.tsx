@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { AdminAccess } from './AdminAccess';
+import { usePlatform } from './PlatformShell';
 import {
   mutate,
   time,
@@ -208,6 +208,7 @@ function Widget({
 }
 
 export function DashboardCanvas({ id }: { id: string }) {
+  const { user } = usePlatform();
   const dashboard = usePoll<Dashboard>(`/dashboards/${id}`, 2000);
   const refreshMs = dashboard.data?.refresh_ms ?? 2000;
   const deviceId = dashboard.data?.device_id ?? '';
@@ -313,15 +314,16 @@ export function DashboardCanvas({ id }: { id: string }) {
             <span />
             {device.data?.online ? 'Online' : 'Offline'}
           </span>
-          <AdminAccess />
           <button onClick={() => window.print()}>Exportar PDF</button>
           <button onClick={() => setTv(!tv)}>{tv ? 'Sair da TV' : 'Modo TV'}</button>
-          <button className="primary-button" onClick={() => setEditing(!editing)}>
-            {editing ? 'Concluir' : 'Personalizar'}
-          </button>
+          {user.role === 'master' && (
+            <button className="primary-button" onClick={() => setEditing(!editing)}>
+              {editing ? 'Concluir' : 'Personalizar'}
+            </button>
+          )}
         </div>
       </div>
-      {editing && (
+      {editing && user.role === 'master' && (
         <div className="editor-bar">
           <button className="add-widget-button" onClick={() => setAdding(true)}>
             ＋ Adicionar indicador
