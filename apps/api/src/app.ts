@@ -146,7 +146,13 @@ export function createApp(
         await db.query(
           `INSERT INTO sites(id,tenant_id,slug,name,reference) VALUES($1,$2,$3,$4,upper($5))
            RETURNING *`,
-          [id, current.tenantId, `${slug(body.name) || 'cliente'}-${suffix}`, body.name.trim(), body.reference.trim()],
+          [
+            id,
+            current.tenantId,
+            `${slug(body.name) || 'cliente'}-${suffix}`,
+            body.name.trim(),
+            body.reference.trim(),
+          ],
         )
       ).rows[0],
     );
@@ -175,11 +181,10 @@ export function createApp(
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
     const current = access.principal(req);
-    const result = await db.query(`${deviceSelect} WHERE d.tenant_id=$1 AND d.id=$3 AND d.archived_at IS NULL`, [
-      current.tenantId,
-      env.DEVICE_OFFLINE_SECONDS,
-      id,
-    ]);
+    const result = await db.query(
+      `${deviceSelect} WHERE d.tenant_id=$1 AND d.id=$3 AND d.archived_at IS NULL`,
+      [current.tenantId, env.DEVICE_OFFLINE_SECONDS, id],
+    );
     return result.rows[0] ?? reply.code(404).send({ error: 'Device not found' });
   });
   app.get('/api/devices/:id/tags', async (req, reply) => {
@@ -332,7 +337,12 @@ export function createApp(
       );
       return created.rows[0];
     });
-    const credentialActive = await provisionMqttRequest('upsert', mqttUsername, mqttPassword, topic);
+    const credentialActive = await provisionMqttRequest(
+      'upsert',
+      mqttUsername,
+      mqttPassword,
+      topic,
+    );
     return reply.code(201).send({
       device: row,
       dashboardId,
@@ -542,11 +552,10 @@ export function createApp(
     const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
     if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
     if (body.name)
-      await db.query('UPDATE dashboards SET name=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2', [
-        current.tenantId,
-        id,
-        body.name,
-      ]);
+      await db.query(
+        'UPDATE dashboards SET name=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2',
+        [current.tenantId, id, body.name],
+      );
     await saveDashboardView(db, current, id, {
       refresh_ms: body.refreshMs ?? view.refresh_ms,
       time_window_minutes: body.timeWindowMinutes ?? view.time_window_minutes,
@@ -714,22 +723,33 @@ export function createApp(
       'SELECT count(*)::int count FROM devices WHERE tenant_id=$1 AND archived_at IS NULL AND ($2::uuid[] IS NULL OR id=ANY($2))',
       [current.tenantId, deviceIds],
     );
-    const raw = await db.query<{ count: number; last_message_at: string | null }>(
-      `SELECT count(*)::int count,max(received_at) last_message_at FROM mqtt_messages_raw
-       WHERE ${rawScope} AND ($2::uuid[] IS NULL OR device_id=ANY($2))`,
+    const raw = await db.query<{ messages_per_minute: number }>(
+      `SELECT count(*)::int messages_per_minute FROM mqtt_messages_raw
+       WHERE ${rawScope} AND ($2::uuid[] IS NULL OR device_id=ANY($2))
+       AND received_at >= now()-interval '1 minute'`,
+      [current.tenantId, deviceIds],
+    );
+    const last = await db.query<{ last_message_at: string | null }>(
+      `SELECT max(last_message_at) last_message_at FROM device_status
+       WHERE tenant_id=$1 AND ($2::uuid[] IS NULL OR device_id=ANY($2))`,
       [current.tenantId, deviceIds],
     );
     return {
       devices: devices.rows[0].count,
-      messages: raw.rows[0].count,
-      lastMessageAt: raw.rows[0].last_message_at,
+      messagesPerMinute: raw.rows[0].messages_per_minute,
+      lastMessageAt: last.rows[0].last_message_at,
       operatorRawAccess: settings.operatorRaw,
     };
   });
   return app;
 }
 
-async function provisionMqttRequest(action: 'upsert' | 'delete', username: string, password: string, topic: string) {
+async function provisionMqttRequest(
+  action: 'upsert' | 'delete',
+  username: string,
+  password: string,
+  topic: string,
+) {
   if (!env.MQTT_PROVISION_DIR) return false;
   const requestId = randomUUID();
   const requestPath = join(env.MQTT_PROVISION_DIR, `${requestId}.request`);
@@ -737,16 +757,36 @@ async function provisionMqttRequest(action: 'upsert' | 'delete', username: strin
   const encode = (value: string) => Buffer.from(value, 'utf8').toString('base64');
   try {
     await mkdir(env.MQTT_PROVISION_DIR, { recursive: true });
-    await writeFile(temporaryPath, `${encode(username)}\n${encode(password)}\n${encode(topic)}\n${encode(action)}\n`, { mode: 0o600 });
+    await writeFile(
+      temporaryPath,
+      `${encode(username)}\n${encode(password)}\n${encode(topic)}\n${encode(action)}\n`,
+      { mode: 0o600 },
+    );
     await rename(temporaryPath, requestPath);
     const doneDirectory = join(env.MQTT_PROVISION_DIR, '..', 'done');
     for (let attempt = 0; attempt < 30; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      try { await accessFile(join(doneDirectory, `${requestId}.done`)); return true; } catch { /* still processing */ }
-      try { await accessFile(join(doneDirectory, `${requestId}.error`)); return false; } catch { /* still processing */ }
+      try {
+        await accessFile(join(doneDirectory, `${requestId}.done`));
+        return true;
+      } catch {
+        /* still processing */
+      }
+      try {
+        await accessFile(join(doneDirectory, `${requestId}.error`));
+        return false;
+      } catch {
+        /* still processing */
+      }
     }
   } catch (error) {
-    console.error(JSON.stringify({ event: 'mqtt_credential_provision_failed', username, error: error instanceof Error ? error.message : String(error) }));
+    console.error(
+      JSON.stringify({
+        event: 'mqtt_credential_provision_failed',
+        username,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   }
   return false;
 }
@@ -781,12 +821,6 @@ async function dashboardView(
     [current.tenantId, dashboardId, deviceIds],
   );
   if (!dashboard.rows.length) return null;
-  const preference = await db.query<DashboardViewSettings>(
-    `SELECT refresh_ms,time_window_minutes,widgets FROM user_dashboard_configs
-     WHERE tenant_id=$1 AND user_id=$2 AND dashboard_id=$3`,
-    [current.tenantId, current.id, dashboardId],
-  );
-  if (preference.rows[0]) return { ...dashboard.rows[0], ...preference.rows[0] };
   const widgets = await db.query<DashboardWidgetRecord>(
     `SELECT w.*,t.key,t.name tag_name,t.unit,t.data_type FROM dashboard_widgets w
      LEFT JOIN tags t ON t.id=w.tag_id AND t.tenant_id=w.tenant_id
@@ -803,18 +837,33 @@ async function saveDashboardView(
   dashboardId: string,
   view: DashboardViewSettings,
 ) {
-  await db.query(
-    `INSERT INTO user_dashboard_configs(tenant_id,user_id,dashboard_id,refresh_ms,time_window_minutes,widgets)
-     VALUES($1,$2,$3,$4,$5,$6::jsonb)
-     ON CONFLICT(user_id,dashboard_id) DO UPDATE SET refresh_ms=EXCLUDED.refresh_ms,
-      time_window_minutes=EXCLUDED.time_window_minutes,widgets=EXCLUDED.widgets,updated_at=now()`,
-    [
+  await db.transaction(async (sql) => {
+    await sql.query(
+      `UPDATE dashboards SET refresh_ms=$3,time_window_minutes=$4,updated_at=now()
+       WHERE tenant_id=$1 AND id=$2`,
+      [current.tenantId, dashboardId, view.refresh_ms, view.time_window_minutes],
+    );
+    await sql.query('DELETE FROM dashboard_widgets WHERE tenant_id=$1 AND dashboard_id=$2', [
       current.tenantId,
-      current.id,
       dashboardId,
-      view.refresh_ms,
-      view.time_window_minutes,
-      JSON.stringify(view.widgets),
-    ],
-  );
+    ]);
+    for (const [position, widget] of view.widgets.entries()) {
+      await sql.query(
+        `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,position,width,config)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+        [
+          widget.id,
+          current.tenantId,
+          dashboardId,
+          widget.device_id,
+          widget.tag_id,
+          widget.widget_type,
+          widget.title,
+          position,
+          widget.width,
+          JSON.stringify(widget.config),
+        ],
+      );
+    }
+  });
 }

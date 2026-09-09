@@ -3,9 +3,11 @@ import Link from 'next/link';
 import { usePoll, time, type Device, type Topic } from '../components/data';
 import { DevicesTable } from '../components/DevicesTable';
 export default function Home() {
-  const overview = usePoll<{ devices: number; messages: number; lastMessageAt: string | null }>(
-    '/overview',
-  );
+  const overview = usePoll<{
+    devices: number;
+    messagesPerMinute: number;
+    lastMessageAt: string | null;
+  }>('/overview');
   const health = usePoll<{ broker: boolean; api: boolean }>('/health');
   const devices = usePoll<Device[]>('/devices');
   const topics = usePoll<Topic[]>('/mqtt/topics?limit=5');
@@ -17,8 +19,8 @@ export default function Home() {
           <h1>Centro de comando</h1>
           <p>Da máquina à decisão. Acompanhe a operação industrial em um só lugar.</p>
         </div>
-        <Link className="primary-button" href="/dashboards/55555555-5555-4555-8555-555555555555">
-          Abrir Gestão à Vista →
+        <Link className="primary-button" href="/dashboards">
+          Abrir painéis →
         </Link>
       </div>
       {(overview.error || health.error) && (
@@ -40,9 +42,11 @@ export default function Home() {
           <div className="stat-note">Cadastrados neste tenant</div>
         </div>
         <div className="card">
-          <div className="stat-label">Mensagens MQTT</div>
-          <div className="stat-value">{overview.data?.messages.toLocaleString('pt-BR') ?? '—'}</div>
-          <div className="stat-note">Armazenamento RAW</div>
+          <div className="stat-label">Mensagens por minuto</div>
+          <div className="stat-value">
+            {overview.data?.messagesPerMinute.toLocaleString('pt-BR') ?? '—'}
+          </div>
+          <div className="stat-note">Ritmo recebido nos últimos 60 segundos</div>
         </div>
         <div className="card">
           <div className="stat-label">Última mensagem</div>

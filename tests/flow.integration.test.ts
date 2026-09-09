@@ -214,7 +214,10 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       ).json();
       expect(samples).toHaveLength(1);
       expect(samples[0].key).toBe('temperatura');
-      expect((await api.inject('/api/overview')).json().devices).toBe(2);
+      const overview = (await api.inject('/api/overview')).json();
+      expect(overview.devices).toBe(2);
+      expect(overview.messagesPerMinute).toBeGreaterThan(0);
+      expect(overview.messages).toBeUndefined();
     } finally {
       await api.close();
     }
@@ -270,7 +273,9 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
       expect(created.json().device.provisioning_status).toBe('awaiting_connection');
-      expect(created.json().connection.username).toBe(created.json().device.device_code.toLowerCase());
+      expect(created.json().connection.username).toBe(
+        created.json().device.device_code.toLowerCase(),
+      );
       expect(created.json().connection.password).toHaveLength(20);
       expect(created.json().connection.topic).toMatch(/^iiot\//);
       const dashboardsAfterCreate = (await api.inject('/api/dashboards')).json() as {
@@ -416,7 +421,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
           deviceId: HAIWELL,
           tagId: clientTags.json()[0].id,
           widgetType: 'value',
-          title: 'Visão pessoal',
+          title: 'Visão compartilhada',
           width: 'small',
           config: { decimals: 2 },
         },
@@ -431,8 +436,11 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
         url: '/api/dashboards/55555555-5555-4555-8555-555555555555',
         headers: { authorization: `Bearer ${masterToken}` },
       });
-      expect(masterViewAfter.json().widgets).toHaveLength(masterDashboard.json().widgets.length);
-      expect(masterViewAfter.json().refresh_ms).toBe(masterDashboard.json().refresh_ms);
+      expect(masterViewAfter.json().widgets).toHaveLength(
+        masterDashboard.json().widgets.length + 1,
+      );
+      expect(masterViewAfter.json().widgets.at(-1).title).toBe('Visão compartilhada');
+      expect(masterViewAfter.json().refresh_ms).toBe(1000);
       expect(
         (
           await api.inject({

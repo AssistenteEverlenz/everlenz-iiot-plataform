@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { NavIcon, type NavIconName } from './NavIcon';
 
 export interface PlatformUser {
   id: string;
@@ -40,11 +41,10 @@ const defaultBranding: Branding = {
 
 const PlatformContext = createContext<PlatformContextValue | null>(null);
 const navigation = [
-  { href: '/', label: 'Centro de comando', short: 'Início', icon: '◫' },
-  { href: '/dashboards', label: 'Painéis', short: 'Painéis', icon: '◈' },
-  { href: '/devices', label: 'Dispositivos', short: 'Ativos', icon: '▰' },
-  { href: '/integrations', label: 'Integrações', short: 'Dados', icon: '⇄' },
-];
+  { href: '/', label: 'Centro de comando', short: 'Início', icon: 'home' },
+  { href: '/dashboards', label: 'Painéis', short: 'Painéis', icon: 'panels' },
+  { href: '/devices', label: 'Dispositivos', short: 'Ativos', icon: 'device' },
+] satisfies { href: string; label: string; short: string; icon: NavIconName }[];
 
 export function PlatformShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -108,9 +108,19 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
     session.user.role === 'master'
       ? [
           ...navigation,
-          { href: '/users', label: 'Usuários e acessos', short: 'Usuários', icon: '♙' },
-          { href: '/settings', label: 'White label', short: 'Marca', icon: '◆' },
-          { href: '/mqtt-inspector', label: 'MQTT Inspector', short: 'MQTT', icon: '⌁' },
+          {
+            href: '/users',
+            label: 'Usuários e acessos',
+            short: 'Usuários',
+            icon: 'users' as const,
+          },
+          { href: '/settings', label: 'White label', short: 'Marca', icon: 'brand' as const },
+          {
+            href: '/mqtt-inspector',
+            label: 'MQTT Inspector',
+            short: 'MQTT',
+            icon: 'mqtt' as const,
+          },
         ]
       : navigation;
 
@@ -122,7 +132,10 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   const sidebarIsCollapsed = collapsed && !sidebarHovered;
   return (
     <PlatformContext.Provider value={{ ...session, branding, refreshSession, refreshBranding }}>
-      <div className={`platform-shell ${sidebarIsCollapsed ? 'sidebar-collapsed' : ''}`} style={style}>
+      <div
+        className={`platform-shell ${sidebarIsCollapsed ? 'sidebar-collapsed' : ''}`}
+        style={style}
+      >
         <aside
           className="platform-sidebar"
           onMouseEnter={() => setSidebarHovered(true)}
@@ -137,9 +150,6 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
           </div>
-          <div className="workspace nav-label">
-            POC INDUSTRIAL <small>Operação conectada</small>
-          </div>
           <nav className="side-navigation">
             {masterNavigation.map((item) => (
               <Link
@@ -148,7 +158,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
                 href={item.href}
                 title={sidebarIsCollapsed ? item.label : undefined}
               >
-                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-icon">
+                  <NavIcon name={item.icon} />
+                </span>
                 <span className="nav-label">{item.label}</span>
               </Link>
             ))}
@@ -180,7 +192,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
               className={active(pathname, item.href) ? 'active' : ''}
               href={item.href}
             >
-              <span>{item.icon}</span>
+              <span>
+                <NavIcon name={item.icon} />
+              </span>
               {item.short}
             </Link>
           ))}
@@ -198,9 +212,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
                   <small>{session.user.email}</small>
                 </div>
               </div>
-              {masterNavigation.slice(4).map((item) => (
+              {masterNavigation.slice(navigation.length).map((item) => (
                 <Link key={item.href} href={item.href} onClick={() => setMobileMenu(false)}>
-                  {item.icon} {item.label}
+                  <NavIcon name={item.icon} /> {item.label}
                 </Link>
               ))}
               <button className="danger-text" onClick={() => void logout()}>
@@ -279,7 +293,9 @@ function FirstAccessModal({ onComplete }: { onComplete: () => Promise<void> }) {
 
 export function BrandSpinner({ branding }: { branding: Branding }) {
   return branding.logo_url ? (
-    <span className="brand-spinner"><img src={branding.logo_url} alt="" /></span>
+    <span className="brand-spinner">
+      <img src={branding.logo_url} alt="" />
+    </span>
   ) : (
     <span className="brand-spinner brand-spinner-fallback">e</span>
   );

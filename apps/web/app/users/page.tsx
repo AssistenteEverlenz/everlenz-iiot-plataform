@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { mutate, time, usePoll, type Device } from '../../components/data';
+import { ActionModal } from '../../components/ActionModal';
 
 interface ManagedUser {
   id: string;
@@ -32,6 +33,10 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [credential, setCredential] = useState<{ email: string; password: string } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'toggle' | 'remove' | 'reset';
+    user: ManagedUser;
+  } | null>(null);
 
   function createUser() {
     setEditing(null);
@@ -79,13 +84,11 @@ export default function UsersPage() {
   }
 
   async function remove(user: ManagedUser) {
-    if (!window.confirm(`Excluir definitivamente o acesso de ${user.full_name}?`)) return;
     await mutate(`/users/${user.id}`, 'DELETE');
     await users.refresh();
   }
 
   async function reset(user: ManagedUser) {
-    if (!window.confirm(`Gerar uma nova senha provisória para ${user.full_name}?`)) return;
     const result = await mutate<{ temporaryPassword: string }>(
       `/users/${user.id}/reset-password`,
       'POST',
@@ -163,11 +166,16 @@ export default function UsersPage() {
                     {user.role === 'user' && (
                       <>
                         <button onClick={() => editUser(user)}>Editar</button>
-                        <button onClick={() => void toggle(user)}>
+                        <button onClick={() => setPendingAction({ type: 'toggle', user })}>
                           {user.status === 'active' ? 'Desativar' : 'Ativar'}
                         </button>
-                        <button onClick={() => void reset(user)}>Nova senha</button>
-                        <button className="danger-text" onClick={() => void remove(user)}>
+                        <button onClick={() => setPendingAction({ type: 'reset', user })}>
+                          Nova senha
+                        </button>
+                        <button
+                          className="danger-text"
+                          onClick={() => setPendingAction({ type: 'remove', user })}
+                        >
                           Excluir
                         </button>
                       </>
@@ -296,6 +304,47 @@ export default function UsersPage() {
             </button>
           </section>
         </div>
+      )}
+      {pendingAction && (
+        <ActionModal
+          title={
+            pendingAction.type === 'remove'
+              ? 'Excluir usuário'
+              : pendingAction.type === 'reset'
+                ? 'Gerar nova senha'
+                : pendingAction.user.status === 'active'
+                  ? 'Desativar usuário'
+                  : 'Ativar usuário'
+          }
+          description={
+            pendingAction.type === 'remove'
+              ? `O acesso de ${pendingAction.user.full_name} será excluído definitivamente.`
+              : pendingAction.type === 'reset'
+                ? `A senha atual de ${pendingAction.user.full_name} deixará de funcionar e uma nova senha provisória será criada.`
+                : `${pendingAction.user.full_name} será ${pendingAction.user.status === 'active' ? 'impedido de acessar a plataforma' : 'liberado para acessar os equipamentos permitidos'}.`
+          }
+          confirmLabel={
+            pendingAction.type === 'remove'
+              ? 'Excluir usuário'
+              : pendingAction.type === 'reset'
+                ? 'Gerar senha'
+                : pendingAction.user.status === 'active'
+                  ? 'Desativar'
+                  : 'Ativar'
+          }
+          danger={
+            pendingAction.type === 'remove' ||
+            (pendingAction.type === 'toggle' && pendingAction.user.status === 'active')
+          }
+          onClose={() => setPendingAction(null)}
+          onConfirm={() =>
+            pendingAction.type === 'remove'
+              ? remove(pendingAction.user)
+              : pendingAction.type === 'reset'
+                ? reset(pendingAction.user)
+                : toggle(pendingAction.user)
+          }
+        />
       )}
     </>
   );

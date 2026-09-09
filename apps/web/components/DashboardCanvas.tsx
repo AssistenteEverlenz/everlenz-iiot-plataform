@@ -4,12 +4,14 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import { BrandSpinner, usePlatform } from './PlatformShell';
+import { ActionModal } from './ActionModal';
 import {
   mutate,
   time,
@@ -34,11 +36,22 @@ interface Statistic {
 }
 
 function number(value: number | null | undefined, decimals = 1) {
-  return value == null ? '—' : value.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return value == null
+    ? '—'
+    : value.toLocaleString('pt-BR', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      });
 }
 
 function SixDots() {
-  return <span className="six-dots">{Array.from({ length: 6 }, (_, index) => <i key={index} />)}</span>;
+  return (
+    <span className="six-dots">
+      {Array.from({ length: 6 }, (_, index) => (
+        <i key={index} />
+      ))}
+    </span>
+  );
 }
 
 function Widget({
@@ -73,28 +86,61 @@ function Widget({
   const max = widget.config.max ?? 100;
   const progress =
     numeric == null ? 0 : Math.max(0, Math.min(100, ((numeric - min) / (max - min || 1)) * 100));
-  const alarm = widget.config.alarmEnabled && numeric != null &&
-    ((widget.config.warningLow != null && numeric < widget.config.warningLow) ||
-      (widget.config.warningHigh != null && numeric > widget.config.warningHigh));
+  const low = widget.config.warningLow ?? min;
+  const high = widget.config.warningHigh ?? max;
+  const alarmLevel =
+    !widget.config.alarmEnabled || numeric == null
+      ? 'off'
+      : numeric >= high
+        ? 'critical'
+        : numeric >= low
+          ? 'warning'
+          : 'normal';
+  const activeColor =
+    alarmLevel === 'critical'
+      ? '#dc3f45'
+      : alarmLevel === 'warning'
+        ? '#e3a51f'
+        : alarmLevel === 'normal'
+          ? '#19a66f'
+          : color;
+  const lowProgress = Math.max(0, Math.min(100, ((low - min) / (max - min || 1)) * 100));
+  const highProgress = Math.max(
+    lowProgress,
+    Math.min(100, ((high - min) / (max - min || 1)) * 100),
+  );
   return (
-    <article draggable onDragStart={dragStart} onDragOver={(event) => event.preventDefault()} onDrop={drop}
-      className={`dashboard-widget widget-${widget.width} ${alarm ? 'widget-alarm' : ''}`}
-      style={{ '--accent': alarm ? '#d75656' : color } as React.CSSProperties}
+    <article
+      draggable
+      onDragStart={dragStart}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={drop}
+      className={`dashboard-widget widget-${widget.width} alarm-${alarmLevel}`}
+      style={{ '--accent': activeColor } as React.CSSProperties}
     >
       <div className="widget-head">
-        <button className="drag-handle" title="Arrastar para reorganizar"><SixDots /></button>
+        <button className="drag-handle" title="Arrastar para reorganizar">
+          <SixDots />
+        </button>
         <div>
           <span className="widget-kicker">{widget.widget_type.toUpperCase()}</span>
           <h2>{widget.title}</h2>
         </div>
         <div className="widget-actions">
-          <button className="icon-button" title="Editar indicador" onClick={edit}>✎</button>
+          <button className="icon-button" title="Editar indicador" onClick={edit}>
+            ✎
+          </button>
           <button className="icon-button danger-button" title="Remover" onClick={remove}>
             ×
           </button>
         </div>
       </div>
-      {alarm && <div className="widget-alarm-label">Limite de alarme atingido</div>}
+      {alarmLevel === 'warning' && (
+        <div className="widget-alarm-label warning">Faixa de atenção atingida</div>
+      )}
+      {alarmLevel === 'critical' && (
+        <div className="widget-alarm-label critical">Limite superior atingido</div>
+      )}
       {widget.widget_type === 'line' &&
         (points.length ? (
           <div className="widget-chart">
@@ -134,10 +180,38 @@ function Widget({
                     widget.title,
                   ]}
                 />
+                {widget.config.alarmEnabled && (
+                  <>
+                    <ReferenceLine
+                      y={low}
+                      stroke="#d99b16"
+                      strokeWidth={1.5}
+                      strokeDasharray="6 4"
+                      label={{
+                        value: `Atenção ${number(low, widget.config.decimals ?? 1)}`,
+                        position: 'insideTopLeft',
+                        fill: '#a36e00',
+                        fontSize: 10,
+                      }}
+                    />
+                    <ReferenceLine
+                      y={high}
+                      stroke="#d83f45"
+                      strokeWidth={1.5}
+                      strokeDasharray="6 4"
+                      label={{
+                        value: `Crítico ${number(high, widget.config.decimals ?? 1)}`,
+                        position: 'insideTopLeft',
+                        fill: '#b72d34',
+                        fontSize: 10,
+                      }}
+                    />
+                  </>
+                )}
                 <Area
                   type="monotone"
                   dataKey="value"
-                  stroke={color}
+                  stroke={activeColor}
                   strokeWidth={2.5}
                   fill={`url(#fill-${widget.id})`}
                   isAnimationActive={false}
@@ -151,15 +225,53 @@ function Widget({
       {widget.widget_type === 'gauge' && (
         <div className={`gauge-v2 gauge-${widget.config.gaugeStyle ?? 'top'}`}>
           <div className="gauge-dial">
-            <svg viewBox="0 0 220 125"><path className="gauge-track" pathLength="100" d="M 20 108 A 90 90 0 0 1 200 108"/><path className="gauge-progress" pathLength="100" d="M 20 108 A 90 90 0 0 1 200 108" style={{ stroke: color, strokeDasharray: `${progress} 100` }}/></svg>
+            <svg viewBox="0 0 220 132">
+              <path className="gauge-track" pathLength="100" d="M 20 108 A 90 90 0 0 1 200 108" />
+              {widget.config.alarmEnabled && (
+                <>
+                  <path
+                    className="gauge-zone gauge-zone-normal"
+                    pathLength="100"
+                    d="M 20 108 A 90 90 0 0 1 200 108"
+                    style={{ strokeDasharray: `${lowProgress} ${100 - lowProgress}` }}
+                  />
+                  <path
+                    className="gauge-zone gauge-zone-warning"
+                    pathLength="100"
+                    d="M 20 108 A 90 90 0 0 1 200 108"
+                    style={{
+                      strokeDasharray: `${highProgress - lowProgress} ${100 - (highProgress - lowProgress)}`,
+                      strokeDashoffset: -lowProgress,
+                    }}
+                  />
+                  <path
+                    className="gauge-zone gauge-zone-critical"
+                    pathLength="100"
+                    d="M 20 108 A 90 90 0 0 1 200 108"
+                    style={{
+                      strokeDasharray: `${100 - highProgress} ${highProgress}`,
+                      strokeDashoffset: -highProgress,
+                    }}
+                  />
+                </>
+              )}
+              <path
+                className="gauge-progress"
+                pathLength="100"
+                d="M 20 108 A 90 90 0 0 1 200 108"
+                style={{ stroke: activeColor, strokeDasharray: `${progress} 100` }}
+              />
+            </svg>
             <div className="gauge-reading">
               <strong>{number(numeric, widget.config.decimals ?? 1)}</strong>
               <span>{widget.unit}</span>
             </div>
-          </div>
-          <div className="gauge-scale">
-            <span>{number(min, widget.config.decimals ?? 1)}</span>
-            <span>{number(max, widget.config.decimals ?? 1)}</span>
+            <span className="gauge-limit gauge-limit-min">
+              {number(min, widget.config.decimals ?? 1)}
+            </span>
+            <span className="gauge-limit gauge-limit-max">
+              {number(max, widget.config.decimals ?? 1)}
+            </span>
           </div>
         </div>
       )}
@@ -175,7 +287,13 @@ function Widget({
       {widget.widget_type === 'value' && (
         <>
           <div className="hero-value">
-            {latest?.value_number != null ? number(latest.value_number, widget.config.decimals ?? 1) : latest?.value_boolean != null ? (latest.value_boolean ? 'Ligado' : 'Desligado') : latest?.value_text ?? '—'}
+            {latest?.value_number != null
+              ? number(latest.value_number, widget.config.decimals ?? 1)
+              : latest?.value_boolean != null
+                ? latest.value_boolean
+                  ? 'Ligado'
+                  : 'Desligado'
+                : (latest?.value_text ?? '—')}
             <span>{widget.unit}</span>
           </div>
           <div className="spark-note">Atualizado {time(latest?.timestamp)}</div>
@@ -222,14 +340,8 @@ export function DashboardCanvas({ id }: { id: string }) {
   const refreshMs = dashboard.data?.refresh_ms ?? 2000;
   const deviceId = dashboard.data?.device_id ?? '';
   const device = usePoll<Device>(deviceId ? `/devices/${deviceId}` : null, refreshMs);
-  const latest = usePoll<Sample[]>(
-    deviceId ? `/devices/${deviceId}/latest` : null,
-    refreshMs,
-  );
-  const signals = usePoll<Signal[]>(
-    deviceId ? `/devices/${deviceId}/signals` : null,
-    5000,
-  );
+  const latest = usePoll<Sample[]>(deviceId ? `/devices/${deviceId}/latest` : null, refreshMs);
+  const signals = usePoll<Signal[]>(deviceId ? `/devices/${deviceId}/signals` : null, 5000);
   const statistics = usePoll<Statistic[]>(
     deviceId ? `/devices/${deviceId}/statistics?hours=24` : null,
     10000,
@@ -239,10 +351,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     Math.floor(Date.now() / 60000) * 60000 - windowMinutes * 60000,
   ).toISOString();
   const history = usePoll<Sample[]>(
-    deviceId
-      ? `/telemetry?deviceId=${deviceId}&from=${encodeURIComponent(from)}&limit=2000`
-      : null,
-    Math.max(refreshMs, 5000),
+    deviceId ? `/telemetry?deviceId=${deviceId}&from=${encodeURIComponent(from)}&limit=2000` : null,
+    refreshMs,
   );
   const [adding, setAdding] = useState(false);
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
@@ -264,12 +374,23 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const [savingModal, setSavingModal] = useState(false);
+  const [savingRefresh, setSavingRefresh] = useState(false);
+  const [removingWidget, setRemovingWidget] = useState<DashboardWidget | null>(null);
   useEffect(() => {
-    if (dashboard.data?.widgets) setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
+    if (dashboard.data?.widgets)
+      setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
   }, [dashboard.data?.widgets]);
-  const allLoaded = Boolean(dashboard.data && device.data && latest.data && signals.data && statistics.data && history.data);
-  useEffect(() => { if (allLoaded) setLoadedOnce(true); }, [allLoaded]);
-  useEffect(() => { const timer = window.setTimeout(() => setLoadingTimedOut(true), 8000); return () => window.clearTimeout(timer); }, []);
+  const allLoaded = Boolean(
+    dashboard.data && device.data && latest.data && signals.data && statistics.data && history.data,
+  );
+  useEffect(() => {
+    if (allLoaded) setLoadedOnce(true);
+  }, [allLoaded]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLoadingTimedOut(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, []);
   const selectedSignal = signals.data?.find(
     (signal) => signal.id === signalId || signal.tag_id === signalId,
   );
@@ -281,6 +402,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     event.preventDefault();
     if (!dashboard.data || !deviceId) return;
     setError('');
+    setSavingModal(true);
     try {
       let tagId = selectedSignal?.tag_id ?? null;
       if (selectedSignal && !tagId) {
@@ -312,46 +434,110 @@ export function DashboardCanvas({ id }: { id: string }) {
       setError(
         reason instanceof Error ? reason.message : 'Não foi possível adicionar o indicador.',
       );
+    } finally {
+      setSavingModal(false);
     }
   }
   async function updateRefresh(refresh: number) {
+    setSavingRefresh(true);
     try {
       await mutate(`/dashboards/${id}`, 'PATCH', { refreshMs: refresh });
       await dashboard.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
+    } finally {
+      setSavingRefresh(false);
     }
   }
   function startEdit(widget: DashboardWidget) {
     setEditingWidget(widget);
-    setTitle(widget.title); setWidth(widget.width); setColor(widget.config.color ?? '#12b8a6');
-    setMinimum(widget.config.min ?? 0); setMaximum(widget.config.max ?? 100);
-    setDecimals(widget.config.decimals ?? 1); setGaugeStyle(widget.config.gaugeStyle ?? 'top');
-    setAlarmEnabled(widget.config.alarmEnabled ?? false); setWarningLow(widget.config.warningLow ?? 0); setWarningHigh(widget.config.warningHigh ?? 100);
+    setTitle(widget.title);
+    setWidth(widget.width);
+    setColor(widget.config.color ?? '#12b8a6');
+    setMinimum(widget.config.min ?? 0);
+    setMaximum(widget.config.max ?? 100);
+    setDecimals(widget.config.decimals ?? 1);
+    setGaugeStyle(widget.config.gaugeStyle ?? 'top');
+    setAlarmEnabled(widget.config.alarmEnabled ?? false);
+    setWarningLow(widget.config.warningLow ?? 0);
+    setWarningHigh(widget.config.warningHigh ?? 100);
   }
   async function saveWidget(event: React.FormEvent) {
-    event.preventDefault(); if (!editingWidget) return;
+    event.preventDefault();
+    if (!editingWidget) return;
+    if (alarmEnabled && warningLow >= warningHigh)
+      return setError('O limite inferior precisa ser menor que o limite superior.');
+    setSavingModal(true);
+    setError('');
     try {
-      await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', { title, width, config: { color, min: minimum, max: maximum, decimals, gaugeStyle, alarmEnabled, warningLow, warningHigh } });
-      setEditingWidget(null); await dashboard.refresh();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar indicador.'); }
+      await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', {
+        title,
+        width,
+        config: {
+          color,
+          min: minimum,
+          max: maximum,
+          decimals,
+          gaugeStyle,
+          alarmEnabled,
+          warningLow,
+          warningHigh,
+        },
+      });
+      setEditingWidget(null);
+      await dashboard.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar indicador.');
+    } finally {
+      setSavingModal(false);
+    }
   }
   async function removeWidget(widget: DashboardWidget) {
-    if (!window.confirm(`Remover “${widget.title}” deste painel?`)) return;
-    try { await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE'); setEditingWidget(null); await dashboard.refresh(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao remover indicador.'); }
+    await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE');
+    setEditingWidget(null);
+    await dashboard.refresh();
   }
   async function dropWidget(targetId: string) {
     if (!draggedId || draggedId === targetId) return;
-    const next = [...widgets]; const fromIndex = next.findIndex((widget) => widget.id === draggedId); const toIndex = next.findIndex((widget) => widget.id === targetId);
-    const [moved] = next.splice(fromIndex, 1); next.splice(toIndex, 0, moved); setWidgets(next); setDraggedId(null);
-    try { await mutate(`/dashboards/${id}/layout`, 'PATCH', { widgetIds: next.map((widget) => widget.id) }); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar a ordem.'); await dashboard.refresh(); }
+    const next = [...widgets];
+    const fromIndex = next.findIndex((widget) => widget.id === draggedId);
+    const toIndex = next.findIndex((widget) => widget.id === targetId);
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setWidgets(next);
+    setDraggedId(null);
+    try {
+      await mutate(`/dashboards/${id}/layout`, 'PATCH', {
+        widgetIds: next.map((widget) => widget.id),
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar a ordem.');
+      await dashboard.refresh();
+    }
   }
   if (!loadedOnce) {
-    const loadError = dashboard.error || device.error || latest.error || signals.error || statistics.error || history.error;
-    if (loadingTimedOut && loadError) return <div className="dashboard-load-failed"><BrandSpinner branding={branding}/><h2>Não foi possível carregar o painel</h2><p>{loadError}</p><button onClick={() => window.location.reload()}>Tentar novamente</button></div>;
-    return <div className="dashboard-loading"><BrandSpinner branding={branding}/><strong>Carregando dados do equipamento…</strong></div>;
+    const loadError =
+      dashboard.error ||
+      device.error ||
+      latest.error ||
+      signals.error ||
+      statistics.error ||
+      history.error;
+    if (loadingTimedOut && loadError)
+      return (
+        <div className="dashboard-load-failed">
+          <BrandSpinner branding={branding} />
+          <h2>Não foi possível carregar o painel</h2>
+          <p>{loadError}</p>
+          <button onClick={() => window.location.reload()}>Tentar novamente</button>
+        </div>
+      );
+    return (
+      <div className="dashboard-loading">
+        <BrandSpinner branding={branding} />
+        <strong>Carregando dados do equipamento…</strong>
+      </div>
+    );
   }
   return (
     <div className={tv ? 'tv-shell' : ''}>
@@ -369,24 +555,35 @@ export function DashboardCanvas({ id }: { id: string }) {
             {device.data?.online ? 'Online' : 'Offline'}
           </span>
           <button onClick={() => window.print()}>Exportar PDF</button>
+          <a
+            className="secondary-button"
+            href={`/api/export/telemetry.csv?deviceId=${deviceId}&limit=10000`}
+          >
+            Exportar CSV
+          </a>
           <button onClick={() => setTv(!tv)}>{tv ? 'Sair da TV' : 'Modo TV'}</button>
-          <button className="primary-button" onClick={() => setAdding(true)}>+ Adicionar indicador</button>
+          <button className="primary-button" onClick={() => setAdding(true)}>
+            + Adicionar indicador
+          </button>
         </div>
       </div>
       <div className="editor-bar">
-          <span>Arraste os seis pontos para organizar. A configuração fica salva no seu perfil.</span>
-          <label>
-            Atualização
-            <select
-              value={refreshMs}
-              onChange={(event) => void updateRefresh(Number(event.target.value))}
-            >
-              <option value={1000}>1 segundo</option>
-              <option value={2000}>2 segundos</option>
-              <option value={5000}>5 segundos</option>
-              <option value={10000}>10 segundos</option>
-            </select>
-          </label>
+        <span>Arraste os seis pontos para organizar. A configuração fica salva no seu perfil.</span>
+        <label>
+          Atualização {savingRefresh && <span className="button-spinner dark" />}
+          <select
+            value={refreshMs}
+            onChange={(event) => void updateRefresh(Number(event.target.value))}
+          >
+            <option value={1000}>1 segundo</option>
+            <option value={2000}>2 segundos</option>
+            <option value={5000}>5 segundos</option>
+            <option value={10000}>10 segundos</option>
+          </select>
+        </label>
+        <small>
+          A IHM também precisa publicar neste intervalo para chegar um valor novo a cada ciclo.
+        </small>
       </div>
       {(error || dashboard.error || latest.error) && (
         <div className="error-banner">{error || dashboard.error || latest.error}</div>
@@ -412,7 +609,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             history={history.data ?? []}
             statistics={statistics.data?.find((item) => item.tag_id === widget.tag_id)}
             edit={() => startEdit(widget)}
-            remove={() => void removeWidget(widget)}
+            remove={() => setRemovingWidget(widget)}
             dragStart={() => setDraggedId(widget.id)}
             drop={() => void dropWidget(widget.id)}
           />
@@ -429,7 +626,7 @@ export function DashboardCanvas({ id }: { id: string }) {
         <span>Dados recebidos via MQTT · atualização automática</span>
       </footer>
       {adding && (
-        <div className="modal-backdrop" onMouseDown={() => setAdding(false)}>
+        <div className="modal-backdrop" onMouseDown={() => !savingModal && setAdding(false)}>
           <form
             className="modal-card"
             onSubmit={addWidget}
@@ -440,7 +637,12 @@ export function DashboardCanvas({ id }: { id: string }) {
                 <div className="eyebrow">BIBLIOTECA DE INDICADORES</div>
                 <h2>Adicionar ao painel</h2>
               </div>
-              <button type="button" className="icon-button" onClick={() => setAdding(false)}>
+              <button
+                type="button"
+                disabled={savingModal}
+                className="icon-button"
+                onClick={() => setAdding(false)}
+              >
                 ×
               </button>
             </div>
@@ -468,9 +670,32 @@ export function DashboardCanvas({ id }: { id: string }) {
                   ))}
                 </select>
               </label>
-              <div className="field full-field">Visualização<div className="visualization-picker">
-                {([['value','42','Valor'],['line','∿','Tendência'],['gauge','◒','Medidor'],['status','●','Estado'],['production','▥','Produção'],['oee','%','OEE'],['pareto','▥','Pareto']] as const).map(([type,icon,label]) => <button type="button" key={type} className={widgetType === type ? 'selected' : ''} onClick={() => setWidgetType(type)}><span>{icon}</span><b>{label}</b></button>)}
-              </div></div>
+              <div className="field full-field">
+                Visualização
+                <div className="visualization-picker">
+                  {(
+                    [
+                      ['value', '42', 'Valor'],
+                      ['line', '∿', 'Tendência'],
+                      ['gauge', '◒', 'Medidor'],
+                      ['status', '●', 'Estado'],
+                      ['production', '▥', 'Produção'],
+                      ['oee', '%', 'OEE'],
+                      ['pareto', '▥', 'Pareto'],
+                    ] as const
+                  ).map(([type, icon, label]) => (
+                    <button
+                      type="button"
+                      key={type}
+                      className={widgetType === type ? 'selected' : ''}
+                      onClick={() => setWidgetType(type)}
+                    >
+                      <span>{icon}</span>
+                      <b>{label}</b>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="field">
                 Título
                 <input
@@ -482,37 +707,179 @@ export function DashboardCanvas({ id }: { id: string }) {
             </div>
             {error && <div className="form-error">{error}</div>}
             <div className="modal-actions">
-              <button type="button" onClick={() => setAdding(false)}>
+              <button type="button" disabled={savingModal} onClick={() => setAdding(false)}>
                 Cancelar
               </button>
-              <button className="primary-button" type="submit">
-                Adicionar ao painel
+              <button className="primary-button" type="submit" disabled={savingModal}>
+                {savingModal && <span className="button-spinner" />}
+                {savingModal ? 'Adicionando…' : 'Adicionar ao painel'}
               </button>
             </div>
           </form>
         </div>
       )}
       {editingWidget && (
-        <div className="modal-backdrop" onMouseDown={() => setEditingWidget(null)}>
-          <form className="modal-card widget-settings-modal" onSubmit={saveWidget} onMouseDown={(event) => event.stopPropagation()}>
-            <div className="modal-title"><div><div className="eyebrow">CONFIGURAÇÃO DO ITEM</div><h2>{editingWidget.title}</h2></div><button type="button" className="icon-button" onClick={() => setEditingWidget(null)}>×</button></div>
+        <div className="modal-backdrop" onMouseDown={() => !savingModal && setEditingWidget(null)}>
+          <form
+            className="modal-card widget-settings-modal"
+            onSubmit={saveWidget}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="modal-title">
+              <div>
+                <div className="eyebrow">CONFIGURAÇÃO DO ITEM</div>
+                <h2>{editingWidget.title}</h2>
+              </div>
+              <button
+                type="button"
+                disabled={savingModal}
+                className="icon-button"
+                onClick={() => setEditingWidget(null)}
+              >
+                ×
+              </button>
+            </div>
             <div className="form-grid">
-              <label className="field full-field">Título<input required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-              <label className="field">Largura<select value={width} onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}><option value="small">Pequena</option><option value="medium">Média</option><option value="large">Grande</option><option value="full">Linha inteira</option></select></label>
-              <label className="field">Casas decimais<input type="number" min="0" max="6" value={decimals} onChange={(event) => setDecimals(Number(event.target.value))} /></label>
-              <label className="field">Cor<input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
-              {editingWidget.widget_type === 'gauge' && <>
-                <label className="field">Mínimo<input type="number" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} /></label>
-                <label className="field">Máximo<input type="number" value={maximum} onChange={(event) => setMaximum(Number(event.target.value))} /></label>
-                <div className="field full-field">Posição do medidor<div className="gauge-style-picker">{(['top','bottom','left','right'] as const).map((style) => <button type="button" key={style} className={gaugeStyle === style ? 'selected' : ''} onClick={() => setGaugeStyle(style)}><span className={`mini-gauge mini-${style}`} />{{top:'Superior',bottom:'Inferior',left:'Esquerda',right:'Direita'}[style]}</button>)}</div></div>
-              </>}
-              <label className="check-field full-field"><input type="checkbox" checked={alarmEnabled} onChange={(event) => setAlarmEnabled(event.target.checked)} />Ativar alarme visual por limite</label>
-              {alarmEnabled && <><label className="field">Limite inferior<input type="number" value={warningLow} onChange={(event) => setWarningLow(Number(event.target.value))} /></label><label className="field">Limite superior<input type="number" value={warningHigh} onChange={(event) => setWarningHigh(Number(event.target.value))} /></label></>}
+              <label className="field full-field">
+                Título
+                <input required value={title} onChange={(event) => setTitle(event.target.value)} />
+              </label>
+              <label className="field">
+                Largura
+                <select
+                  value={width}
+                  onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}
+                >
+                  <option value="small">Pequena</option>
+                  <option value="medium">Média</option>
+                  <option value="large">Grande</option>
+                  <option value="full">Linha inteira</option>
+                </select>
+              </label>
+              <label className="field">
+                Casas decimais
+                <input
+                  type="number"
+                  min="0"
+                  max="6"
+                  value={decimals}
+                  onChange={(event) => setDecimals(Number(event.target.value))}
+                />
+              </label>
+              <label className="field">
+                Cor
+                <input
+                  type="color"
+                  value={color}
+                  onChange={(event) => setColor(event.target.value)}
+                />
+              </label>
+              {editingWidget.widget_type === 'gauge' && (
+                <>
+                  <label className="field">
+                    Mínimo
+                    <input
+                      type="number"
+                      value={minimum}
+                      onChange={(event) => setMinimum(Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="field">
+                    Máximo
+                    <input
+                      type="number"
+                      value={maximum}
+                      onChange={(event) => setMaximum(Number(event.target.value))}
+                    />
+                  </label>
+                  <div className="field full-field">
+                    Posição do medidor
+                    <div className="gauge-style-picker">
+                      {(['top', 'bottom', 'left', 'right'] as const).map((style) => (
+                        <button
+                          type="button"
+                          key={style}
+                          className={gaugeStyle === style ? 'selected' : ''}
+                          onClick={() => setGaugeStyle(style)}
+                        >
+                          <span className={`mini-gauge mini-${style}`} />
+                          {
+                            {
+                              top: 'Superior',
+                              bottom: 'Inferior',
+                              left: 'Esquerda',
+                              right: 'Direita',
+                            }[style]
+                          }
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+              <label className="check-field full-field">
+                <input
+                  type="checkbox"
+                  checked={alarmEnabled}
+                  onChange={(event) => setAlarmEnabled(event.target.checked)}
+                />
+                Ativar alarme visual por limite
+              </label>
+              {alarmEnabled && (
+                <>
+                  <label className="field">
+                    Limite inferior
+                    <input
+                      type="number"
+                      value={warningLow}
+                      onChange={(event) => setWarningLow(Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="field">
+                    Limite superior
+                    <input
+                      type="number"
+                      value={warningHigh}
+                      onChange={(event) => setWarningHigh(Number(event.target.value))}
+                    />
+                  </label>
+                  <small className="full-field alarm-range-help">
+                    <b>Verde</b> abaixo do limite inferior · <b>Amarelo</b> entre os limites ·{' '}
+                    <b>Vermelho</b> a partir do limite superior.
+                  </small>
+                </>
+              )}
             </div>
             {error && <div className="form-error">{error}</div>}
-            <div className="modal-actions"><button type="button" className="danger-text" onClick={() => void removeWidget(editingWidget)}>Excluir item</button><button type="button" onClick={() => setEditingWidget(null)}>Cancelar</button><button className="primary-button">Salvar configuração</button></div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                disabled={savingModal}
+                className="danger-text"
+                onClick={() => setRemovingWidget(editingWidget)}
+              >
+                Excluir item
+              </button>
+              <button type="button" disabled={savingModal} onClick={() => setEditingWidget(null)}>
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={savingModal}>
+                {savingModal && <span className="button-spinner" />}
+                {savingModal ? 'Salvando…' : 'Salvar configuração'}
+              </button>
+            </div>
           </form>
         </div>
+      )}
+      {removingWidget && (
+        <ActionModal
+          title="Excluir indicador"
+          description={`O item “${removingWidget.title}” será removido deste painel compartilhado para todos os usuários.`}
+          confirmLabel="Excluir indicador"
+          danger
+          onClose={() => setRemovingWidget(null)}
+          onConfirm={() => removeWidget(removingWidget)}
+        />
       )}
       {tv && (
         <button className="tv-exit" onClick={() => setTv(false)}>
