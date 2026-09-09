@@ -38,10 +38,22 @@ export default function Detail({ params }: { params: Promise<{ id: string }> }) 
           <p>
             {device.data?.manufacturer} · {device.data?.model} · {device.data?.adapter_type}
           </p>
+          {device.data?.device_code && <span className="code-chip">{device.data.device_code}</span>}
         </div>
-        <span className={`badge ${device.data?.online ? '' : 'offline'}`}>
-          {device.data?.online ? 'Online' : 'Offline'}
-        </span>
+        <div className="toolbar-actions">
+          <a
+            className="secondary-button"
+            href={`/api/export/telemetry.csv?deviceId=${id}&limit=10000`}
+          >
+            Exportar CSV
+          </a>
+          <Link className="primary-button" href="/dashboards/55555555-5555-4555-8555-555555555555">
+            Abrir painel
+          </Link>
+          <span className={`badge ${device.data?.online ? '' : 'offline'}`}>
+            {device.data?.online ? 'Online' : 'Offline'}
+          </span>
+        </div>
       </div>
       {(device.error || latest.error || history.error) && (
         <div className="error-banner">{device.error || latest.error || history.error}</div>

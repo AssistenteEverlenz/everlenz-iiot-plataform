@@ -24,6 +24,7 @@ const result = spawnSync(
       MQTT_PASSWORD: 'validation-only',
       MQTT_SIMULATOR_PASSWORD: 'validation-only',
       MQTT_DEVICE_A7_PASSWORD: 'validation-only',
+      IIOT_ADMIN_PASSWORD: 'validation-only',
       DEV_TENANT_ID: '11111111-1111-4111-8111-111111111111',
     },
   },

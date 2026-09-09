@@ -20,7 +20,9 @@ export function DevicesTable({ devices }: { devices: Device[] | null }) {
                 <Link className="device-link" href={`/devices/${d.id}`}>
                   {d.name} ↗
                 </Link>
-                <div className="subline">{d.adapter_type}</div>
+                <div className="subline">
+                  <span className="code-chip">{d.device_code}</span> · {d.adapter_type}
+                </div>
               </td>
               <td>
                 {d.manufacturer} / {d.model}
@@ -37,7 +39,7 @@ export function DevicesTable({ devices }: { devices: Device[] | null }) {
       </table>
       {!devices?.length && (
         <div className="empty">
-          {devices ? 'Nenhum dispositivo cadastrado. Execute o seed.' : 'Carregando dispositivos…'}
+          {devices ? 'Nenhum dispositivo cadastrado.' : 'Carregando dispositivos…'}
         </div>
       )}
     </div>

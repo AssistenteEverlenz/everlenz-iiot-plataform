@@ -1,23 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { adminCookie, validAdminToken } from '../../../lib/admin';
+
 const allowed =
-  /^(health|overview|tenants|sites|devices(?:\/[0-9a-f-]+(?:\/(?:tags|latest))?)?|telemetry|mqtt\/(?:raw|topics))$/;
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
+  /^(?:health|overview|tenants|sites|devices(?:\/[0-9a-f-]+(?:\/(?:tags|latest|signals|statistics))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/widgets(?:\/[0-9a-f-]+)?)?)?|export\/telemetry\.csv)$/;
+
+async function forward(request: NextRequest, params: Promise<{ path: string[] }>) {
   const path = (await params).path.join('/');
   if (!allowed.test(path)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (request.method !== 'GET' && !validAdminToken(request.cookies.get(adminCookie)?.value))
+    return NextResponse.json({ error: 'Autenticação administrativa necessária' }, { status: 401 });
   const base = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001';
+  const body = request.method === 'GET' ? undefined : await request.text();
   try {
     const result = await fetch(
       `${base}/${path === 'health' ? 'health' : `api/${path}`}${request.nextUrl.search}`,
-      { cache: 'no-store', signal: AbortSignal.timeout(8000) },
+      {
+        method: request.method,
+        body,
+        headers: body
+          ? { 'content-type': request.headers.get('content-type') ?? 'application/json' }
+          : undefined,
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15000),
+      },
     );
-    return new NextResponse(await result.text(), {
-      status: result.status,
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-    });
+    if (result.status === 204) return new NextResponse(null, { status: 204 });
+    const headers: Record<string, string> = {
+      'content-type': result.headers.get('content-type') ?? 'application/json',
+      'cache-control': 'no-store',
+    };
+    const disposition = result.headers.get('content-disposition');
+    if (disposition) headers['content-disposition'] = disposition;
+    return new NextResponse(await result.arrayBuffer(), { status: result.status, headers });
   } catch {
     return NextResponse.json({ error: 'API indisponível' }, { status: 502 });
   }
 }
+
+export const GET = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
+  forward(request, context.params);
+export const POST = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
+  forward(request, context.params);
+export const PATCH = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
+  forward(request, context.params);
+export const DELETE = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
+  forward(request, context.params);

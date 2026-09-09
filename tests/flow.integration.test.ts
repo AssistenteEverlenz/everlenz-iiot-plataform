@@ -218,4 +218,56 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await api.close();
     }
   });
+  it('discovers signals and supports dashboard, CSV and guided device APIs', async () => {
+    const message = simulatedMessage('haiwell', 9);
+    expect((await ingest(message.topic, message.payload)).status).toBe('processed');
+    const api = createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      const signals = (await api.inject(`/api/devices/${HAIWELL}/signals`)).json() as {
+        key: string;
+        configured: boolean;
+      }[];
+      expect(signals.map((signal) => signal.key)).toEqual(
+        expect.arrayContaining(['temperatura', 'corrente_motor', 'velocidade', 'status']),
+      );
+      expect(signals.every((signal) => signal.configured)).toBe(true);
+
+      const dashboards = (await api.inject('/api/dashboards')).json() as { id: string }[];
+      expect(dashboards).toHaveLength(1);
+      const dashboard = (await api.inject(`/api/dashboards/${dashboards[0].id}`)).json() as {
+        widgets: unknown[];
+      };
+      expect(dashboard.widgets.length).toBeGreaterThanOrEqual(4);
+
+      const statistics = (
+        await api.inject(`/api/devices/${HAIWELL}/statistics?hours=24`)
+      ).json() as { key: string; maximum: number | null }[];
+      expect(statistics.find((item) => item.key === 'temperatura')?.maximum).toBeTypeOf('number');
+
+      const exportResponse = await api.inject(
+        `/api/export/telemetry.csv?deviceId=${HAIWELL}&limit=10`,
+      );
+      expect(exportResponse.statusCode).toBe(200);
+      expect(exportResponse.headers['content-type']).toContain('text/csv');
+      expect(exportResponse.body).toContain('device_code');
+
+      const created = await api.inject({
+        method: 'POST',
+        url: '/api/devices',
+        payload: {
+          siteId: '22222222-2222-4222-8222-222222222222',
+          name: 'Forno túnel teste',
+          manufacturer: 'Haiwell',
+          model: 'A7',
+          adapterType: 'haiwell',
+          topic: 'data/POC/group1/A7-INTEGRATION-TEST',
+        },
+      });
+      expect(created.statusCode).toBe(201);
+      expect(created.json().device.device_code).toMatch(/^EVL-HAI-/);
+      expect(created.json().device.provisioning_status).toBe('awaiting_connection');
+    } finally {
+      await api.close();
+    }
+  });
 });

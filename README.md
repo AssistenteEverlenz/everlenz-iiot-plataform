@@ -4,6 +4,8 @@ Plataforma de monitoramento industrial: MQTT → Mosquitto no Coolify → captur
 
 **Arquitetura atual:** VPS/Coolify existente para Mosquitto, ingestor, API e web; Supabase existente como banco definitivo. PostgreSQL Docker é um laboratório opcional. Não existe banco nem simulador no Compose de produção. Deployment real aguarda os dados listados no [handoff Coolify](docs/deployment/coolify.md). Consulte [PROJECT_STATUS.md](PROJECT_STATUS.md) para os resultados e limites da validação.
 
+O produto inclui painel configurável, descoberta automática de variáveis, cadastro guiado de dispositivos, modo TV e exportação CSV/JSON/PDF. Veja a [visão da plataforma industrial](docs/product/industrial-platform.md) para identidade dos equipamentos, atualização, teste de carga e sinais necessários para OEE, tonelagem e Pareto.
+
 ## Produção: Coolify + Supabase
 
 Selecione **docker-compose.production.yml** como arquivo independente no Coolify. Configure DATABASE_URL (Direct ou Session), secrets MQTT, certificados, tenant e domínios conforme [deployment](docs/deployment/coolify.md). Nenhum secret é necessário para build/testes. Não misture esse arquivo com o Compose local.
@@ -105,6 +107,7 @@ Com --local, env:setup preenche DATABASE_URL local somente quando vazia; nunca s
 | `pnpm test`                         | Testes unitários Vitest                                                                         |
 | `pnpm test:integration`             | SQL real via PostgreSQL WASM/PGlite + pipeline + API                                            |
 | `pnpm test:e2e`                     | Publicação nos dois formatos via broker, verificação SQL, API e rotas web; exige stack completa |
+| `pnpm test:load`                    | Teste HTTP progressivo, com parada automática no limite de latência ou erros                    |
 | `pnpm build`                        | Verificação/compilação dos serviços e build de produção Next.js                                 |
 | `pnpm format` / `pnpm format:check` | Prettier                                                                                        |
 | `pnpm docker:down`                  | Para containers preservando volumes                                                             |

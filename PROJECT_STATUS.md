@@ -1,4 +1,14 @@
-# Estado do projeto — 8 de setembro de 2026
+# Estado do projeto — 9 de setembro de 2026
+
+## Painel industrial configurável
+
+A versão atual acrescenta o painel **Gestão à Vista**, catálogo automático das variáveis observadas nos payloads MQTT, widgets configuráveis, modo TV, cadastro guiado de equipamentos e exportações CSV/JSON/PDF. Cada dispositivo passou a ter UUID interno e um `device_code` legível e único por tenant. As alterações administrativas usam uma sessão HttpOnly protegida por `IIOT_ADMIN_PASSWORD`; a API de serviço continua restrita à rede interna da stack.
+
+A migration `003_product_platform.sql` foi aplicada ao Supabase em 9 de setembro de 2026. Ela cria o catálogo de sinais, painéis, widgets e parâmetros de produção e adiciona a identidade operacional aos dispositivos. O seed criou o painel padrão com sete widgets para a Haiwell A7.
+
+Validação desta entrega: 51 testes unitários e 15 testes de integração aprovados; lint, TypeScript, Prettier e build de produção aprovados. O fluxo administrativo foi conferido com 401 sem sessão, login 200 e alteração autenticada 200. O smoke de carga local sustentou 5 requisições por segundo sem erros, com p95 de 975 ms. O teste progressivo de produção será registrado após o novo release estar ativo. O Docker Compose não está instalado neste computador; sua validação operacional permanece no host Coolify.
+
+Os widgets de OEE e Pareto indicam explicitamente os dados ausentes. O cálculo real depende do mapeamento dos sinais de tempo planejado, máquina rodando/parada, ciclo ideal, contagem total/boa/refugo, tonelagem e motivos/durações de parada. Consulte [plataforma industrial configurável](docs/product/industrial-platform.md).
 
 ## Produção ativa
 

@@ -18,6 +18,7 @@
     "test": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run tests/flow.integration.test.ts tests/migrations.integration.test.ts",
     "test:e2e": "tsx scripts/e2e.ts",
+    "test:load": "node scripts/load-test.mjs",
     "db:migrate": "tsx packages/database/src/migrate.ts",
     "db:seed": "tsx packages/database/src/seed.ts",
     "docker:up": "docker compose --profile development up -d --build --wait",

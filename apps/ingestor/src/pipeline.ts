@@ -30,12 +30,61 @@ export class TelemetryRepository {
     );
   }
 }
+
+function inferredType(key: string, value: unknown) {
+  if (typeof value === 'boolean') return 'boolean';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'string') {
+    if (/status|estado|ligado|running|ativo/i.test(key) && /^(?:0|1|true|false)$/i.test(value))
+      return 'boolean';
+    if (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) return 'number';
+  }
+  return 'string';
+}
+
+export class SignalCatalogRepository {
+  async observe(
+    sql: SqlExecutor,
+    device: Device,
+    samples: { key: string; value: unknown }[],
+    at: Date,
+  ) {
+    if (!samples.length) return;
+    const values: unknown[] = [];
+    const tuples = samples.map((sample) => {
+      const row = [
+        device.tenant_id,
+        device.id,
+        sample.key,
+        inferredType(sample.key, sample.value),
+        JSON.stringify(sample.value),
+        at,
+        at,
+      ];
+      return `(${row
+        .map((value, index) => {
+          values.push(value);
+          return index === 4 ? `$${values.length}::jsonb` : `$${values.length}`;
+        })
+        .join(',')})`;
+    });
+    await sql.query(
+      `INSERT INTO device_signal_catalog(tenant_id,device_id,key,inferred_type,sample_value,first_seen_at,last_seen_at)
+       VALUES ${tuples.join(',')}
+       ON CONFLICT(device_id,key) DO UPDATE SET inferred_type=EXCLUDED.inferred_type,
+       sample_value=EXCLUDED.sample_value,last_seen_at=GREATEST(device_signal_catalog.last_seen_at,EXCLUDED.last_seen_at),
+       occurrences=device_signal_catalog.occurrences+1,updated_at=now()`,
+      values,
+    );
+  }
+}
 export class IngestionPipeline {
   constructor(
     private db: Database,
     private resolver = new DeviceResolver(),
     private repository = new TelemetryRepository(),
     private log = logger('ingestor'),
+    private catalog = new SignalCatalogRepository(),
   ) {}
   async ingest(message: MqttMessage) {
     const decoded = decodePayload(message.payload);
@@ -96,6 +145,7 @@ export class IngestionPipeline {
         )
       ).rows;
       const samples = adapter.parse(message);
+      await this.catalog.observe(this.db, device, samples, message.receivedAt);
       const rows: unknown[][] = [];
       const ignored: string[] = [];
       for (const sample of samples) {

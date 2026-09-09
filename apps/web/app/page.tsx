@@ -14,10 +14,12 @@ export default function Home() {
       <div className="heading">
         <div>
           <div className="eyebrow">OPERAÇÃO EM TEMPO REAL</div>
-          <h1>Visão geral</h1>
-          <p>Da máquina ao dado. Acompanhe seu laboratório industrial.</p>
+          <h1>Centro de comando</h1>
+          <p>Da máquina à decisão. Acompanhe a operação industrial em um só lugar.</p>
         </div>
-        <span className="pill">ATUALIZA A CADA 5 S</span>
+        <Link className="primary-button" href="/dashboards/55555555-5555-4555-8555-555555555555">
+          Abrir Gestão à Vista →
+        </Link>
       </div>
       {(overview.error || health.error) && (
         <div className="error-banner">
