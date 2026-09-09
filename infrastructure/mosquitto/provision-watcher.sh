@@ -12,15 +12,22 @@ while kill -0 "$1" 2>/dev/null; do
     username="$(sed -n '1p' "$request" | base64 -d)"
     password="$(sed -n '2p' "$request" | base64 -d)"
     topic="$(sed -n '3p' "$request" | base64 -d)"
+    action="$(sed -n '4p' "$request" | base64 -d)"
     case "$username" in (*[!a-z0-9-]*|'') mv "$request" "/mosquitto/provision/done/$request_id.error"; continue;; esac
-    case "$topic" in (iiot/*/telemetry) ;; (*) mv "$request" "/mosquitto/provision/done/$request_id.error"; continue;; esac
-    mosquitto_passwd -b /mosquitto/auth/passwords "$username" "$password"
-    {
-      echo ""
-      echo "# managed-device $username"
-      echo "user $username"
-      echo "topic write $topic"
-    } >> /mosquitto/config/acl
+    if [ "$action" = "delete" ]; then
+      mosquitto_passwd -D /mosquitto/auth/passwords "$username" || true
+      awk -v marker="# managed-device $username" 'BEGIN{skip=0} $0==marker{skip=3;next} skip>0{skip--;next} {print}' /mosquitto/config/acl > /mosquitto/config/acl.next
+      mv /mosquitto/config/acl.next /mosquitto/config/acl
+    else
+      case "$topic" in (iiot/*/telemetry) ;; (*) mv "$request" "/mosquitto/provision/done/$request_id.error"; continue;; esac
+      mosquitto_passwd -b /mosquitto/auth/passwords "$username" "$password"
+      {
+        echo ""
+        echo "# managed-device $username"
+        echo "user $username"
+        echo "topic write $topic"
+      } >> /mosquitto/config/acl
+    fi
     chown 1883:1883 /mosquitto/auth/passwords /mosquitto/config/acl
     chmod 600 /mosquitto/auth/passwords
     kill -HUP "$1"

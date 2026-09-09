@@ -319,7 +319,7 @@ export function createApp(
       );
       return created.rows[0];
     });
-    const credentialActive = await provisionMqttCredential(mqttUsername, mqttPassword, topic);
+    const credentialActive = await provisionMqttRequest('upsert', mqttUsername, mqttPassword, topic);
     return reply.code(201).send({
       device: row,
       connection: {
@@ -379,14 +379,15 @@ export function createApp(
   app.delete('/api/devices/:id', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const result = await db.query(
+    const result = await db.query<{ id: string; mqtt_username: string | null }>(
       `UPDATE devices SET archived_at=now(),enabled=false,updated_at=now()
-       WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING id`,
+       WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING id,mqtt_username`,
       [access.principal(req).tenantId, id],
     );
-    return result.rows.length
-      ? reply.code(204).send()
-      : reply.code(404).send({ error: 'Device not found' });
+    if (!result.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    if (result.rows[0].mqtt_username)
+      await provisionMqttRequest('delete', result.rows[0].mqtt_username, '', '');
+    return reply.code(204).send();
   });
   app.get('/api/telemetry', async (req, reply) => {
     const q = telemetryPagination
@@ -707,7 +708,7 @@ export function createApp(
   return app;
 }
 
-async function provisionMqttCredential(username: string, password: string, topic: string) {
+async function provisionMqttRequest(action: 'upsert' | 'delete', username: string, password: string, topic: string) {
   if (!env.MQTT_PROVISION_DIR) return false;
   const requestId = randomUUID();
   const requestPath = join(env.MQTT_PROVISION_DIR, `${requestId}.request`);
@@ -715,7 +716,7 @@ async function provisionMqttCredential(username: string, password: string, topic
   const encode = (value: string) => Buffer.from(value, 'utf8').toString('base64');
   try {
     await mkdir(env.MQTT_PROVISION_DIR, { recursive: true });
-    await writeFile(temporaryPath, `${encode(username)}\n${encode(password)}\n${encode(topic)}\n`, { mode: 0o600 });
+    await writeFile(temporaryPath, `${encode(username)}\n${encode(password)}\n${encode(topic)}\n${encode(action)}\n`, { mode: 0o600 });
     await rename(temporaryPath, requestPath);
     const doneDirectory = join(env.MQTT_PROVISION_DIR, '..', 'done');
     for (let attempt = 0; attempt < 30; attempt += 1) {
