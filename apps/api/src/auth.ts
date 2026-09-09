@@ -315,7 +315,17 @@ export function registerAuthRoutes(
       .object({
         productName: z.string().min(2).max(80),
         subtitle: z.string().min(2).max(120),
-        logoUrl: z.union([z.url(), z.literal('')]).optional(),
+        logoUrl: z
+          .string()
+          .max(850_000)
+          .refine(
+            (value) =>
+              value === '' ||
+              /^data:image\/(?:png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(value) ||
+              z.string().url().safeParse(value).success,
+            'Logotipo inválido',
+          )
+          .optional(),
         primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
         accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
       })

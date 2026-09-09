@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -9,12 +9,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { usePlatform } from './PlatformShell';
+import { BrandSpinner, usePlatform } from './PlatformShell';
 import {
   mutate,
   time,
   usePoll,
-  value,
   type Dashboard,
   type DashboardWidget,
   type Device,
@@ -35,7 +34,11 @@ interface Statistic {
 }
 
 function number(value: number | null | undefined, decimals = 1) {
-  return value == null ? '—' : value.toLocaleString('pt-BR', { maximumFractionDigits: decimals });
+  return value == null ? 'â€”' : value.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function SixDots() {
+  return <span className="six-dots">{Array.from({ length: 6 }, (_, index) => <i key={index} />)}</span>;
 }
 
 function Widget({
@@ -43,15 +46,19 @@ function Widget({
   latest,
   history,
   statistics,
-  editing,
+  edit,
   remove,
+  dragStart,
+  drop,
 }: {
   widget: DashboardWidget;
   latest?: Sample;
   history: Sample[];
   statistics?: Statistic;
-  editing: boolean;
+  edit: () => void;
   remove: () => void;
+  dragStart: () => void;
+  drop: () => void;
 }) {
   const color = widget.config.color ?? '#12b8a6';
   const numeric = latest?.value_number ?? null;
@@ -66,22 +73,28 @@ function Widget({
   const max = widget.config.max ?? 100;
   const progress =
     numeric == null ? 0 : Math.max(0, Math.min(100, ((numeric - min) / (max - min || 1)) * 100));
+  const alarm = widget.config.alarmEnabled && numeric != null &&
+    ((widget.config.warningLow != null && numeric < widget.config.warningLow) ||
+      (widget.config.warningHigh != null && numeric > widget.config.warningHigh));
   return (
-    <article
-      className={`dashboard-widget widget-${widget.width}`}
-      style={{ '--accent': color } as React.CSSProperties}
+    <article draggable onDragStart={dragStart} onDragOver={(event) => event.preventDefault()} onDrop={drop}
+      className={`dashboard-widget widget-${widget.width} ${alarm ? 'widget-alarm' : ''}`}
+      style={{ '--accent': alarm ? '#d75656' : color } as React.CSSProperties}
     >
       <div className="widget-head">
+        <button className="drag-handle" title="Arrastar para reorganizar"><SixDots /></button>
         <div>
           <span className="widget-kicker">{widget.widget_type.toUpperCase()}</span>
           <h2>{widget.title}</h2>
         </div>
-        {editing && (
+        <div className="widget-actions">
+          <button className="icon-button" title="Editar indicador" onClick={edit}>âœŽ</button>
           <button className="icon-button danger-button" title="Remover" onClick={remove}>
-            ×
+            Ã—
           </button>
-        )}
+        </div>
       </div>
+      {alarm && <div className="widget-alarm-label">Limite de alarme atingido</div>}
       {widget.widget_type === 'line' &&
         (points.length ? (
           <div className="widget-chart">
@@ -133,24 +146,20 @@ function Widget({
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="widget-empty">Aguardando histórico</div>
+          <div className="widget-empty">Aguardando histÃ³rico</div>
         ))}
       {widget.widget_type === 'gauge' && (
-        <div className="gauge-wrap">
-          <div
-            className="gauge"
-            style={{
-              background: `conic-gradient(${color} ${progress * 2.7}deg,#e8eef0 0deg 270deg,transparent 270deg)`,
-            }}
-          >
-            <div>
+        <div className={`gauge-v2 gauge-${widget.config.gaugeStyle ?? 'top'}`}>
+          <div className="gauge-dial">
+            <svg viewBox="0 0 220 125"><path className="gauge-track" pathLength="100" d="M 20 108 A 90 90 0 0 1 200 108"/><path className="gauge-progress" pathLength="100" d="M 20 108 A 90 90 0 0 1 200 108" style={{ stroke: color, strokeDasharray: `${progress} 100` }}/></svg>
+            <div className="gauge-reading">
               <strong>{number(numeric, widget.config.decimals ?? 1)}</strong>
               <span>{widget.unit}</span>
             </div>
           </div>
           <div className="gauge-scale">
-            <span>{min}</span>
-            <span>{max}</span>
+            <span>{number(min, widget.config.decimals ?? 1)}</span>
+            <span>{number(max, widget.config.decimals ?? 1)}</span>
           </div>
         </div>
       )}
@@ -158,7 +167,7 @@ function Widget({
         <div className={`machine-status ${latest?.value_boolean ? 'running' : ''}`}>
           <span className="status-orb" />
           <div>
-            <strong>{latest?.value_boolean ? 'Em operação' : 'Parada'}</strong>
+            <strong>{latest?.value_boolean ? 'Em operaÃ§Ã£o' : 'Parada'}</strong>
             <small>{time(latest?.timestamp)}</small>
           </div>
         </div>
@@ -166,7 +175,7 @@ function Widget({
       {widget.widget_type === 'value' && (
         <>
           <div className="hero-value">
-            {latest ? value(latest) : '—'}
+            {latest?.value_number != null ? number(latest.value_number, widget.config.decimals ?? 1) : latest?.value_boolean != null ? (latest.value_boolean ? 'Ligado' : 'Desligado') : latest?.value_text ?? 'â€”'}
             <span>{widget.unit}</span>
           </div>
           <div className="spark-note">Atualizado {time(latest?.timestamp)}</div>
@@ -175,15 +184,15 @@ function Widget({
       {widget.widget_type === 'production' && (
         <>
           <div className="hero-value">
-            {number(statistics?.average)}
-            <span>{widget.unit} média</span>
+            {number(statistics?.average, widget.config.decimals ?? 1)}
+            <span>{widget.unit} mÃ©dia</span>
           </div>
           <div className="three-metrics">
             <span>
-              <b>{number(statistics?.minimum)}</b>mínimo
+              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>mÃ­nimo
             </span>
             <span>
-              <b>{number(statistics?.maximum)}</b>pico
+              <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>pico
             </span>
             <span>
               <b>{statistics?.samples ?? 0}</b>amostras
@@ -194,13 +203,13 @@ function Widget({
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
           <strong>OEE pronto para configurar</strong>
-          <span>Associe contagem total, peças boas, rejeitos, tempo planejado e ciclo ideal.</span>
+          <span>Associe contagem total, peÃ§as boas, rejeitos, tempo planejado e ciclo ideal.</span>
         </div>
       )}
       {widget.widget_type === 'pareto' && (
         <div className="model-placeholder">
           <strong>Pareto de perdas</strong>
-          <span>O gráfico surgirá quando motivos e duração das paradas forem coletados.</span>
+          <span>O grÃ¡fico surgirÃ¡ quando motivos e duraÃ§Ã£o das paradas forem coletados.</span>
         </div>
       )}
     </article>
@@ -208,21 +217,21 @@ function Widget({
 }
 
 export function DashboardCanvas({ id }: { id: string }) {
-  const { user } = usePlatform();
+  const { branding } = usePlatform();
   const dashboard = usePoll<Dashboard>(`/dashboards/${id}`, 2000);
   const refreshMs = dashboard.data?.refresh_ms ?? 2000;
   const deviceId = dashboard.data?.device_id ?? '';
-  const device = usePoll<Device>(deviceId ? `/devices/${deviceId}` : '/devices/missing', refreshMs);
+  const device = usePoll<Device>(deviceId ? `/devices/${deviceId}` : null, refreshMs);
   const latest = usePoll<Sample[]>(
-    deviceId ? `/devices/${deviceId}/latest` : '/devices/missing/latest',
+    deviceId ? `/devices/${deviceId}/latest` : null,
     refreshMs,
   );
   const signals = usePoll<Signal[]>(
-    deviceId ? `/devices/${deviceId}/signals` : '/devices/missing/signals',
+    deviceId ? `/devices/${deviceId}/signals` : null,
     5000,
   );
   const statistics = usePoll<Statistic[]>(
-    deviceId ? `/devices/${deviceId}/statistics?hours=24` : '/devices/missing/statistics',
+    deviceId ? `/devices/${deviceId}/statistics?hours=24` : null,
     10000,
   );
   const windowMinutes = dashboard.data?.time_window_minutes ?? 60;
@@ -232,11 +241,11 @@ export function DashboardCanvas({ id }: { id: string }) {
   const history = usePoll<Sample[]>(
     deviceId
       ? `/telemetry?deviceId=${deviceId}&from=${encodeURIComponent(from)}&limit=2000`
-      : '/telemetry?deviceId=missing',
+      : null,
     Math.max(refreshMs, 5000),
   );
-  const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
   const [tv, setTv] = useState(false);
   const [error, setError] = useState('');
   const [signalId, setSignalId] = useState('');
@@ -246,7 +255,21 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [width, setWidth] = useState<DashboardWidget['width']>('small');
   const [minimum, setMinimum] = useState(0);
   const [maximum, setMaximum] = useState(100);
-  const widgets = dashboard.data?.widgets ?? [];
+  const [decimals, setDecimals] = useState(1);
+  const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
+  const [alarmEnabled, setAlarmEnabled] = useState(false);
+  const [warningLow, setWarningLow] = useState(0);
+  const [warningHigh, setWarningHigh] = useState(100);
+  const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  useEffect(() => {
+    if (dashboard.data?.widgets) setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
+  }, [dashboard.data?.widgets]);
+  const allLoaded = Boolean(dashboard.data && device.data && latest.data && signals.data && statistics.data && history.data);
+  useEffect(() => { if (allLoaded) setLoadedOnce(true); }, [allLoaded]);
+  useEffect(() => { const timer = window.setTimeout(() => setLoadingTimedOut(true), 8000); return () => window.clearTimeout(timer); }, []);
   const selectedSignal = signals.data?.find(
     (signal) => signal.id === signalId || signal.tag_id === signalId,
   );
@@ -281,13 +304,13 @@ export function DashboardCanvas({ id }: { id: string }) {
           selectedSignal?.key ||
           (widgetType === 'oee' ? 'OEE' : 'Pareto de perdas'),
         width,
-        config: { color, min: minimum, max: maximum },
+        config: { color: '#12b8a6', min: 0, max: 100, decimals: 1, gaugeStyle: 'top' },
       });
       setAdding(false);
       await Promise.all([dashboard.refresh(), signals.refresh()]);
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : 'Não foi possível adicionar o indicador.',
+        reason instanceof Error ? reason.message : 'NÃ£o foi possÃ­vel adicionar o indicador.',
       );
     }
   }
@@ -299,11 +322,42 @@ export function DashboardCanvas({ id }: { id: string }) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
     }
   }
+  function startEdit(widget: DashboardWidget) {
+    setEditingWidget(widget);
+    setTitle(widget.title); setWidth(widget.width); setColor(widget.config.color ?? '#12b8a6');
+    setMinimum(widget.config.min ?? 0); setMaximum(widget.config.max ?? 100);
+    setDecimals(widget.config.decimals ?? 1); setGaugeStyle(widget.config.gaugeStyle ?? 'top');
+    setAlarmEnabled(widget.config.alarmEnabled ?? false); setWarningLow(widget.config.warningLow ?? 0); setWarningHigh(widget.config.warningHigh ?? 100);
+  }
+  async function saveWidget(event: React.FormEvent) {
+    event.preventDefault(); if (!editingWidget) return;
+    try {
+      await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', { title, width, config: { color, min: minimum, max: maximum, decimals, gaugeStyle, alarmEnabled, warningLow, warningHigh } });
+      setEditingWidget(null); await dashboard.refresh();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar indicador.'); }
+  }
+  async function removeWidget(widget: DashboardWidget) {
+    if (!window.confirm(`Remover â€œ${widget.title}â€ deste painel?`)) return;
+    try { await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE'); setEditingWidget(null); await dashboard.refresh(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao remover indicador.'); }
+  }
+  async function dropWidget(targetId: string) {
+    if (!draggedId || draggedId === targetId) return;
+    const next = [...widgets]; const fromIndex = next.findIndex((widget) => widget.id === draggedId); const toIndex = next.findIndex((widget) => widget.id === targetId);
+    const [moved] = next.splice(fromIndex, 1); next.splice(toIndex, 0, moved); setWidgets(next); setDraggedId(null);
+    try { await mutate(`/dashboards/${id}/layout`, 'PATCH', { widgetIds: next.map((widget) => widget.id) }); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar a ordem.'); await dashboard.refresh(); }
+  }
+  if (!loadedOnce) {
+    const loadError = dashboard.error || device.error || latest.error || signals.error || statistics.error || history.error;
+    if (loadingTimedOut && loadError) return <div className="dashboard-load-failed"><BrandSpinner branding={branding}/><h2>NÃ£o foi possÃ­vel carregar o painel</h2><p>{loadError}</p><button onClick={() => window.location.reload()}>Tentar novamente</button></div>;
+    return <div className="dashboard-loading"><BrandSpinner branding={branding}/><strong>Carregando dados do equipamentoâ€¦</strong></div>;
+  }
   return (
     <div className={tv ? 'tv-shell' : ''}>
       <div className="dashboard-toolbar">
         <div>
-          <div className="eyebrow">SALA DE CONTROLE · TEMPO REAL</div>
+          <div className="eyebrow">SALA DE CONTROLE Â· TEMPO REAL</div>
           <h1>{dashboard.data?.name ?? 'Painel industrial'}</h1>
           <p>
             {device.data?.name} <span className="code-chip">{device.data?.device_code}</span>
@@ -316,20 +370,13 @@ export function DashboardCanvas({ id }: { id: string }) {
           </span>
           <button onClick={() => window.print()}>Exportar PDF</button>
           <button onClick={() => setTv(!tv)}>{tv ? 'Sair da TV' : 'Modo TV'}</button>
-          {user.role === 'master' && (
-            <button className="primary-button" onClick={() => setEditing(!editing)}>
-              {editing ? 'Concluir' : 'Personalizar'}
-            </button>
-          )}
+          <button className="primary-button" onClick={() => setAdding(true)}>ï¼‹ Adicionar indicador</button>
         </div>
       </div>
-      {editing && user.role === 'master' && (
-        <div className="editor-bar">
-          <button className="add-widget-button" onClick={() => setAdding(true)}>
-            ＋ Adicionar indicador
-          </button>
+      <div className="editor-bar">
+          <span>Arraste os seis pontos para organizar. A configuraÃ§Ã£o fica salva no seu perfil.</span>
           <label>
-            Atualização
+            AtualizaÃ§Ã£o
             <select
               value={refreshMs}
               onChange={(event) => void updateRefresh(Number(event.target.value))}
@@ -340,22 +387,20 @@ export function DashboardCanvas({ id }: { id: string }) {
               <option value={10000}>10 segundos</option>
             </select>
           </label>
-          <span>Arranjo responsivo · alterações salvas no painel</span>
-        </div>
-      )}
+      </div>
       {(error || dashboard.error || latest.error) && (
         <div className="error-banner">{error || dashboard.error || latest.error}</div>
       )}
       <div className="dashboard-meta">
         <span>
-          <b>Janela</b> últimos{' '}
+          <b>Janela</b> Ãºltimos{' '}
           {windowMinutes >= 60 ? `${windowMinutes / 60} h` : `${windowMinutes} min`}
         </span>
         <span>
-          <b>Atualização</b> {refreshMs / 1000} s
+          <b>AtualizaÃ§Ã£o</b> {refreshMs / 1000} s
         </span>
         <span>
-          <b>Último sinal</b> {time(device.data?.last_message_at)}
+          <b>Ãšltimo sinal</b> {time(device.data?.last_message_at)}
         </span>
       </div>
       <section className="widget-grid">
@@ -366,24 +411,22 @@ export function DashboardCanvas({ id }: { id: string }) {
             latest={widget.tag_id ? byTag.get(widget.tag_id) : undefined}
             history={history.data ?? []}
             statistics={statistics.data?.find((item) => item.tag_id === widget.tag_id)}
-            editing={editing}
-            remove={() =>
-              void mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE')
-                .then(() => dashboard.refresh())
-                .catch((reason: Error) => setError(reason.message))
-            }
+            edit={() => startEdit(widget)}
+            remove={() => void removeWidget(widget)}
+            dragStart={() => setDraggedId(widget.id)}
+            drop={() => void dropWidget(widget.id)}
           />
         ))}
         {!widgets.length && (
           <button className="empty-dashboard" onClick={() => setAdding(true)}>
-            ＋<strong>Monte a primeira visão da operação</strong>
-            <span>Escolha uma variável que já chegou pelo MQTT.</span>
+            ï¼‹<strong>Monte a primeira visÃ£o da operaÃ§Ã£o</strong>
+            <span>Escolha uma variÃ¡vel que jÃ¡ chegou pelo MQTT.</span>
           </button>
         )}
       </section>
       <footer className="dashboard-footer">
         <span>EVERLENZ INDUSTRIAL INTELLIGENCE</span>
-        <span>Dados recebidos via MQTT · atualização automática</span>
+        <span>Dados recebidos via MQTT Â· atualizaÃ§Ã£o automÃ¡tica</span>
       </footer>
       {adding && (
         <div className="modal-backdrop" onMouseDown={() => setAdding(false)}>
@@ -398,13 +441,13 @@ export function DashboardCanvas({ id }: { id: string }) {
                 <h2>Adicionar ao painel</h2>
               </div>
               <button type="button" className="icon-button" onClick={() => setAdding(false)}>
-                ×
+                Ã—
               </button>
             </div>
-            <p>As variáveis abaixo foram descobertas nas mensagens reais deste equipamento.</p>
+            <p>As variÃ¡veis abaixo foram descobertas nas mensagens reais deste equipamento.</p>
             <div className="form-grid">
               <label className="field full-field">
-                Variável
+                VariÃ¡vel
                 <select
                   value={signalId}
                   onChange={(event) => {
@@ -416,80 +459,26 @@ export function DashboardCanvas({ id }: { id: string }) {
                     setTitle(next?.name || next?.key || '');
                   }}
                 >
-                  <option value="">Indicador calculado ou selecione uma variável…</option>
+                  <option value="">Indicador calculado ou selecione uma variÃ¡velâ€¦</option>
                   {signals.data?.map((signal) => (
                     <option key={signal.id} value={signal.id}>
-                      {signal.key} · {signal.data_type}
-                      {signal.configured ? ' · configurada' : ' · descoberta agora'}
+                      {signal.key} Â· {signal.data_type}
+                      {signal.configured ? ' Â· configurada' : ' Â· descoberta agora'}
                     </option>
                   ))}
                 </select>
               </label>
+              <div className="field full-field">VisualizaÃ§Ã£o<div className="visualization-picker">
+                {([['value','42','Valor'],['line','âŒ','TendÃªncia'],['gauge','â—’','Medidor'],['status','â—','Estado'],['production','â–¥','ProduÃ§Ã£o'],['oee','%','OEE'],['pareto','â–¥','Pareto']] as const).map(([type,icon,label]) => <button type="button" key={type} className={widgetType === type ? 'selected' : ''} onClick={() => setWidgetType(type)}><span>{icon}</span><b>{label}</b></button>)}
+              </div></div>
               <label className="field">
-                Visualização
-                <select
-                  value={widgetType}
-                  onChange={(event) =>
-                    setWidgetType(event.target.value as DashboardWidget['widget_type'])
-                  }
-                >
-                  <option value="value">Valor em destaque</option>
-                  <option value="line">Linha de tendência</option>
-                  <option value="gauge">Medidor</option>
-                  <option value="status">Estado da máquina</option>
-                  <option value="production">Produção: média/mín./máx.</option>
-                  <option value="oee">OEE</option>
-                  <option value="pareto">Pareto de perdas</option>
-                </select>
-              </label>
-              <label className="field">
-                Título
+                TÃ­tulo
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Ex.: Toneladas por hora"
                 />
               </label>
-              <label className="field">
-                Largura
-                <select
-                  value={width}
-                  onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}
-                >
-                  <option value="small">Pequena</option>
-                  <option value="medium">Média</option>
-                  <option value="large">Grande</option>
-                  <option value="full">Linha inteira</option>
-                </select>
-              </label>
-              <label className="field">
-                Cor
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(event) => setColor(event.target.value)}
-                />
-              </label>
-              {widgetType === 'gauge' && (
-                <>
-                  <label className="field">
-                    Mínimo
-                    <input
-                      type="number"
-                      value={minimum}
-                      onChange={(event) => setMinimum(Number(event.target.value))}
-                    />
-                  </label>
-                  <label className="field">
-                    Máximo
-                    <input
-                      type="number"
-                      value={maximum}
-                      onChange={(event) => setMaximum(Number(event.target.value))}
-                    />
-                  </label>
-                </>
-              )}
             </div>
             {error && <div className="form-error">{error}</div>}
             <div className="modal-actions">
@@ -500,6 +489,28 @@ export function DashboardCanvas({ id }: { id: string }) {
                 Adicionar ao painel
               </button>
             </div>
+          </form>
+        </div>
+      )}
+      {editingWidget && (
+        <div className="modal-backdrop" onMouseDown={() => setEditingWidget(null)}>
+          <form className="modal-card widget-settings-modal" onSubmit={saveWidget} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="modal-title"><div><div className="eyebrow">CONFIGURAÃ‡ÃƒO DO ITEM</div><h2>{editingWidget.title}</h2></div><button type="button" className="icon-button" onClick={() => setEditingWidget(null)}>Ã—</button></div>
+            <div className="form-grid">
+              <label className="field full-field">TÃ­tulo<input required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+              <label className="field">Largura<select value={width} onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}><option value="small">Pequena</option><option value="medium">MÃ©dia</option><option value="large">Grande</option><option value="full">Linha inteira</option></select></label>
+              <label className="field">Casas decimais<input type="number" min="0" max="6" value={decimals} onChange={(event) => setDecimals(Number(event.target.value))} /></label>
+              <label className="field">Cor<input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
+              {editingWidget.widget_type === 'gauge' && <>
+                <label className="field">MÃ­nimo<input type="number" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} /></label>
+                <label className="field">MÃ¡ximo<input type="number" value={maximum} onChange={(event) => setMaximum(Number(event.target.value))} /></label>
+                <div className="field full-field">PosiÃ§Ã£o do medidor<div className="gauge-style-picker">{(['top','bottom','left','right'] as const).map((style) => <button type="button" key={style} className={gaugeStyle === style ? 'selected' : ''} onClick={() => setGaugeStyle(style)}><span className={`mini-gauge mini-${style}`} />{{top:'Superior',bottom:'Inferior',left:'Esquerda',right:'Direita'}[style]}</button>)}</div></div>
+              </>}
+              <label className="check-field full-field"><input type="checkbox" checked={alarmEnabled} onChange={(event) => setAlarmEnabled(event.target.checked)} />Ativar alarme visual por limite</label>
+              {alarmEnabled && <><label className="field">Limite inferior<input type="number" value={warningLow} onChange={(event) => setWarningLow(Number(event.target.value))} /></label><label className="field">Limite superior<input type="number" value={warningHigh} onChange={(event) => setWarningHigh(Number(event.target.value))} /></label></>}
+            </div>
+            {error && <div className="form-error">{error}</div>}
+            <div className="modal-actions"><button type="button" className="danger-text" onClick={() => void removeWidget(editingWidget)}>Excluir item</button><button type="button" onClick={() => setEditingWidget(null)}>Cancelar</button><button className="primary-button">Salvar configuraÃ§Ã£o</button></div>
           </form>
         </div>
       )}

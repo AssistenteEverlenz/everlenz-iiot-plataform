@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { type Device, time } from './data';
-export function DevicesTable({ devices }: { devices: Device[] | null }) {
+export function DevicesTable({ devices, onSelect }: { devices: Device[] | null; onSelect?: (device: Device) => void }) {
   return (
     <div className="table-scroll">
       <table>
@@ -11,15 +11,14 @@ export function DevicesTable({ devices }: { devices: Device[] | null }) {
             <th>FABRICANTE / MODELO</th>
             <th>ESTADO</th>
             <th>ÚLTIMA COMUNICAÇÃO</th>
+            {onSelect && <th>AÇÕES</th>}
           </tr>
         </thead>
         <tbody>
           {devices?.map((d) => (
             <tr key={d.id}>
               <td>
-                <Link className="device-link" href={`/devices/${d.id}`}>
-                  {d.name} ↗
-                </Link>
+                {onSelect ? <button className="device-link table-link-button" onClick={() => onSelect(d)}>{d.name} ↗</button> : <Link className="device-link" href={`/devices/${d.id}`}>{d.name} ↗</Link>}
                 <div className="subline">
                   <span className="code-chip">{d.device_code}</span> · {d.adapter_type}
                 </div>
@@ -33,6 +32,7 @@ export function DevicesTable({ devices }: { devices: Device[] | null }) {
                 </span>
               </td>
               <td>{time(d.last_message_at)}</td>
+              {onSelect && <td><button className="icon-button" title="Ver e editar equipamento" onClick={() => onSelect(d)}>✎</button></td>}
             </tr>
           ))}
         </tbody>

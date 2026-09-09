@@ -1,9 +1,11 @@
 import Fastify from 'fastify';
 import { z, ZodError } from 'zod';
-import { env } from '@iiot/shared';
+import { env, temporaryPassword } from '@iiot/shared';
 import { database, type Database } from '@iiot/database';
 import { randomUUID } from 'node:crypto';
-import { createAccessControl, registerAuthRoutes } from './auth.js';
+import { access as accessFile, mkdir, rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { createAccessControl, registerAuthRoutes, type Principal } from './auth.js';
 const uuid = z.uuid();
 const pagination = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -16,6 +18,24 @@ const telemetryPagination = z.object({
 const timeRange = {
   from: z.iso.datetime({ offset: true }).optional(),
   to: z.iso.datetime({ offset: true }).optional(),
+};
+const hmiModels: Record<string, string[]> = {
+  Haiwell: ['A7', 'A7 Pro', 'A10', 'A10 Pro', 'A15', 'A15 Pro'],
+  Weintek: [
+    'cMT2078X',
+    'cMT2108X2',
+    'cMT2158X',
+    'cMT2166X',
+    'cMT3072XP',
+    'cMT3092X',
+    'cMT3102X',
+    'cMT3108XH',
+    'cMT3152X',
+    'cMT3162X',
+    'cMT-FHDX-820',
+    'cMT-SVRX-820',
+  ],
+  Delta: ['DOP-3S07S3E2', 'DOP-3S10S3E2'],
 };
 function checkRange(q: { from?: string; to?: string }) {
   if (q.from && q.to && new Date(q.from) > new Date(q.to))
@@ -113,14 +133,40 @@ export function createApp(
       )
     ).rows;
   });
-  const deviceSelect = `SELECT d.*,ds.last_message_at,COALESCE(d.enabled AND ds.last_message_at > now()-($2::int * interval '1 second'),false) online FROM devices d LEFT JOIN device_status ds ON ds.device_id=d.id AND ds.tenant_id=d.tenant_id`;
+  app.post('/api/sites', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const body = z
+      .object({ name: z.string().min(2).max(120), reference: z.string().min(2).max(40) })
+      .parse(req.body);
+    const id = randomUUID();
+    const suffix = id.replace(/-/g, '').slice(0, 5).toLowerCase();
+    return reply.code(201).send(
+      (
+        await db.query(
+          `INSERT INTO sites(id,tenant_id,slug,name,reference) VALUES($1,$2,$3,$4,upper($5))
+           RETURNING *`,
+          [id, current.tenantId, `${slug(body.name) || 'cliente'}-${suffix}`, body.name.trim(), body.reference.trim()],
+        )
+      ).rows[0],
+    );
+  });
+  const deviceSelect = `SELECT d.*,s.name site_name,s.reference site_reference,m.topic mqtt_topic,
+    COALESCE(d.mqtt_username,lower(d.device_code)) mqtt_username,ds.last_message_at,
+    COALESCE(d.enabled AND ds.last_message_at > now()-($2::int * interval '1 second'),false) online
+    FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
+    LEFT JOIN device_status ds ON ds.device_id=d.id AND ds.tenant_id=d.tenant_id
+    LEFT JOIN LATERAL (
+      SELECT CASE WHEN dm.kind='haiwell' AND dm.topic NOT LIKE 'data/%' THEN 'data/'||dm.topic ELSE dm.topic END topic
+      FROM device_topic_mappings dm WHERE dm.device_id=d.id AND dm.tenant_id=d.tenant_id ORDER BY dm.id LIMIT 1
+    ) m ON true`;
   app.get('/api/devices', async (req) => {
     const q = pagination.parse(req.query);
     const current = access.principal(req);
     const deviceIds = await access.accessibleDeviceIds(req);
     return (
       await db.query(
-        `${deviceSelect} WHERE d.tenant_id=$1 AND ($3::uuid[] IS NULL OR d.id=ANY($3)) ORDER BY d.name,d.id LIMIT $4 OFFSET $5`,
+        `${deviceSelect} WHERE d.tenant_id=$1 AND d.archived_at IS NULL AND ($3::uuid[] IS NULL OR d.id=ANY($3)) ORDER BY d.name,d.id LIMIT $4 OFFSET $5`,
         [current.tenantId, env.DEVICE_OFFLINE_SECONDS, deviceIds, q.limit, q.offset],
       )
     ).rows;
@@ -129,7 +175,7 @@ export function createApp(
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
     const current = access.principal(req);
-    const result = await db.query(`${deviceSelect} WHERE d.tenant_id=$1 AND d.id=$3`, [
+    const result = await db.query(`${deviceSelect} WHERE d.tenant_id=$1 AND d.id=$3 AND d.archived_at IS NULL`, [
       current.tenantId,
       env.DEVICE_OFFLINE_SECONDS,
       id,
@@ -174,8 +220,8 @@ export function createApp(
     ).rows;
   });
   app.post('/api/devices/:id/tags', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
     const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
     const body = z
       .object({
         key: z
@@ -222,15 +268,15 @@ export function createApp(
       .object({
         siteId: uuid,
         name: z.string().min(2).max(120),
-        manufacturer: z.string().min(1).max(80),
+        manufacturer: z.enum(['Haiwell', 'Weintek', 'Delta']),
         model: z.string().min(1).max(80),
         serialNumber: z.string().max(120).nullable().optional(),
-        adapterType: z.enum(['haiwell', 'generic']),
-        topic: z.string().min(3).max(65535),
       })
       .parse(req.body);
-    const site = await db.query<{ slug: string }>(
-      'SELECT slug FROM sites WHERE tenant_id=$1 AND id=$2',
+    if (!hmiModels[body.manufacturer]?.includes(body.model))
+      return reply.code(400).send({ error: 'Model is not available for this manufacturer' });
+    const site = await db.query<{ slug: string; reference: string }>(
+      'SELECT slug,reference FROM sites WHERE tenant_id=$1 AND id=$2',
       [current.tenantId, body.siteId],
     );
     if (!site.rows.length) return reply.code(404).send({ error: 'Site not found' });
@@ -243,12 +289,14 @@ export function createApp(
         .toUpperCase() || 'DEV'
     }-${suffix}`;
     const deviceSlug = `${slug(body.name) || 'dispositivo'}-${suffix.slice(0, 4).toLowerCase()}`;
-    const topic = body.topic.replace(/^\/+|\/+$/g, '');
-    const mapping = body.adapterType === 'haiwell' ? topic.replace(/^data\//, '') : topic;
+    const topic = `iiot/${current.tenantId}/${site.rows[0].slug}/${code.toLowerCase()}/telemetry`;
+    const adapterType = body.manufacturer === 'Haiwell' ? 'haiwell' : 'generic';
+    const mqttUsername = code.toLowerCase();
+    const mqttPassword = temporaryPassword(20);
     const row = await db.transaction(async (sql) => {
       const created = await sql.query(
-        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection') RETURNING *`,
+        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_password)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,$13) RETURNING *`,
         [
           id,
           current.tenantId,
@@ -260,15 +308,18 @@ export function createApp(
           body.model,
           body.serialNumber ?? null,
           `device-${id}`,
-          body.adapterType,
+          adapterType,
+          mqttUsername,
+          mqttPassword,
         ],
       );
       await sql.query(
         'INSERT INTO device_topic_mappings(tenant_id,device_id,kind,topic) VALUES($1,$2,$3,$4)',
-        [current.tenantId, id, body.adapterType === 'haiwell' ? 'haiwell' : 'exact', mapping],
+        [current.tenantId, id, 'exact', topic],
       );
       return created.rows[0];
     });
+    const credentialActive = await provisionMqttCredential(mqttUsername, mqttPassword, topic);
     return reply.code(201).send({
       device: row,
       connection: {
@@ -276,9 +327,66 @@ export function createApp(
         port: env.MQTT_TLS_PORT,
         tls: true,
         topic,
-        suggestedUsername: code.toLowerCase(),
+        username: mqttUsername,
+        password: mqttPassword,
+        clientReference: site.rows[0].reference,
+        credentialActive,
       },
     });
+  });
+  app.patch('/api/devices/:id', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const body = z
+      .object({
+        siteId: uuid.optional(),
+        name: z.string().min(2).max(120).optional(),
+        manufacturer: z.enum(['Haiwell', 'Weintek', 'Delta']).optional(),
+        model: z.string().min(1).max(80).optional(),
+        serialNumber: z.string().max(120).nullable().optional(),
+      })
+      .parse(req.body);
+    const existing = await db.query<{ manufacturer: string; model: string }>(
+      'SELECT manufacturer,model FROM devices WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL',
+      [current.tenantId, id],
+    );
+    if (!existing.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    const manufacturer = body.manufacturer ?? existing.rows[0].manufacturer;
+    const model = body.model ?? existing.rows[0].model;
+    if (!hmiModels[manufacturer]?.includes(model))
+      return reply.code(400).send({ error: 'Model is not available for this manufacturer' });
+    const adapterType = manufacturer === 'Haiwell' ? 'haiwell' : 'generic';
+    const updated = await db.query(
+      `UPDATE devices SET site_id=COALESCE($3,site_id),name=COALESCE($4,name),
+       manufacturer=$5,model=$6,serial_number=CASE WHEN $7::boolean THEN $8 ELSE serial_number END,
+       adapter_type=$9,updated_at=now()
+       WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING *`,
+      [
+        current.tenantId,
+        id,
+        body.siteId ?? null,
+        body.name?.trim() ?? null,
+        manufacturer,
+        model,
+        body.serialNumber !== undefined,
+        body.serialNumber ?? null,
+        adapterType,
+      ],
+    );
+    return updated.rows[0] ?? reply.code(404).send({ error: 'Device not found' });
+  });
+  app.delete('/api/devices/:id', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const result = await db.query(
+      `UPDATE devices SET archived_at=now(),enabled=false,updated_at=now()
+       WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING id`,
+      [access.principal(req).tenantId, id],
+    );
+    return result.rows.length
+      ? reply.code(204).send()
+      : reply.code(404).send({ error: 'Device not found' });
   });
   app.get('/api/telemetry', async (req, reply) => {
     const q = telemetryPagination
@@ -395,21 +503,11 @@ export function createApp(
     const { id } = z.object({ id: uuid }).parse(req.params);
     const current = access.principal(req);
     const deviceIds = await access.accessibleDeviceIds(req);
-    const dashboard = await db.query(
-      'SELECT * FROM dashboards WHERE tenant_id=$1 AND id=$2 AND ($3::uuid[] IS NULL OR device_id=ANY($3))',
-      [current.tenantId, id, deviceIds],
-    );
-    if (!dashboard.rows.length) return reply.code(404).send({ error: 'Dashboard not found' });
-    const widgets = await db.query(
-      `SELECT w.*,t.key,t.name tag_name,t.unit,t.data_type FROM dashboard_widgets w
-       LEFT JOIN tags t ON t.id=w.tag_id AND t.tenant_id=w.tenant_id
-       WHERE w.tenant_id=$1 AND w.dashboard_id=$2 ORDER BY w.position,w.created_at`,
-      [current.tenantId, id],
-    );
-    return { ...dashboard.rows[0], widgets: widgets.rows };
+    const view = await dashboardView(db, current, id, deviceIds);
+    return view ?? reply.code(404).send({ error: 'Dashboard not found' });
   });
   app.patch('/api/dashboards/:id', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     const body = z
       .object({
@@ -418,22 +516,23 @@ export function createApp(
         timeWindowMinutes: z.number().int().min(1).max(525600).optional(),
       })
       .parse(req.body);
-    const result = await db.query(
-      `UPDATE dashboards SET name=COALESCE($3,name),refresh_ms=COALESCE($4,refresh_ms),
-       time_window_minutes=COALESCE($5,time_window_minutes),updated_at=now()
-       WHERE tenant_id=$1 AND id=$2 RETURNING *`,
-      [
-        access.principal(req).tenantId,
+    if (body.name && !access.requireMaster(req, reply)) return;
+    const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    if (body.name)
+      await db.query('UPDATE dashboards SET name=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2', [
+        current.tenantId,
         id,
-        body.name ?? null,
-        body.refreshMs ?? null,
-        body.timeWindowMinutes ?? null,
-      ],
-    );
-    return result.rows[0] ?? reply.code(404).send({ error: 'Dashboard not found' });
+        body.name,
+      ]);
+    await saveDashboardView(db, current, id, {
+      refresh_ms: body.refreshMs ?? view.refresh_ms,
+      time_window_minutes: body.timeWindowMinutes ?? view.time_window_minutes,
+      widgets: view.widgets,
+    });
+    return dashboardView(db, current, id, await access.accessibleDeviceIds(req));
   });
   app.post('/api/dashboards/:id/widgets', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     const body = z
@@ -446,47 +545,108 @@ export function createApp(
         config: z.record(z.string(), z.unknown()).default({}),
       })
       .parse(req.body);
-    const dashboard = await db.query('SELECT id FROM dashboards WHERE tenant_id=$1 AND id=$2', [
-      current.tenantId,
-      id,
-    ]);
-    if (!dashboard.rows.length) return reply.code(404).send({ error: 'Dashboard not found' });
-    const position = await db.query<{ next: number }>(
-      'SELECT COALESCE(max(position),0)+1 next FROM dashboard_widgets WHERE tenant_id=$1 AND dashboard_id=$2',
-      [current.tenantId, id],
-    );
-    return reply.code(201).send(
-      (
-        await db.query(
-          `INSERT INTO dashboard_widgets(tenant_id,dashboard_id,device_id,tag_id,widget_type,title,position,width,config)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb) RETURNING *`,
-          [
-            current.tenantId,
-            id,
-            body.deviceId,
-            body.tagId ?? null,
-            body.widgetType,
-            body.title,
-            position.rows[0].next,
-            body.width,
-            JSON.stringify(body.config),
-          ],
+    if (!(await access.requireDevice(req, reply, body.deviceId))) return;
+    const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    let tag: Record<string, unknown> | undefined;
+    if (body.tagId) {
+      tag = (
+        await db.query<Record<string, unknown>>(
+          'SELECT id tag_id,key,name tag_name,unit,data_type FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+          [current.tenantId, body.deviceId, body.tagId],
         )
-      ).rows[0],
-    );
+      ).rows[0];
+      if (!tag) return reply.code(400).send({ error: 'Tag does not belong to this device' });
+    }
+    const widget = {
+      id: randomUUID(),
+      tenant_id: current.tenantId,
+      dashboard_id: id,
+      device_id: body.deviceId,
+      tag_id: body.tagId ?? null,
+      widget_type: body.widgetType,
+      title: body.title,
+      position: view.widgets.length,
+      width: body.width,
+      config: body.config,
+      key: tag?.key ?? null,
+      tag_name: tag?.tag_name ?? null,
+      unit: tag?.unit ?? null,
+      data_type: tag?.data_type ?? null,
+    };
+    await saveDashboardView(db, current, id, { ...view, widgets: [...view.widgets, widget] });
+    return reply.code(201).send(widget);
   });
-  app.delete('/api/dashboards/:dashboardId/widgets/:widgetId', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
+  app.patch('/api/dashboards/:dashboardId/widgets/:widgetId', async (req, reply) => {
+    const current = access.principal(req);
     const { dashboardId, widgetId } = z
       .object({ dashboardId: uuid, widgetId: uuid })
       .parse(req.params);
-    const result = await db.query(
-      'DELETE FROM dashboard_widgets WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3 RETURNING id',
-      [access.principal(req).tenantId, dashboardId, widgetId],
+    const body = z
+      .object({
+        title: z.string().min(1).max(120).optional(),
+        width: z.enum(['small', 'medium', 'large', 'full']).optional(),
+        config: z.record(z.string(), z.unknown()).optional(),
+      })
+      .parse(req.body);
+    const view = await dashboardView(
+      db,
+      current,
+      dashboardId,
+      await access.accessibleDeviceIds(req),
     );
-    return result.rows.length
-      ? reply.code(204).send()
-      : reply.code(404).send({ error: 'Widget not found' });
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    const index = view.widgets.findIndex((widget) => widget.id === widgetId);
+    if (index < 0) return reply.code(404).send({ error: 'Widget not found' });
+    const updated = {
+      ...view.widgets[index],
+      ...(body.title ? { title: body.title } : {}),
+      ...(body.width ? { width: body.width } : {}),
+      ...(body.config ? { config: { ...view.widgets[index].config, ...body.config } } : {}),
+    };
+    view.widgets[index] = updated;
+    await saveDashboardView(db, current, dashboardId, view);
+    return updated;
+  });
+  app.patch('/api/dashboards/:id/layout', async (req, reply) => {
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const { widgetIds } = z.object({ widgetIds: z.array(uuid).max(100) }).parse(req.body);
+    const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    if (
+      widgetIds.length !== view.widgets.length ||
+      new Set(widgetIds).size !== widgetIds.length ||
+      widgetIds.some((widgetId) => !view.widgets.some((widget) => widget.id === widgetId))
+    )
+      return reply.code(400).send({ error: 'Layout must contain every widget exactly once' });
+    view.widgets = widgetIds.map((widgetId, position) => ({
+      ...view.widgets.find((widget) => widget.id === widgetId)!,
+      position,
+    }));
+    await saveDashboardView(db, current, id, view);
+    return { widgets: view.widgets };
+  });
+  app.delete('/api/dashboards/:dashboardId/widgets/:widgetId', async (req, reply) => {
+    const current = access.principal(req);
+    const { dashboardId, widgetId } = z
+      .object({ dashboardId: uuid, widgetId: uuid })
+      .parse(req.params);
+    const view = await dashboardView(
+      db,
+      current,
+      dashboardId,
+      await access.accessibleDeviceIds(req),
+    );
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    const widgets = view.widgets.filter((widget) => widget.id !== widgetId);
+    if (widgets.length === view.widgets.length)
+      return reply.code(404).send({ error: 'Widget not found' });
+    await saveDashboardView(db, current, dashboardId, {
+      ...view,
+      widgets: widgets.map((widget, position) => ({ ...widget, position })),
+    });
+    return reply.code(204).send();
   });
   // Separate local operator scope is needed to inspect messages whose tenant is still unknown.
   const rawScope = settings.operatorRaw ? '(tenant_id=$1 OR tenant_id IS NULL)' : 'tenant_id=$1';
@@ -529,7 +689,7 @@ export function createApp(
     const current = access.principal(req);
     const deviceIds = await access.accessibleDeviceIds(req);
     const devices = await db.query<{ count: number }>(
-      'SELECT count(*)::int count FROM devices WHERE tenant_id=$1 AND ($2::uuid[] IS NULL OR id=ANY($2))',
+      'SELECT count(*)::int count FROM devices WHERE tenant_id=$1 AND archived_at IS NULL AND ($2::uuid[] IS NULL OR id=ANY($2))',
       [current.tenantId, deviceIds],
     );
     const raw = await db.query<{ count: number; last_message_at: string | null }>(
@@ -545,4 +705,94 @@ export function createApp(
     };
   });
   return app;
+}
+
+async function provisionMqttCredential(username: string, password: string, topic: string) {
+  if (!env.MQTT_PROVISION_DIR) return false;
+  const requestId = randomUUID();
+  const requestPath = join(env.MQTT_PROVISION_DIR, `${requestId}.request`);
+  const temporaryPath = `${requestPath}.tmp`;
+  const encode = (value: string) => Buffer.from(value, 'utf8').toString('base64');
+  try {
+    await mkdir(env.MQTT_PROVISION_DIR, { recursive: true });
+    await writeFile(temporaryPath, `${encode(username)}\n${encode(password)}\n${encode(topic)}\n`, { mode: 0o600 });
+    await rename(temporaryPath, requestPath);
+    const doneDirectory = join(env.MQTT_PROVISION_DIR, '..', 'done');
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      try { await accessFile(join(doneDirectory, `${requestId}.done`)); return true; } catch { /* still processing */ }
+      try { await accessFile(join(doneDirectory, `${requestId}.error`)); return false; } catch { /* still processing */ }
+    }
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'mqtt_credential_provision_failed', username, error: error instanceof Error ? error.message : String(error) }));
+  }
+  return false;
+}
+
+interface DashboardWidgetRecord {
+  id: string;
+  device_id: string;
+  tag_id: string | null;
+  widget_type: 'value' | 'line' | 'gauge' | 'status' | 'production' | 'oee' | 'pareto';
+  title: string;
+  position: number;
+  width: 'small' | 'medium' | 'large' | 'full';
+  config: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface DashboardViewSettings {
+  refresh_ms: number;
+  time_window_minutes: number;
+  widgets: DashboardWidgetRecord[];
+}
+
+async function dashboardView(
+  db: Database,
+  current: Principal,
+  dashboardId: string,
+  deviceIds: string[] | null,
+) {
+  const dashboard = await db.query<Record<string, unknown>>(
+    `SELECT * FROM dashboards WHERE tenant_id=$1 AND id=$2
+     AND ($3::uuid[] IS NULL OR device_id=ANY($3))`,
+    [current.tenantId, dashboardId, deviceIds],
+  );
+  if (!dashboard.rows.length) return null;
+  const preference = await db.query<DashboardViewSettings>(
+    `SELECT refresh_ms,time_window_minutes,widgets FROM user_dashboard_configs
+     WHERE tenant_id=$1 AND user_id=$2 AND dashboard_id=$3`,
+    [current.tenantId, current.id, dashboardId],
+  );
+  if (preference.rows[0]) return { ...dashboard.rows[0], ...preference.rows[0] };
+  const widgets = await db.query<DashboardWidgetRecord>(
+    `SELECT w.*,t.key,t.name tag_name,t.unit,t.data_type FROM dashboard_widgets w
+     LEFT JOIN tags t ON t.id=w.tag_id AND t.tenant_id=w.tenant_id
+     WHERE w.tenant_id=$1 AND w.dashboard_id=$2 ORDER BY w.position,w.created_at`,
+    [current.tenantId, dashboardId],
+  );
+  return { ...dashboard.rows[0], widgets: widgets.rows } as Record<string, unknown> &
+    DashboardViewSettings;
+}
+
+async function saveDashboardView(
+  db: Database,
+  current: Principal,
+  dashboardId: string,
+  view: DashboardViewSettings,
+) {
+  await db.query(
+    `INSERT INTO user_dashboard_configs(tenant_id,user_id,dashboard_id,refresh_ms,time_window_minutes,widgets)
+     VALUES($1,$2,$3,$4,$5,$6::jsonb)
+     ON CONFLICT(user_id,dashboard_id) DO UPDATE SET refresh_ms=EXCLUDED.refresh_ms,
+      time_window_minutes=EXCLUDED.time_window_minutes,widgets=EXCLUDED.widgets,updated_at=now()`,
+    [
+      current.tenantId,
+      current.id,
+      dashboardId,
+      view.refresh_ms,
+      view.time_window_minutes,
+      JSON.stringify(view.widgets),
+    ],
+  );
 }

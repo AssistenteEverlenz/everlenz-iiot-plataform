@@ -14,6 +14,11 @@ export interface Device {
   serial_number?: string | null;
   mqtt_identifier?: string | null;
   provisioning_status?: string;
+  site_name?: string;
+  site_reference?: string;
+  mqtt_topic?: string;
+  mqtt_username?: string;
+  mqtt_password?: string;
 }
 export interface Sample {
   tag_id: string;
@@ -65,7 +70,16 @@ export interface DashboardWidget {
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';
-  config: { color?: string; min?: number; max?: number; decimals?: number };
+  config: {
+    color?: string;
+    min?: number;
+    max?: number;
+    decimals?: number;
+    gaugeStyle?: 'top' | 'bottom' | 'left' | 'right';
+    alarmEnabled?: boolean;
+    warningLow?: number;
+    warningHigh?: number;
+  };
   key: string | null;
   tag_name: string | null;
   unit: string | null;
@@ -83,11 +97,12 @@ export interface Dashboard {
   widget_count?: number;
   widgets?: DashboardWidget[];
 }
-export function usePoll<T>(path: string, intervalMs = 5000) {
+export function usePoll<T>(path: string | null, intervalMs = 5000) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState<string | null>(null);
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
+      if (!path) return;
       try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? '/api'}${path}`, {
           signal,
@@ -109,6 +124,8 @@ export function usePoll<T>(path: string, intervalMs = 5000) {
   );
   useEffect(() => {
     setData(null);
+    setError(null);
+    if (!path) return;
     const controller = new AbortController();
     void refresh(controller.signal);
     const timer = setInterval(() => void refresh(controller.signal), intervalMs);
@@ -116,8 +133,8 @@ export function usePoll<T>(path: string, intervalMs = 5000) {
       controller.abort();
       clearInterval(timer);
     };
-  }, [refresh, intervalMs]);
-  return { data, error, refresh };
+  }, [refresh, intervalMs, path]);
+  return { data, error, loading: path !== null && data === null, refresh };
 }
 export async function mutate<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) {
   const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? '/api'}${path}`, {

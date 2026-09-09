@@ -267,6 +267,9 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(created.statusCode).toBe(201);
       expect(created.json().device.device_code).toMatch(/^EVL-HAI-/);
       expect(created.json().device.provisioning_status).toBe('awaiting_connection');
+      expect(created.json().connection.username).toBe(created.json().device.device_code.toLowerCase());
+      expect(created.json().connection.password).toHaveLength(20);
+      expect(created.json().connection.topic).toMatch(/^iiot\//);
     } finally {
       await api.close();
     }
@@ -355,6 +358,47 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
           })
         ).statusCode,
       ).toBe(403);
+      const masterDashboard = await api.inject({
+        url: '/api/dashboards/55555555-5555-4555-8555-555555555555',
+        headers: { authorization: `Bearer ${masterToken}` },
+      });
+      const clientDashboard = await api.inject({
+        method: 'PATCH',
+        url: '/api/dashboards/55555555-5555-4555-8555-555555555555',
+        headers: { authorization: `Bearer ${clientToken}` },
+        payload: { refreshMs: 1000 },
+      });
+      expect(clientDashboard.statusCode).toBe(200);
+      expect(clientDashboard.json().refresh_ms).toBe(1000);
+      const clientTags = await api.inject({
+        url: `/api/devices/${HAIWELL}/tags`,
+        headers: { authorization: `Bearer ${clientToken}` },
+      });
+      const addedWidget = await api.inject({
+        method: 'POST',
+        url: '/api/dashboards/55555555-5555-4555-8555-555555555555/widgets',
+        headers: { authorization: `Bearer ${clientToken}` },
+        payload: {
+          deviceId: HAIWELL,
+          tagId: clientTags.json()[0].id,
+          widgetType: 'value',
+          title: 'Visão pessoal',
+          width: 'small',
+          config: { decimals: 2 },
+        },
+      });
+      expect(addedWidget.statusCode).toBe(201);
+      const clientView = await api.inject({
+        url: '/api/dashboards/55555555-5555-4555-8555-555555555555',
+        headers: { authorization: `Bearer ${clientToken}` },
+      });
+      expect(clientView.json().widgets).toHaveLength(masterDashboard.json().widgets.length + 1);
+      const masterViewAfter = await api.inject({
+        url: '/api/dashboards/55555555-5555-4555-8555-555555555555',
+        headers: { authorization: `Bearer ${masterToken}` },
+      });
+      expect(masterViewAfter.json().widgets).toHaveLength(masterDashboard.json().widgets.length);
+      expect(masterViewAfter.json().refresh_ms).toBe(masterDashboard.json().refresh_ms);
       expect(
         (
           await api.inject({

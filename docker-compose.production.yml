@@ -22,6 +22,7 @@ services:
       - mqtt-auth:/mosquitto/auth
       - mqtt-data:/mosquitto/data
       - mqtt-log:/mosquitto/log
+      - mqtt-provision:/mosquitto/provision
       - type: bind
         # Coolify rejects environment substitution in bind sources. This path is
         # provisioned by infrastructure/mosquitto/sync-traefik-cert.py.
@@ -85,6 +86,9 @@ services:
       DEV_TENANT_ID: ${DEV_TENANT_ID:?Set the server-side tenant UUID}
       OPERATOR_RAW_ACCESS: ${OPERATOR_RAW_ACCESS:-false}
       DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-30}
+      MQTT_PROVISION_DIR: /mqtt-provision/requests
+    volumes:
+      - mqtt-provision:/mqtt-provision
     expose: ['3001']
     healthcheck:
       test:
@@ -127,3 +131,4 @@ volumes:
   mqtt-auth:
   mqtt-data:
   mqtt-log:
+  mqtt-provision:

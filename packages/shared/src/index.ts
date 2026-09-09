@@ -35,6 +35,7 @@ export const env = z
     MQTT_DISCOVERY_MODE: bool.default(false),
     MQTT_TOPIC_FILTER: z.string().default('iiot/+/+/+/telemetry,data/POC/group1/A7-001'),
     MQTT_CLIENT_ID: z.string().default('everlenz-ingestor'),
+    MQTT_PROVISION_DIR: z.string().optional(),
     SIMULATOR_INTERVAL_MS: z.coerce.number().int().min(100).default(2000),
     API_PORT: z.coerce.number().int().positive().default(3001),
     INGESTOR_HEALTH_PORT: z.coerce.number().int().positive().default(3002),

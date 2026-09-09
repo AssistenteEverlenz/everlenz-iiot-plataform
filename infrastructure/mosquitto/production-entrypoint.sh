@@ -18,4 +18,8 @@ test -s /mosquitto/certs/fullchain.pem && test -s /mosquitto/certs/privkey.pem |
 }
 chown -R 1883:1883 /mosquitto/config /mosquitto/data /mosquitto/log
 echo 'service=mosquitto event=broker_starting'
-exec mosquitto -c /mosquitto/config/mosquitto.conf
+mosquitto -c /mosquitto/config/mosquitto.conf &
+broker_pid=$!
+trap 'kill -TERM "$broker_pid" 2>/dev/null || true' TERM INT
+/bin/sh /init/provision-watcher.sh "$broker_pid" &
+wait "$broker_pid"

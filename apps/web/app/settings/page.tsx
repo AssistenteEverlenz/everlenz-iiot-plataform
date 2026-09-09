@@ -41,6 +41,26 @@ export default function SettingsPage() {
       setSaving(false);
     }
   }
+  function selectLogo(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setMessage('Use uma imagem PNG, JPG ou WebP.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 600 * 1024) {
+      setMessage('A imagem deve ter no máximo 600 KB.');
+      event.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((current) => ({ ...current, logoUrl: String(reader.result ?? '') }));
+      setMessage('');
+    };
+    reader.readAsDataURL(file);
+  }
   return (
     <>
       <div className="heading">
@@ -69,14 +89,16 @@ export default function SettingsPage() {
             />
           </label>
           <label className="field">
-            URL do logotipo
-            <input
-              type="url"
-              value={form.logoUrl}
-              onChange={(event) => setForm({ ...form, logoUrl: event.target.value })}
-              placeholder="https://..."
-            />
+            Arquivo do logotipo
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={selectLogo} />
+            <small>PNG, JPG ou WebP com até 600 KB. A imagem também será usada no carregamento.</small>
           </label>
+          {form.logoUrl && (
+            <div className="logo-upload-preview">
+              <img src={form.logoUrl} alt="Prévia do logotipo" />
+              <button type="button" onClick={() => setForm({ ...form, logoUrl: '' })}>Remover</button>
+            </div>
+          )}
           <div className="color-fields">
             <label className="field">
               Cor principal
@@ -104,7 +126,9 @@ export default function SettingsPage() {
           className="brand-preview"
           style={{ background: `linear-gradient(145deg,${form.primaryColor},#173f48)` }}
         >
-          <span style={{ background: form.accentColor }}>e</span>
+          <span style={{ background: form.accentColor }}>
+            {form.logoUrl ? <img src={form.logoUrl} alt="" /> : 'e'}
+          </span>
           <div>
             <strong>{form.productName || 'Nome da plataforma'}</strong>
             <small>{form.subtitle || 'Assinatura da marca'}</small>

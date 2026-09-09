@@ -54,6 +54,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   } | null>();
   const [branding, setBranding] = useState(defaultBranding);
   const [collapsed, setCollapsed] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
 
   async function refreshSession() {
@@ -67,7 +68,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
       .then(setBranding)
       .catch(() => setBranding(defaultBranding));
     void refreshSession();
-    setCollapsed(window.localStorage.getItem('iiot-sidebar-collapsed') === 'true');
+    const timer = window.setTimeout(() => setCollapsed(true), 400);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -111,17 +113,15 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
     window.location.replace('/login');
   }
 
-  function toggleSidebar() {
-    setCollapsed((current) => {
-      window.localStorage.setItem('iiot-sidebar-collapsed', String(!current));
-      return !current;
-    });
-  }
-
+  const sidebarIsCollapsed = collapsed && !sidebarHovered;
   return (
     <PlatformContext.Provider value={{ ...session, branding, refreshSession }}>
-      <div className={`platform-shell ${collapsed ? 'sidebar-collapsed' : ''}`} style={style}>
-        <aside className="platform-sidebar">
+      <div className={`platform-shell ${sidebarIsCollapsed ? 'sidebar-collapsed' : ''}`} style={style}>
+        <aside
+          className="platform-sidebar"
+          onMouseEnter={() => setSidebarHovered(true)}
+          onMouseLeave={() => setSidebarHovered(false)}
+        >
           <div className="sidebar-brand-row">
             <Link className="brand" href="/">
               {branding.logo_url ? <img src={branding.logo_url} alt="" /> : <b>e</b>}
@@ -130,9 +130,6 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
                 <small>{branding.subtitle}</small>
               </span>
             </Link>
-            <button className="collapse-button" onClick={toggleSidebar} aria-label="Recolher menu">
-              {collapsed ? '›' : '‹'}
-            </button>
           </div>
           <div className="workspace nav-label">
             POC INDUSTRIAL <small>Operação conectada</small>
@@ -143,7 +140,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 className={active(pathname, item.href) ? 'active' : ''}
                 href={item.href}
-                title={collapsed ? item.label : undefined}
+                title={sidebarIsCollapsed ? item.label : undefined}
               >
                 <span className="nav-icon">{item.icon}</span>
                 <span className="nav-label">{item.label}</span>
@@ -274,14 +271,18 @@ function FirstAccessModal({ onComplete }: { onComplete: () => Promise<void> }) {
   );
 }
 
-function LoadingScreen({ branding }: { branding: Branding }) {
+export function BrandSpinner({ branding }: { branding: Branding }) {
+  return branding.logo_url ? (
+    <span className="brand-spinner"><img src={branding.logo_url} alt="" /></span>
+  ) : (
+    <span className="brand-spinner brand-spinner-fallback">e</span>
+  );
+}
+
+export function LoadingScreen({ branding }: { branding: Branding }) {
   return (
     <main className="platform-loading">
-      <div className="industrial-spinner">
-        <i />
-        <i />
-        <i />
-      </div>
+      <BrandSpinner branding={branding} />
       <strong>{branding.product_name}</strong>
       <span>Sincronizando seu ambiente industrial...</span>
     </main>

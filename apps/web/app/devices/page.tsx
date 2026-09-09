@@ -1,24 +1,19 @@
 'use client';
-import { useState } from 'react';
+
+import { useEffect, useMemo, useState } from 'react';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, usePoll, type Device } from '../../components/data';
 import { DevicesTable } from '../../components/DevicesTable';
 
-interface Site {
-  id: string;
-  name: string;
-  slug: string;
-}
-interface CreatedDevice {
-  device: Device;
-  connection: {
-    host: string;
-    port: number;
-    tls: boolean;
-    topic: string;
-    suggestedUsername: string;
-  };
-}
+interface Site { id: string; name: string; slug: string; reference: string }
+interface Connection { host: string; port: number; tls: boolean; topic: string; username: string; password?: string; clientReference: string; credentialActive?: boolean }
+interface CreatedDevice { device: Device; connection: Connection }
+const models = {
+  Haiwell: ['A7', 'A7 Pro', 'A10', 'A10 Pro', 'A15', 'A15 Pro'],
+  Weintek: ['cMT2078X', 'cMT2108X2', 'cMT2158X', 'cMT2166X', 'cMT3072XP', 'cMT3092X', 'cMT3102X', 'cMT3108XH', 'cMT3152X', 'cMT3162X', 'cMT-FHDX-820', 'cMT-SVRX-820'],
+  Delta: ['DOP-3S07S3E2', 'DOP-3S10S3E2'],
+} as const;
+type Manufacturer = keyof typeof models;
 
 export default function Devices() {
   const { user } = usePlatform();
@@ -27,218 +22,72 @@ export default function Devices() {
   const sites = usePoll<Site[]>('/sites');
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<CreatedDevice | null>(null);
+  const [selected, setSelected] = useState<Device | null>(null);
+  const [siteSearch, setSiteSearch] = useState('');
+  const [addingSite, setAddingSite] = useState(false);
+  const [siteForm, setSiteForm] = useState({ name: '', reference: '' });
   const [error, setError] = useState('');
-  const [form, setForm] = useState({
-    siteId: '',
-    name: '',
-    manufacturer: 'Haiwell',
-    model: 'A7',
-    serialNumber: '',
-    adapterType: 'haiwell',
-    topic: 'data/POC/group1/A7-002',
-  });
+  const [form, setForm] = useState({ siteId: '', name: '', manufacturer: 'Haiwell' as Manufacturer, model: 'A7', serialNumber: '' });
+  const filteredSites = useMemo(() => (sites.data ?? []).filter((site) => `${site.name} ${site.reference}`.toLowerCase().includes(siteSearch.toLowerCase())), [sites.data, siteSearch]);
+  useEffect(() => { if (!form.siteId && sites.data?.[0]) setForm((current) => ({ ...current, siteId: sites.data![0].id })); }, [sites.data, form.siteId]);
+
+  function changeManufacturer(manufacturer: Manufacturer) { setForm({ ...form, manufacturer, model: models[manufacturer][0] }); }
+  async function createSite() {
+    try { const site = await mutate<Site>('/sites', 'POST', siteForm); await sites.refresh(); setForm({ ...form, siteId: site.id }); setSiteSearch(site.name); setAddingSite(false); setSiteForm({ name: '', reference: '' }); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao cadastrar cliente.'); }
+  }
   async function create(event: React.FormEvent) {
-    event.preventDefault();
-    setError('');
-    try {
-      const result = await mutate<CreatedDevice>('/devices', 'POST', {
-        ...form,
-        siteId: form.siteId || sites.data?.[0]?.id,
-        serialNumber: form.serialNumber || null,
-      });
-      setCreated(result);
-      await devices.refresh();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Falha ao cadastrar');
-    }
+    event.preventDefault(); setError('');
+    try { const result = await mutate<CreatedDevice>('/devices', 'POST', { ...form, serialNumber: form.serialNumber || null }); setCreated(result); await devices.refresh(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao cadastrar equipamento.'); }
   }
-  function close() {
-    setOpen(false);
-    setCreated(null);
-    setError('');
+  function close() { setOpen(false); setCreated(null); setSelected(null); setError(''); }
+  function selectDevice(device: Device) { setSelected(device); setForm({ siteId: device.site_id, name: device.name, manufacturer: device.manufacturer as Manufacturer, model: device.model, serialNumber: device.serial_number ?? '' }); setOpen(true); }
+  async function saveDevice(event: React.FormEvent) {
+    event.preventDefault(); if (!selected) return;
+    try { await mutate(`/devices/${selected.id}`, 'PATCH', { ...form, serialNumber: form.serialNumber || null }); await devices.refresh(); close(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar equipamento.'); }
   }
-  return (
-    <>
-      <div className="heading">
-        <div>
-          <div className="eyebrow">ATIVOS INDUSTRIAIS</div>
-          <h1>Dispositivos</h1>
-          <p>Inventário, identidade única e conectividade dos equipamentos.</p>
-        </div>
-        {user.role === 'master' && (
-          <div className="toolbar-actions">
-            <button className="primary-button" onClick={() => setOpen(true)}>
-              ＋ Novo dispositivo
-            </button>
-          </div>
+  async function deleteDevice() {
+    if (!selected || !window.confirm(`Excluir o equipamento “${selected.name}”?`)) return;
+    try { await mutate(`/devices/${selected.id}`, 'DELETE'); await devices.refresh(); close(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao excluir equipamento.'); }
+  }
+  const connection = created?.connection ?? (selected ? { host: 'mqtt.everlenz.com.br', port: 8883, tls: true, topic: selected.mqtt_topic ?? '—', username: selected.mqtt_username ?? selected.device_code.toLowerCase(), password: selected.mqtt_password, clientReference: selected.site_reference ?? '—' } : null);
+
+  return <>
+    <div className="heading"><div><div className="eyebrow">ATIVOS INDUSTRIAIS</div><h1>Dispositivos</h1><p>Inventário, identidade única e conectividade dos equipamentos.</p></div>{user.role === 'master' && <div className="toolbar-actions"><button className="primary-button" onClick={() => { setForm({ siteId: sites.data?.[0]?.id ?? '', name: '', manufacturer: 'Haiwell', model: 'A7', serialNumber: '' }); setOpen(true); }}>＋ Novo dispositivo</button></div>}</div>
+    {devices.error && <div className="error-banner">{devices.error}</div>}
+    <section className="card"><DevicesTable devices={devices.data} onSelect={user.role === 'master' ? selectDevice : undefined}/><div className="pager"><button disabled={!offset} onClick={() => setOffset(offset - 50)}>Anterior</button><span>Página {offset / 50 + 1}</span><button disabled={!devices.data || devices.data.length < 50} onClick={() => setOffset(offset + 50)}>Próxima</button></div></section>
+    {open && <div className="modal-backdrop" onMouseDown={close}><div className="modal-card wizard-modal" onMouseDown={(event) => event.stopPropagation()}>
+      {created ? <CredentialCard created={created} onClose={close}/> : <form onSubmit={selected ? saveDevice : create}>
+        <div className="modal-title"><div><div className="eyebrow">{selected ? 'EQUIPAMENTO CADASTRADO' : 'COMISSIONAMENTO GUIADO'}</div><h2>{selected ? selected.name : 'Novo dispositivo'}</h2></div><button type="button" className="icon-button" onClick={close}>×</button></div>
+        {selected && connection && (
+          <ConnectionCard connection={connection} deviceCode={selected.device_code}/>
         )}
-      </div>
-      {devices.error && <div className="error-banner">{devices.error}</div>}
-      <section className="card">
-        <DevicesTable devices={devices.data} />
-        <div className="pager">
-          <button disabled={!offset} onClick={() => setOffset(offset - 50)}>
-            Anterior
-          </button>
-          <span>Página {offset / 50 + 1}</span>
-          <button
-            disabled={!devices.data || devices.data.length < 50}
-            onClick={() => setOffset(offset + 50)}
-          >
-            Próxima
-          </button>
-        </div>
-      </section>
-      {open && (
-        <div className="modal-backdrop" onMouseDown={close}>
-          <div className="modal-card wizard-modal" onMouseDown={(event) => event.stopPropagation()}>
-            {created ? (
-              <>
-                <div className="success-mark">✓</div>
-                <div className="eyebrow">IDENTIDADE RESERVADA</div>
-                <h2>{created.device.name}</h2>
-                <p>
-                  O ativo recebeu um UUID interno imutável e um código curto para operação, suporte
-                  e associação futura aos usuários.
-                </p>
-                <div className="commissioning-card">
-                  <span>Código Everlenz</span>
-                  <strong>{created.device.device_code}</strong>
-                  <span>Broker TLS</span>
-                  <code>
-                    {created.connection.host}:{created.connection.port}
-                  </code>
-                  <span>Tópico</span>
-                  <code>{created.connection.topic}</code>
-                  <span>Usuário sugerido</span>
-                  <code>{created.connection.suggestedUsername}</code>
-                </div>
-                <div className="notice">
-                  <b>Próxima etapa operacional</b>A credencial individual precisa ser ativada no
-                  broker antes da primeira conexão. Isso permanece controlado para não expor criação
-                  de senhas MQTT na área pública.
-                </div>
-                <div className="modal-actions">
-                  <button onClick={() => window.print()}>Imprimir ficha</button>
-                  <button className="primary-button" onClick={close}>
-                    Concluir
-                  </button>
-                </div>
-              </>
-            ) : (
-              <form onSubmit={create}>
-                <div className="modal-title">
-                  <div>
-                    <div className="eyebrow">COMISSIONAMENTO GUIADO</div>
-                    <h2>Novo dispositivo</h2>
-                  </div>
-                  <button type="button" className="icon-button" onClick={close}>
-                    ×
-                  </button>
-                </div>
-                <div className="wizard-steps">
-                  <span className="active">1 Identidade</span>
-                  <span>2 MQTT</span>
-                  <span>3 Conectar</span>
-                </div>
-                <div className="form-grid">
-                  <label className="field full-field">
-                    Nome do equipamento
-                    <input
-                      required
-                      value={form.name}
-                      onChange={(event) => setForm({ ...form, name: event.target.value })}
-                      placeholder="Ex.: Forno túnel 01"
-                    />
-                  </label>
-                  <label className="field">
-                    Fábrica / unidade
-                    <select
-                      value={form.siteId}
-                      onChange={(event) => setForm({ ...form, siteId: event.target.value })}
-                    >
-                      {sites.data?.map((site) => (
-                        <option key={site.id} value={site.id}>
-                          {site.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    Fabricante
-                    <input
-                      required
-                      value={form.manufacturer}
-                      onChange={(event) => setForm({ ...form, manufacturer: event.target.value })}
-                    />
-                  </label>
-                  <label className="field">
-                    Modelo
-                    <input
-                      required
-                      value={form.model}
-                      onChange={(event) => setForm({ ...form, model: event.target.value })}
-                    />
-                  </label>
-                  <label className="field">
-                    Número de série
-                    <input
-                      value={form.serialNumber}
-                      onChange={(event) => setForm({ ...form, serialNumber: event.target.value })}
-                      placeholder="Opcional"
-                    />
-                  </label>
-                  <label className="field">
-                    Formato dos dados
-                    <select
-                      value={form.adapterType}
-                      onChange={(event) => setForm({ ...form, adapterType: event.target.value })}
-                    >
-                      <option value="haiwell">Haiwell</option>
-                      <option value="generic">JSON Everlenz</option>
-                    </select>
-                  </label>
-                  <label className="field full-field">
-                    Tópico MQTT
-                    <input
-                      required
-                      value={form.topic}
-                      onChange={(event) => setForm({ ...form, topic: event.target.value })}
-                    />
-                    <small>Precisa ser exclusivo para este equipamento.</small>
-                  </label>
-                </div>
-                <div className="setup-guide">
-                  <div>
-                    <span>01</span>
-                    <b>Servidor</b>
-                    <small>mqtt.everlenz.com.br · TLS 8883</small>
-                  </div>
-                  <div>
-                    <span>02</span>
-                    <b>Autenticação</b>
-                    <small>Uma credencial exclusiva por ativo</small>
-                  </div>
-                  <div>
-                    <span>03</span>
-                    <b>Descoberta</b>
-                    <small>As variáveis aparecem no botão ＋ do painel</small>
-                  </div>
-                </div>
-                {error && <div className="form-error">{error}</div>}
-                <div className="modal-actions">
-                  <button type="button" onClick={close}>
-                    Cancelar
-                  </button>
-                  <button className="primary-button" type="submit">
-                    Criar identidade →
-                  </button>
-                </div>
-              </form>
-            )}
+        <div className="wizard-steps"><span className="active">1 Cliente</span><span className="active">2 Equipamento</span><span>3 Conectar</span></div>
+        <div className="form-grid">
+          <label className="field full-field">Nome do equipamento<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Forno túnel 01"/></label>
+          <div className="field full-field">Cliente / fábrica / unidade
+            <input type="search" value={siteSearch} onChange={(event) => setSiteSearch(event.target.value)} placeholder="Busque por nome ou referência…"/>
+            <div className="site-picker">{filteredSites.map((site) => <button type="button" key={site.id} className={form.siteId === site.id ? 'selected' : ''} onClick={() => { setForm({ ...form, siteId: site.id }); setSiteSearch(site.name); }}>{site.name}<small>{site.reference}</small></button>)}<button type="button" className="add-site" onClick={() => setAddingSite(!addingSite)}>＋ Novo cliente/unidade</button></div>
           </div>
+          {addingSite && <div className="inline-site-form full-field"><label className="field">Nome<input value={siteForm.name} onChange={(event) => setSiteForm({ ...siteForm, name: event.target.value })}/></label><label className="field">Referência do cliente<input value={siteForm.reference} onChange={(event) => setSiteForm({ ...siteForm, reference: event.target.value.toUpperCase() })} placeholder="Ex.: CER-ABC"/></label><button type="button" className="primary-button" onClick={() => void createSite()}>Cadastrar cliente</button></div>}
+          <label className="field">Fabricante<select value={form.manufacturer} onChange={(event) => changeManufacturer(event.target.value as Manufacturer)}>{Object.keys(models).map((manufacturer) => <option key={manufacturer}>{manufacturer}</option>)}</select></label>
+          <label className="field">Modelo<select value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })}>{models[form.manufacturer].map((model) => <option key={model}>{model}</option>)}</select></label>
+          <label className="field full-field">Número de série<input value={form.serialNumber} onChange={(event) => setForm({ ...form, serialNumber: event.target.value })} placeholder="Opcional"/></label>
         </div>
-      )}
-    </>
-  );
+        <div className="notice"><b>Tópico gerado automaticamente</b>O sistema cria um tópico MQTT exclusivo usando o cliente, o equipamento e o código Everlenz.</div>
+        {error && <div className="form-error">{error}</div>}
+        <div className="modal-actions">{selected && <button type="button" className="danger-text" onClick={() => void deleteDevice()}>Excluir equipamento</button>}<button type="button" onClick={close}>Cancelar</button><button className="primary-button">{selected ? 'Salvar alterações' : 'Criar identidade →'}</button></div>
+      </form>}
+    </div></div>}
+  </>;
+}
+
+function ConnectionCard({ connection, deviceCode }: { connection: Connection; deviceCode: string }) {
+  return <div className="commissioning-card compact-credentials"><span>Referência do cliente</span><strong>{connection.clientReference}</strong><span>Código Everlenz</span><strong>{deviceCode}</strong><span>Broker TLS</span><code>{connection.host}:{connection.port}</code><span>Tópico</span><code>{connection.topic}</code><span>User name</span><code>{connection.username}</code><span>Password</span><code>{connection.password ?? 'Disponível após ativar a credencial MQTT'}</code></div>;
+}
+function CredentialCard({ created, onClose }: { created: CreatedDevice; onClose: () => void }) {
+  return <><div className="success-mark">✓</div><div className="eyebrow">IDENTIDADE E CREDENCIAL CRIADAS</div><h2>{created.device.name}</h2><p>Use estes dados no campo User info da IHM. Eles continuam disponíveis ao abrir o equipamento.</p><ConnectionCard connection={created.connection} deviceCode={created.device.device_code}/>{created.connection.credentialActive === false && <div className="notice"><b>Ativação do broker pendente</b>A identidade foi salva, mas o broker ainda não confirmou a credencial. Abra novamente o equipamento após o serviço sincronizar.</div>}<div className="modal-actions"><button onClick={() => window.print()}>Imprimir ficha</button><button className="primary-button" onClick={onClose}>Concluir</button></div></>;
 }
