@@ -7,11 +7,8 @@ const allowed =
 async function forward(request: NextRequest, params: Promise<{ path: string[] }>) {
   const path = (await params).path.join('/');
   if (!allowed.test(path)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (request.method !== 'GET') {
-    const origin = request.headers.get('origin');
-    if (origin && origin !== request.nextUrl.origin)
-      return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
-  }
+  if (request.method !== 'GET' && !originAllowed(request))
+    return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
   const base = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001';
   const body = request.method === 'GET' ? undefined : await request.text();
   const token = request.cookies.get(sessionCookie)?.value;
@@ -41,6 +38,40 @@ async function forward(request: NextRequest, params: Promise<{ path: string[] }>
     return new NextResponse(await result.arrayBuffer(), { status: result.status, headers });
   } catch {
     return NextResponse.json({ error: 'API indisponível' }, { status: 502 });
+  }
+}
+
+function originAllowed(request: NextRequest) {
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host.toLowerCase();
+  } catch {
+    return false;
+  }
+  const candidates = [
+    request.headers.get('x-forwarded-host'),
+    request.headers.get('host'),
+    process.env.IIOT_WEB_DOMAIN,
+    process.env.SERVICE_FQDN_WEB,
+    process.env.SERVICE_URL_WEB,
+  ];
+  return candidates.some((candidate) =>
+    candidate
+      ?.split(',')
+      .map((value) => externalHost(value))
+      .includes(originHost),
+  );
+}
+
+function externalHost(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return '';
+  try {
+    return new URL(normalized.includes('://') ? normalized : `https://${normalized}`).host;
+  } catch {
+    return '';
   }
 }
 
