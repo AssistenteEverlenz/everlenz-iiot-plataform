@@ -266,10 +266,31 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       });
       expect(created.statusCode).toBe(201);
       expect(created.json().device.device_code).toMatch(/^EVL-HAI-/);
+      expect(created.json().dashboardId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
       expect(created.json().device.provisioning_status).toBe('awaiting_connection');
       expect(created.json().connection.username).toBe(created.json().device.device_code.toLowerCase());
       expect(created.json().connection.password).toHaveLength(20);
       expect(created.json().connection.topic).toMatch(/^iiot\//);
+      const dashboardsAfterCreate = (await api.inject('/api/dashboards')).json() as {
+        id: string;
+        device_name: string;
+        site_name: string;
+        device_online: boolean;
+        device_deactivated: boolean;
+      }[];
+      expect(dashboardsAfterCreate).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: created.json().dashboardId,
+            device_name: 'Forno túnel teste',
+            site_name: 'Laboratório',
+            device_online: false,
+            device_deactivated: false,
+          }),
+        ]),
+      );
     } finally {
       await api.close();
     }
@@ -308,6 +329,19 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       });
       expect(masterChange.statusCode).toBe(200);
       const masterToken = masterChange.json().token as string;
+      const brandingUpdate = await api.inject({
+        method: 'PATCH',
+        url: '/api/branding',
+        headers: { authorization: `Bearer ${masterToken}` },
+        payload: {
+          productName: 'Everlenz IIoT',
+          subtitle: 'Industrial Intelligence',
+          logoUrl: `data:image/png;base64,${'A'.repeat(700_000)}`,
+          primaryColor: '#0b2028',
+          accentColor: '#12b8a6',
+        },
+      });
+      expect(brandingUpdate.statusCode).toBe(200);
       const created = await api.inject({
         method: 'POST',
         url: '/api/users',

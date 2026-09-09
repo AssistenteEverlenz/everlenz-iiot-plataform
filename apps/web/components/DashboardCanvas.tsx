@@ -34,7 +34,7 @@ interface Statistic {
 }
 
 function number(value: number | null | undefined, decimals = 1) {
-  return value == null ? 'â€”' : value.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return value == null ? '—' : value.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 function SixDots() {
@@ -88,9 +88,9 @@ function Widget({
           <h2>{widget.title}</h2>
         </div>
         <div className="widget-actions">
-          <button className="icon-button" title="Editar indicador" onClick={edit}>âœŽ</button>
+          <button className="icon-button" title="Editar indicador" onClick={edit}>✎</button>
           <button className="icon-button danger-button" title="Remover" onClick={remove}>
-            Ã—
+            ×
           </button>
         </div>
       </div>
@@ -146,7 +146,7 @@ function Widget({
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="widget-empty">Aguardando histÃ³rico</div>
+          <div className="widget-empty">Aguardando histórico</div>
         ))}
       {widget.widget_type === 'gauge' && (
         <div className={`gauge-v2 gauge-${widget.config.gaugeStyle ?? 'top'}`}>
@@ -167,7 +167,7 @@ function Widget({
         <div className={`machine-status ${latest?.value_boolean ? 'running' : ''}`}>
           <span className="status-orb" />
           <div>
-            <strong>{latest?.value_boolean ? 'Em operaÃ§Ã£o' : 'Parada'}</strong>
+            <strong>{latest?.value_boolean ? 'Em operação' : 'Parada'}</strong>
             <small>{time(latest?.timestamp)}</small>
           </div>
         </div>
@@ -175,7 +175,7 @@ function Widget({
       {widget.widget_type === 'value' && (
         <>
           <div className="hero-value">
-            {latest?.value_number != null ? number(latest.value_number, widget.config.decimals ?? 1) : latest?.value_boolean != null ? (latest.value_boolean ? 'Ligado' : 'Desligado') : latest?.value_text ?? 'â€”'}
+            {latest?.value_number != null ? number(latest.value_number, widget.config.decimals ?? 1) : latest?.value_boolean != null ? (latest.value_boolean ? 'Ligado' : 'Desligado') : latest?.value_text ?? '—'}
             <span>{widget.unit}</span>
           </div>
           <div className="spark-note">Atualizado {time(latest?.timestamp)}</div>
@@ -185,11 +185,11 @@ function Widget({
         <>
           <div className="hero-value">
             {number(statistics?.average, widget.config.decimals ?? 1)}
-            <span>{widget.unit} mÃ©dia</span>
+            <span>{widget.unit} média</span>
           </div>
           <div className="three-metrics">
             <span>
-              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>mÃ­nimo
+              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>mínimo
             </span>
             <span>
               <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>pico
@@ -203,13 +203,13 @@ function Widget({
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
           <strong>OEE pronto para configurar</strong>
-          <span>Associe contagem total, peÃ§as boas, rejeitos, tempo planejado e ciclo ideal.</span>
+          <span>Associe contagem total, peças boas, rejeitos, tempo planejado e ciclo ideal.</span>
         </div>
       )}
       {widget.widget_type === 'pareto' && (
         <div className="model-placeholder">
           <strong>Pareto de perdas</strong>
-          <span>O grÃ¡fico surgirÃ¡ quando motivos e duraÃ§Ã£o das paradas forem coletados.</span>
+          <span>O gráfico surgirá quando motivos e duração das paradas forem coletados.</span>
         </div>
       )}
     </article>
@@ -310,7 +310,7 @@ export function DashboardCanvas({ id }: { id: string }) {
       await Promise.all([dashboard.refresh(), signals.refresh()]);
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : 'NÃ£o foi possÃ­vel adicionar o indicador.',
+        reason instanceof Error ? reason.message : 'Não foi possível adicionar o indicador.',
       );
     }
   }
@@ -337,7 +337,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar indicador.'); }
   }
   async function removeWidget(widget: DashboardWidget) {
-    if (!window.confirm(`Remover â€œ${widget.title}â€ deste painel?`)) return;
+    if (!window.confirm(`Remover “${widget.title}” deste painel?`)) return;
     try { await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE'); setEditingWidget(null); await dashboard.refresh(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao remover indicador.'); }
   }
@@ -350,14 +350,14 @@ export function DashboardCanvas({ id }: { id: string }) {
   }
   if (!loadedOnce) {
     const loadError = dashboard.error || device.error || latest.error || signals.error || statistics.error || history.error;
-    if (loadingTimedOut && loadError) return <div className="dashboard-load-failed"><BrandSpinner branding={branding}/><h2>NÃ£o foi possÃ­vel carregar o painel</h2><p>{loadError}</p><button onClick={() => window.location.reload()}>Tentar novamente</button></div>;
-    return <div className="dashboard-loading"><BrandSpinner branding={branding}/><strong>Carregando dados do equipamentoâ€¦</strong></div>;
+    if (loadingTimedOut && loadError) return <div className="dashboard-load-failed"><BrandSpinner branding={branding}/><h2>Não foi possível carregar o painel</h2><p>{loadError}</p><button onClick={() => window.location.reload()}>Tentar novamente</button></div>;
+    return <div className="dashboard-loading"><BrandSpinner branding={branding}/><strong>Carregando dados do equipamento…</strong></div>;
   }
   return (
     <div className={tv ? 'tv-shell' : ''}>
       <div className="dashboard-toolbar">
         <div>
-          <div className="eyebrow">SALA DE CONTROLE Â· TEMPO REAL</div>
+          <div className="eyebrow">SALA DE CONTROLE · TEMPO REAL</div>
           <h1>{dashboard.data?.name ?? 'Painel industrial'}</h1>
           <p>
             {device.data?.name} <span className="code-chip">{device.data?.device_code}</span>
@@ -370,13 +370,13 @@ export function DashboardCanvas({ id }: { id: string }) {
           </span>
           <button onClick={() => window.print()}>Exportar PDF</button>
           <button onClick={() => setTv(!tv)}>{tv ? 'Sair da TV' : 'Modo TV'}</button>
-          <button className="primary-button" onClick={() => setAdding(true)}>ï¼‹ Adicionar indicador</button>
+          <button className="primary-button" onClick={() => setAdding(true)}>+ Adicionar indicador</button>
         </div>
       </div>
       <div className="editor-bar">
-          <span>Arraste os seis pontos para organizar. A configuraÃ§Ã£o fica salva no seu perfil.</span>
+          <span>Arraste os seis pontos para organizar. A configuração fica salva no seu perfil.</span>
           <label>
-            AtualizaÃ§Ã£o
+            Atualização
             <select
               value={refreshMs}
               onChange={(event) => void updateRefresh(Number(event.target.value))}
@@ -393,14 +393,14 @@ export function DashboardCanvas({ id }: { id: string }) {
       )}
       <div className="dashboard-meta">
         <span>
-          <b>Janela</b> Ãºltimos{' '}
+          <b>Janela</b> últimos{' '}
           {windowMinutes >= 60 ? `${windowMinutes / 60} h` : `${windowMinutes} min`}
         </span>
         <span>
-          <b>AtualizaÃ§Ã£o</b> {refreshMs / 1000} s
+          <b>Atualização</b> {refreshMs / 1000} s
         </span>
         <span>
-          <b>Ãšltimo sinal</b> {time(device.data?.last_message_at)}
+          <b>Último sinal</b> {time(device.data?.last_message_at)}
         </span>
       </div>
       <section className="widget-grid">
@@ -419,14 +419,14 @@ export function DashboardCanvas({ id }: { id: string }) {
         ))}
         {!widgets.length && (
           <button className="empty-dashboard" onClick={() => setAdding(true)}>
-            ï¼‹<strong>Monte a primeira visÃ£o da operaÃ§Ã£o</strong>
-            <span>Escolha uma variÃ¡vel que jÃ¡ chegou pelo MQTT.</span>
+            +<strong>Monte a primeira visão da operação</strong>
+            <span>Escolha uma variável que já chegou pelo MQTT.</span>
           </button>
         )}
       </section>
       <footer className="dashboard-footer">
         <span>EVERLENZ INDUSTRIAL INTELLIGENCE</span>
-        <span>Dados recebidos via MQTT Â· atualizaÃ§Ã£o automÃ¡tica</span>
+        <span>Dados recebidos via MQTT · atualização automática</span>
       </footer>
       {adding && (
         <div className="modal-backdrop" onMouseDown={() => setAdding(false)}>
@@ -441,13 +441,13 @@ export function DashboardCanvas({ id }: { id: string }) {
                 <h2>Adicionar ao painel</h2>
               </div>
               <button type="button" className="icon-button" onClick={() => setAdding(false)}>
-                Ã—
+                ×
               </button>
             </div>
-            <p>As variÃ¡veis abaixo foram descobertas nas mensagens reais deste equipamento.</p>
+            <p>As variáveis abaixo foram descobertas nas mensagens reais deste equipamento.</p>
             <div className="form-grid">
               <label className="field full-field">
-                VariÃ¡vel
+                Variável
                 <select
                   value={signalId}
                   onChange={(event) => {
@@ -459,20 +459,20 @@ export function DashboardCanvas({ id }: { id: string }) {
                     setTitle(next?.name || next?.key || '');
                   }}
                 >
-                  <option value="">Indicador calculado ou selecione uma variÃ¡velâ€¦</option>
+                  <option value="">Indicador calculado ou selecione uma variável…</option>
                   {signals.data?.map((signal) => (
                     <option key={signal.id} value={signal.id}>
-                      {signal.key} Â· {signal.data_type}
-                      {signal.configured ? ' Â· configurada' : ' Â· descoberta agora'}
+                      {signal.key} · {signal.data_type}
+                      {signal.configured ? ' · configurada' : ' · descoberta agora'}
                     </option>
                   ))}
                 </select>
               </label>
-              <div className="field full-field">VisualizaÃ§Ã£o<div className="visualization-picker">
-                {([['value','42','Valor'],['line','âŒ','TendÃªncia'],['gauge','â—’','Medidor'],['status','â—','Estado'],['production','â–¥','ProduÃ§Ã£o'],['oee','%','OEE'],['pareto','â–¥','Pareto']] as const).map(([type,icon,label]) => <button type="button" key={type} className={widgetType === type ? 'selected' : ''} onClick={() => setWidgetType(type)}><span>{icon}</span><b>{label}</b></button>)}
+              <div className="field full-field">Visualização<div className="visualization-picker">
+                {([['value','42','Valor'],['line','∿','Tendência'],['gauge','◒','Medidor'],['status','●','Estado'],['production','▥','Produção'],['oee','%','OEE'],['pareto','▥','Pareto']] as const).map(([type,icon,label]) => <button type="button" key={type} className={widgetType === type ? 'selected' : ''} onClick={() => setWidgetType(type)}><span>{icon}</span><b>{label}</b></button>)}
               </div></div>
               <label className="field">
-                TÃ­tulo
+                Título
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
@@ -495,22 +495,22 @@ export function DashboardCanvas({ id }: { id: string }) {
       {editingWidget && (
         <div className="modal-backdrop" onMouseDown={() => setEditingWidget(null)}>
           <form className="modal-card widget-settings-modal" onSubmit={saveWidget} onMouseDown={(event) => event.stopPropagation()}>
-            <div className="modal-title"><div><div className="eyebrow">CONFIGURAÃ‡ÃƒO DO ITEM</div><h2>{editingWidget.title}</h2></div><button type="button" className="icon-button" onClick={() => setEditingWidget(null)}>Ã—</button></div>
+            <div className="modal-title"><div><div className="eyebrow">CONFIGURAÇÃO DO ITEM</div><h2>{editingWidget.title}</h2></div><button type="button" className="icon-button" onClick={() => setEditingWidget(null)}>×</button></div>
             <div className="form-grid">
-              <label className="field full-field">TÃ­tulo<input required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-              <label className="field">Largura<select value={width} onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}><option value="small">Pequena</option><option value="medium">MÃ©dia</option><option value="large">Grande</option><option value="full">Linha inteira</option></select></label>
+              <label className="field full-field">Título<input required value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+              <label className="field">Largura<select value={width} onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}><option value="small">Pequena</option><option value="medium">Média</option><option value="large">Grande</option><option value="full">Linha inteira</option></select></label>
               <label className="field">Casas decimais<input type="number" min="0" max="6" value={decimals} onChange={(event) => setDecimals(Number(event.target.value))} /></label>
               <label className="field">Cor<input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
               {editingWidget.widget_type === 'gauge' && <>
-                <label className="field">MÃ­nimo<input type="number" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} /></label>
-                <label className="field">MÃ¡ximo<input type="number" value={maximum} onChange={(event) => setMaximum(Number(event.target.value))} /></label>
-                <div className="field full-field">PosiÃ§Ã£o do medidor<div className="gauge-style-picker">{(['top','bottom','left','right'] as const).map((style) => <button type="button" key={style} className={gaugeStyle === style ? 'selected' : ''} onClick={() => setGaugeStyle(style)}><span className={`mini-gauge mini-${style}`} />{{top:'Superior',bottom:'Inferior',left:'Esquerda',right:'Direita'}[style]}</button>)}</div></div>
+                <label className="field">Mínimo<input type="number" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} /></label>
+                <label className="field">Máximo<input type="number" value={maximum} onChange={(event) => setMaximum(Number(event.target.value))} /></label>
+                <div className="field full-field">Posição do medidor<div className="gauge-style-picker">{(['top','bottom','left','right'] as const).map((style) => <button type="button" key={style} className={gaugeStyle === style ? 'selected' : ''} onClick={() => setGaugeStyle(style)}><span className={`mini-gauge mini-${style}`} />{{top:'Superior',bottom:'Inferior',left:'Esquerda',right:'Direita'}[style]}</button>)}</div></div>
               </>}
               <label className="check-field full-field"><input type="checkbox" checked={alarmEnabled} onChange={(event) => setAlarmEnabled(event.target.checked)} />Ativar alarme visual por limite</label>
               {alarmEnabled && <><label className="field">Limite inferior<input type="number" value={warningLow} onChange={(event) => setWarningLow(Number(event.target.value))} /></label><label className="field">Limite superior<input type="number" value={warningHigh} onChange={(event) => setWarningHigh(Number(event.target.value))} /></label></>}
             </div>
             {error && <div className="form-error">{error}</div>}
-            <div className="modal-actions"><button type="button" className="danger-text" onClick={() => void removeWidget(editingWidget)}>Excluir item</button><button type="button" onClick={() => setEditingWidget(null)}>Cancelar</button><button className="primary-button">Salvar configuraÃ§Ã£o</button></div>
+            <div className="modal-actions"><button type="button" className="danger-text" onClick={() => void removeWidget(editingWidget)}>Excluir item</button><button type="button" onClick={() => setEditingWidget(null)}>Cancelar</button><button className="primary-button">Salvar configuração</button></div>
           </form>
         </div>
       )}

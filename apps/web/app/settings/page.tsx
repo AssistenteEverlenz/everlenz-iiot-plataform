@@ -32,16 +32,16 @@ export default function SettingsPage() {
     setMessage('');
     try {
       await mutate('/branding', 'PATCH', form);
-      setMessage('Identidade atualizada. Recarregue a página para aplicar em todo o menu.');
+      setMessage('Identidade atualizada em toda a plataforma.');
       await branding.refresh();
-      await platform.refreshSession();
+      await platform.refreshBranding();
     } catch (reason) {
       setMessage(reason instanceof Error ? reason.message : 'Falha ao salvar.');
     } finally {
       setSaving(false);
     }
   }
-  function selectLogo(event: React.ChangeEvent<HTMLInputElement>) {
+  async function selectLogo(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
@@ -49,17 +49,28 @@ export default function SettingsPage() {
       event.target.value = '';
       return;
     }
-    if (file.size > 600 * 1024) {
-      setMessage('A imagem deve ter no máximo 600 KB.');
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage('A imagem deve ter no máximo 5 MB.');
       event.target.value = '';
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((current) => ({ ...current, logoUrl: String(reader.result ?? '') }));
-      setMessage('');
-    };
-    reader.readAsDataURL(file);
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maximum = 384;
+      const scale = Math.min(1, maximum / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const logoUrl = canvas.toDataURL('image/webp', 0.9);
+      if (logoUrl.length > 850_000) throw new Error('Imagem ainda muito grande após otimização.');
+      setForm((current) => ({ ...current, logoUrl }));
+      setMessage('Logotipo otimizado e pronto para salvar.');
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : 'Não foi possível processar a imagem.');
+      event.target.value = '';
+    }
   }
   return (
     <>
@@ -91,7 +102,7 @@ export default function SettingsPage() {
           <label className="field">
             Arquivo do logotipo
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={selectLogo} />
-            <small>PNG, JPG ou WebP com até 600 KB. A imagem também será usada no carregamento.</small>
+            <small>PNG, JPG ou WebP com até 5 MB. O arquivo será otimizado automaticamente.</small>
           </label>
           {form.logoUrl && (
             <div className="logo-upload-preview">

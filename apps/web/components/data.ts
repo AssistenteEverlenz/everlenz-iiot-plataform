@@ -91,6 +91,12 @@ export interface Dashboard {
   description: string | null;
   device_id: string | null;
   device_name?: string;
+  device_code?: string;
+  site_name?: string;
+  site_reference?: string;
+  device_online?: boolean;
+  device_deactivated?: boolean;
+  last_message_at?: string | null;
   refresh_ms: number;
   time_window_minutes: number;
   is_default: boolean;

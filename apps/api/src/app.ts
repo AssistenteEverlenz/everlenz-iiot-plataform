@@ -63,13 +63,13 @@ export function createApp(
   },
 ) {
   const app = Fastify({
+    bodyLimit: 2 * 1024 * 1024,
     logger: {
       base: { service: 'api' },
       timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
       formatters: { level: (level) => ({ level }) },
       redact: ['req.headers.authorization'],
     },
-    bodyLimit: 16384,
   });
   const access = createAccessControl(db, {
     tenantId: settings.tenantId,
@@ -293,6 +293,7 @@ export function createApp(
     const adapterType = body.manufacturer === 'Haiwell' ? 'haiwell' : 'generic';
     const mqttUsername = code.toLowerCase();
     const mqttPassword = temporaryPassword(20);
+    const dashboardId = randomUUID();
     const row = await db.transaction(async (sql) => {
       const created = await sql.query(
         `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_password)
@@ -317,11 +318,24 @@ export function createApp(
         'INSERT INTO device_topic_mappings(tenant_id,device_id,kind,topic) VALUES($1,$2,$3,$4)',
         [current.tenantId, id, 'exact', topic],
       );
+      await sql.query(
+        `INSERT INTO dashboards(id,tenant_id,device_id,name,slug,description,refresh_ms,time_window_minutes)
+         VALUES($1,$2,$3,$4,$5,$6,2000,60)`,
+        [
+          dashboardId,
+          current.tenantId,
+          id,
+          `Gestão à Vista · ${body.name.trim()}`,
+          `gestao-a-vista-${code.toLowerCase()}`,
+          `Painel operacional de ${body.name.trim()}`,
+        ],
+      );
       return created.rows[0];
     });
     const credentialActive = await provisionMqttRequest('upsert', mqttUsername, mqttPassword, topic);
     return reply.code(201).send({
       device: row,
+      dashboardId,
       connection: {
         host: env.MQTT_PUBLIC_HOST ?? env.MQTT_HOST,
         port: env.MQTT_TLS_PORT,
@@ -491,12 +505,19 @@ export function createApp(
     const deviceIds = await access.accessibleDeviceIds(req);
     return (
       await db.query(
-        `SELECT d.*,v.name device_name,count(w.id)::int widget_count FROM dashboards d
+        `SELECT d.*,v.name device_name,v.device_code,v.enabled device_enabled,
+          s.name site_name,s.reference site_reference,ds.last_message_at,
+          COALESCE(v.enabled AND v.archived_at IS NULL AND ds.last_message_at > now()-($3::int * interval '1 second'),false) device_online,
+          (v.archived_at IS NOT NULL OR NOT v.enabled) device_deactivated,
+          count(w.id)::int widget_count FROM dashboards d
          LEFT JOIN devices v ON v.id=d.device_id AND v.tenant_id=d.tenant_id
+         LEFT JOIN sites s ON s.id=v.site_id AND s.tenant_id=v.tenant_id
+         LEFT JOIN device_status ds ON ds.device_id=v.id AND ds.tenant_id=v.tenant_id
          LEFT JOIN dashboard_widgets w ON w.dashboard_id=d.id AND w.tenant_id=d.tenant_id
          WHERE d.tenant_id=$1 AND ($2::uuid[] IS NULL OR d.device_id=ANY($2))
-         GROUP BY d.id,v.name ORDER BY d.is_default DESC,d.name`,
-        [current.tenantId, deviceIds],
+         GROUP BY d.id,v.name,v.device_code,v.enabled,v.archived_at,s.name,s.reference,ds.last_message_at
+         ORDER BY d.is_default DESC,s.name,v.name,d.name`,
+        [current.tenantId, deviceIds, env.DEVICE_OFFLINE_SECONDS],
       )
     ).rows;
   });

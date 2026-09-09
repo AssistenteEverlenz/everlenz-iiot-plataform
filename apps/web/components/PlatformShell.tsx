@@ -27,6 +27,7 @@ interface PlatformContextValue {
   deviceIds: string[] | null;
   branding: Branding;
   refreshSession: () => Promise<void>;
+  refreshBranding: () => Promise<void>;
 }
 
 const defaultBranding: Branding = {
@@ -61,12 +62,17 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
     const response = await fetch('/api/auth/session', { cache: 'no-store' });
     setSession(response.ok ? await response.json() : null);
   }
+  async function refreshBranding() {
+    try {
+      const response = await fetch('/api/branding/public', { cache: 'no-store' });
+      setBranding(response.ok ? await response.json() : defaultBranding);
+    } catch {
+      setBranding(defaultBranding);
+    }
+  }
 
   useEffect(() => {
-    void fetch('/api/branding/public', { cache: 'no-store' })
-      .then((response) => (response.ok ? response.json() : defaultBranding))
-      .then(setBranding)
-      .catch(() => setBranding(defaultBranding));
+    void refreshBranding();
     void refreshSession();
     const timer = window.setTimeout(() => setCollapsed(true), 400);
     return () => window.clearTimeout(timer);
@@ -115,7 +121,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
 
   const sidebarIsCollapsed = collapsed && !sidebarHovered;
   return (
-    <PlatformContext.Provider value={{ ...session, branding, refreshSession }}>
+    <PlatformContext.Provider value={{ ...session, branding, refreshSession, refreshBranding }}>
       <div className={`platform-shell ${sidebarIsCollapsed ? 'sidebar-collapsed' : ''}`} style={style}>
         <aside
           className="platform-sidebar"
