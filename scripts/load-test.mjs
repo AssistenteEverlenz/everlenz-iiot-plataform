@@ -96,9 +96,9 @@ for (const rps of stages) {
 }
 
 report.finishedAt = new Date().toISOString();
-report.safeCapacityRps = report.saturation
-  ? (report.stages.at(-2)?.requestedRps ?? 0)
-  : report.stages.at(-1)?.requestedRps;
+const safeStage = report.saturation ? report.stages.at(-2) : report.stages.at(-1);
+report.safeCapacityRequestedRps = safeStage?.requestedRps ?? 0;
+report.safeCapacityAchievedRps = safeStage?.achievedRps ?? 0;
 
 if (process.env.LOAD_REPORT_FILE) {
   const output = resolve(process.env.LOAD_REPORT_FILE);
