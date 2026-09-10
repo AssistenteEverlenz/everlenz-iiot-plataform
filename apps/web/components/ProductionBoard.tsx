@@ -387,7 +387,8 @@ function Kpi(props: {
           {props.unit && <small>{props.unit}</small>}
         </strong>
       )}
-      <p>{props.detail}</p>
+      {/* A comparison without a measured variable would read as a real zero. */}
+      {!props.missing && <p>{props.detail}</p>}
     </article>
   );
 }

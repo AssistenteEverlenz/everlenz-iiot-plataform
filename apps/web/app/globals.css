@@ -2902,3 +2902,30 @@ footer {
   font-size: 1.2vh;
   color: #6c8a90;
 }
+
+/* The global header, small and th element styles serve the light admin pages and leaked
+   into the TV board: a fixed-height bordered header crossing the site name, units pushed
+   below their numbers by a block-level small, and 10px table labels. */
+.tv-board .tv-board-header {
+  height: auto;
+  border-bottom: 0;
+  font-size: inherit;
+  letter-spacing: normal;
+  color: inherit;
+}
+.tv-board .tv-board-header > div > small {
+  margin-top: 0.3vh;
+}
+.tv-kpi strong small,
+.tv-legend small {
+  display: inline;
+  margin-top: 0;
+}
+.tv-clock small {
+  margin-top: 0.4vh;
+}
+.tv-totals tbody th {
+  font-size: 1.8vh;
+  letter-spacing: 0;
+  text-transform: none;
+}
