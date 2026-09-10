@@ -5,6 +5,7 @@ import {
   DeviceResolver,
   matchesTopic,
   UnknownAdapter,
+  WeintekAdapter,
 } from '../packages/adapters/src/index.js';
 import {
   convertTag,
@@ -27,6 +28,41 @@ const tag = (data_type: TagConfig['data_type']): TagConfig => ({
   scale_multiplier: 1,
   scale_offset: 0,
   enabled: true,
+});
+describe('WeintekAdapter', () => {
+  const adapter = new WeintekAdapter();
+  it('reads the EasyBuilder Pro JSON (Simple) layout with the top-level "d" key', () => {
+    const payload = {
+      d: { QuantidadePaletes: [5], Motor: [true], Receita: ['14x19x19'] },
+      ts: '2026-09-10T20:30:00.123456',
+    };
+    expect(adapter.canHandle(message(payload))).toBe(true);
+    const samples = adapter.parse(message(payload));
+    expect(samples.map((s) => [s.key, s.value])).toEqual([
+      ['QuantidadePaletes', 5],
+      ['Motor', true],
+      ['Receita', '14x19x19'],
+    ]);
+    // An offset-less ts is the HMI's UTC time.
+    expect(samples[0].timestamp.toISOString()).toBe('2026-09-10T20:30:00.123Z');
+    expect(samples[0].quality).toBe('good');
+  });
+  it('reads addresses at the top level and keeps the first element of multi-element values', () => {
+    const samples = adapter.parse(
+      message({ QuantidadePaletes: [7], Temperaturas: [61.5, 62, 63], ts: '2026-09-10T20:30:00Z' }),
+    );
+    expect(samples.map((s) => [s.key, s.value])).toEqual([
+      ['QuantidadePaletes', 7],
+      ['Temperaturas', 61.5],
+    ]);
+  });
+  it('falls back to reception time without ts and refuses other layouts', () => {
+    const samples = adapter.parse(message({ d: { QuantidadePaletes: [1] } }));
+    expect(samples[0].timestamp.toISOString()).toBe('2026-01-01T12:00:00.000Z');
+    expect(samples[0].quality).toBe('timestamp_fallback');
+    expect(adapter.canHandle(message({ values: { n: 1 } }))).toBe(false);
+    expect(adapter.canHandle(message({ _terminalTime: 'x', _groupName: 'g', n: '1' }))).toBe(false);
+  });
 });
 describe('GenericJsonAdapter', () => {
   const adapter = new GenericJsonAdapter();

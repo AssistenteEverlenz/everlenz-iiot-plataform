@@ -55,6 +55,54 @@ export class HaiwellAdapter implements MqttAdapter {
       }));
   }
 }
+// Weintek EasyBuilder Pro, content format "JSON (Simple)" (MQTT User Manual, Content format):
+//   { "d": { "QuantidadePaletes": [5], "Motor": [true] }, "ts": "2017-04-18T17:36:52.501856" }
+// Without "Use top-level key d" the addresses sit at the top level beside "ts". Every value
+// is an array (one element per address element); a single-element array is the value itself.
+// "ts" carries no offset: the HMI writes it in the zone chosen under Timestamp, and the
+// platform instructions ask for "UTC Time", so an offset-less ts is read as UTC.
+const weintekValue = z.array(scalar).min(1);
+const weintekValues = z.record(z.string().min(1), weintekValue);
+const weintekSchema = z.union([
+  z.object({ d: weintekValues, ts: z.string().optional() }),
+  z
+    .record(z.string(), z.union([weintekValue, z.string()]))
+    .refine((v) => Object.entries(v).some(([key, value]) => key !== 'ts' && Array.isArray(value))),
+]);
+function weintekTimestamp(ts: unknown, fallback: Date) {
+  if (typeof ts !== 'string') return { timestamp: fallback, quality: 'timestamp_fallback' };
+  const withZone = /(Z|[+-]\d{2}:?\d{2})$/.test(ts) ? ts : `${ts}Z`;
+  const parsed = new Date(withZone);
+  return Number.isNaN(parsed.getTime())
+    ? { timestamp: fallback, quality: 'timestamp_fallback' }
+    : { timestamp: parsed, quality: 'good' };
+}
+export class WeintekAdapter implements MqttAdapter {
+  name = 'WeintekAdapter';
+  canHandle(message: MqttMessage) {
+    return weintekSchema.safeParse(decodePayload(message.payload).json).success;
+  }
+  parse(message: MqttMessage) {
+    const data = weintekSchema.parse(decodePayload(message.payload).json) as Record<
+      string,
+      unknown
+    >;
+    const values = ('d' in data && data.d && typeof data.d === 'object' ? data.d : data) as Record<
+      string,
+      unknown
+    >;
+    const { timestamp, quality } = weintekTimestamp(data.ts, message.receivedAt);
+    return Object.entries(values)
+      .filter(([key, value]) => key !== 'ts' && Array.isArray(value))
+      .map(([key, value]) => ({
+        key,
+        // Multi-element addresses (arrays, strings split in words) keep only the first element.
+        value: (value as Array<string | number | boolean>)[0],
+        timestamp,
+        quality,
+      }));
+  }
+}
 export class UnknownAdapter implements MqttAdapter {
   name = 'UnknownAdapter';
   canHandle() {
@@ -67,6 +115,7 @@ export class UnknownAdapter implements MqttAdapter {
 export const adapters: Record<string, MqttAdapter> = {
   generic: new GenericJsonAdapter(),
   haiwell: new HaiwellAdapter(),
+  weintek: new WeintekAdapter(),
 };
 
 export function matchesTopic(pattern: string, topic: string): boolean {

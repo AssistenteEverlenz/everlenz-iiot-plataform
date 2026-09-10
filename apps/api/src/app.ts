@@ -118,6 +118,12 @@ const hmiModels: Record<string, string[]> = {
     'DOP-3S10S3E2',
   ],
 };
+/** Payload reader per manufacturer; Delta stays generic until a real capture defines it. */
+function adapterFor(manufacturer: string) {
+  if (manufacturer === 'Haiwell') return 'haiwell';
+  if (manufacturer === 'Weintek') return 'weintek';
+  return 'generic';
+}
 function checkRange(q: { from?: string; to?: string }) {
   if (q.from && q.to && new Date(q.from) > new Date(q.to))
     throw new ZodError([{ code: 'custom', path: ['from'], message: 'from must precede to' }]);
@@ -488,7 +494,7 @@ export async function createApp(
     }-${suffix}`;
     const deviceSlug = `${slug(body.name) || 'dispositivo'}-${suffix.slice(0, 4).toLowerCase()}`;
     const topic = `iiot/${current.tenantId}/${site.rows[0].slug}/${code.toLowerCase()}/telemetry`;
-    const adapterType = body.manufacturer === 'Haiwell' ? 'haiwell' : 'generic';
+    const adapterType = adapterFor(body.manufacturer);
     const mqttUsername = code.toLowerCase();
     const mqttPassword = temporaryPassword(20);
     const dashboardId = randomUUID();
@@ -631,7 +637,7 @@ export async function createApp(
     const model = body.model ?? existing.rows[0].model;
     if (!hmiModels[manufacturer]?.includes(model))
       return reply.code(400).send({ error: 'Model is not available for this manufacturer' });
-    const adapterType = manufacturer === 'Haiwell' ? 'haiwell' : 'generic';
+    const adapterType = adapterFor(manufacturer);
     const updated = await db.query(
       `UPDATE devices SET site_id=COALESCE($3,site_id),name=COALESCE($4,name),
        manufacturer=$5,model=$6,serial_number=CASE WHEN $7::boolean THEN $8 ELSE serial_number END,
