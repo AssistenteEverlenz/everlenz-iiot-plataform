@@ -107,7 +107,9 @@ export default function SettingsPage() {
           {form.logoUrl && (
             <div className="logo-upload-preview">
               <img src={form.logoUrl} alt="Prévia do logotipo" />
-              <button type="button" onClick={() => setForm({ ...form, logoUrl: '' })}>Remover</button>
+              <button type="button" onClick={() => setForm({ ...form, logoUrl: '' })}>
+                Remover
+              </button>
             </div>
           )}
           <div className="color-fields">
