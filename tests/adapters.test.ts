@@ -31,10 +31,18 @@ const tag = (data_type: TagConfig['data_type']): TagConfig => ({
 });
 describe('WeintekAdapter', () => {
   const adapter = new WeintekAdapter();
+  it('takes the arrival time when the HMI clock is hours off', () => {
+    // As captured from the EasyBuilder Pro simulator: ts 11 h behind the arrival time.
+    const samples = adapter.parse(
+      message({ QuantidadePaletes: [0], ts: '2026-01-01T01:00:00.422508' }),
+    );
+    expect(samples[0].timestamp.toISOString()).toBe('2026-01-01T12:00:00.000Z');
+    expect(samples[0].quality).toBe('timestamp_fallback');
+  });
   it('reads the EasyBuilder Pro JSON (Simple) layout with the top-level "d" key', () => {
     const payload = {
       d: { QuantidadePaletes: [5], Motor: [true], Receita: ['14x19x19'] },
-      ts: '2026-09-10T20:30:00.123456',
+      ts: '2026-01-01T11:59:58.123456',
     };
     expect(adapter.canHandle(message(payload))).toBe(true);
     const samples = adapter.parse(message(payload));
@@ -44,7 +52,7 @@ describe('WeintekAdapter', () => {
       ['Receita', '14x19x19'],
     ]);
     // An offset-less ts is the HMI's UTC time.
-    expect(samples[0].timestamp.toISOString()).toBe('2026-09-10T20:30:00.123Z');
+    expect(samples[0].timestamp.toISOString()).toBe('2026-01-01T11:59:58.123Z');
     expect(samples[0].quality).toBe('good');
   });
   it('reads addresses at the top level and keeps the first element of multi-element values', () => {

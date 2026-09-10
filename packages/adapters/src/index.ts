@@ -69,13 +69,20 @@ const weintekSchema = z.union([
     .record(z.string(), z.union([weintekValue, z.string()]))
     .refine((v) => Object.entries(v).some(([key, value]) => key !== 'ts' && Array.isArray(value))),
 ]);
+// An HMI clock this far from the arrival time is wrong, not late: the EasyBuilder Pro
+// simulator was seen stamping messages 11 hours behind even with "UTC Time" selected.
+// Such samples take the arrival time instead of landing hours outside every dashboard window.
+const MAX_CLOCK_SKEW_MS = 10 * 60 * 1000;
 function weintekTimestamp(ts: unknown, fallback: Date) {
   if (typeof ts !== 'string') return { timestamp: fallback, quality: 'timestamp_fallback' };
   const withZone = /(Z|[+-]\d{2}:?\d{2})$/.test(ts) ? ts : `${ts}Z`;
   const parsed = new Date(withZone);
-  return Number.isNaN(parsed.getTime())
-    ? { timestamp: fallback, quality: 'timestamp_fallback' }
-    : { timestamp: parsed, quality: 'good' };
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    Math.abs(parsed.getTime() - fallback.getTime()) > MAX_CLOCK_SKEW_MS
+  )
+    return { timestamp: fallback, quality: 'timestamp_fallback' };
+  return { timestamp: parsed, quality: 'good' };
 }
 export class WeintekAdapter implements MqttAdapter {
   name = 'WeintekAdapter';
