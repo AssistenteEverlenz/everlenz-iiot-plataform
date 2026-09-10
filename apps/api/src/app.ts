@@ -25,23 +25,98 @@ const timeRange = {
   from: z.iso.datetime({ offset: true }).optional(),
   to: z.iso.datetime({ offset: true }).optional(),
 };
+// Only HMIs that can publish MQTT over Ethernet; keep in step with models in
+// apps/web/app/devices/page.tsx. Weintek: EasyBuilder Pro "Comparison of HMI Software
+// Features" (MQTT row) — the iP line has no MQTT. Delta: DOP-100 models with an Ethernet port
+// (MQTT in DOPSoft 4 / DIAScreen) and the DOP-300S line.
 const hmiModels: Record<string, string[]> = {
   Haiwell: ['A7', 'A7 Pro', 'A10', 'A10 Pro', 'A15', 'A15 Pro'],
   Weintek: [
+    'cMT2058XH',
     'cMT2078X',
+    'cMT2108X',
     'cMT2108X2',
+    'cMT2128X',
     'cMT2158X',
     'cMT2166X',
+    'cMT1106X',
+    'cMT3072X',
+    'cMT3072X2',
+    'cMT3072XH',
+    'cMT3072XH2',
+    'cMT3072XHT',
     'cMT3072XP',
     'cMT3092X',
     'cMT3102X',
     'cMT3108XH',
+    'cMT3108XP',
     'cMT3152X',
+    'cMT3161X',
     'cMT3162X',
+    'cMT-FHDX-220',
     'cMT-FHDX-820',
     'cMT-SVRX-820',
+    'cMT-SVRX-822',
+    'cMT3071',
+    'cMT3072',
+    'cMT3090',
+    'cMT3103',
+    'cMT3151',
+    'cMT-iV5',
+    'cMT-HDM',
+    'cMT-FHD',
+    'cMT-SVR-100',
+    'cMT-SVR-102',
+    'cMT-SVR-200',
+    'cMT-SVR-202',
+    'cMT-G01',
+    'cMT-G02',
+    'cMT-G03',
+    'cMT-G04',
+    'cMT-CTRL01',
+    'MT8050iE',
+    'MT8051iE',
+    'MT8053iE',
+    'MT6070iE',
+    'MT6071iE',
+    'MT8070iE',
+    'MT8071iE',
+    'MT8073iE',
+    'MT8100iE',
+    'MT8101iE',
+    'MT8102iE',
+    'MT8103iE',
+    'MT8090XE',
+    'MT8091XE',
+    'MT8092XE',
+    'MT8121XE',
+    'MT8150XE',
+    'eMT3070B',
+    'eMT3105P',
+    'eMT3120A',
+    'eMT3150A',
+    'mTV-100',
   ],
-  Delta: ['DOP-3S07S3E2', 'DOP-3S10S3E2'],
+  Delta: [
+    'DOP-103DQ',
+    'DOP-107DV',
+    'DOP-107PV',
+    'DOP-107EG',
+    'DOP-107EV',
+    'DOP-107IV',
+    'DOP-108IG',
+    'DOP-110IS',
+    'DOP-110IG',
+    'DOP-103WQ',
+    'DOP-107WV',
+    'DOP-110WS',
+    'DOP-112WX',
+    'DOP-115WX',
+    'DOP-112MX',
+    'DOP-115MX',
+    'DOP-3S07S3E2',
+    'DOP-3S10S3E2',
+  ],
 };
 function checkRange(q: { from?: string; to?: string }) {
   if (q.from && q.to && new Date(q.from) > new Date(q.to))
@@ -1208,11 +1283,9 @@ export async function createApp(
       );
       const telemetry = mapping.rows[0]?.topic;
       if (!telemetry || telemetry.split('/').length !== 5)
-        return reply
-          .code(409)
-          .send({
-            error: 'Este equipamento não tem um tópico da plataforma para receber comandos.',
-          });
+        return reply.code(409).send({
+          error: 'Este equipamento não tem um tópico da plataforma para receber comandos.',
+        });
       const topic = telemetry.replace(/\/telemetry$/, '/command');
       const send = settings.publishCommand ?? publishCommand;
       try {
