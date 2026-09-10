@@ -2994,3 +2994,53 @@ footer {
 .scroll-hint-arrow:hover {
   color: #12b8a6;
 }
+
+/* Period filter inside each production chart. */
+.production-insight .widget-period {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.widget-period button {
+  border: 1px solid #dce6e8;
+  background: #fff;
+  color: #4d6770;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.widget-period button:hover {
+  border-color: #12b8a6;
+  color: #0b2028;
+}
+.widget-period button.active {
+  background: #0b2028;
+  border-color: #0b2028;
+  color: #fff;
+}
+.widget-period-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #71868d;
+}
+.widget-period-custom input {
+  border: 1px solid #dce6e8;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font: inherit;
+  color: #182e38;
+}
+.widget-period-loading {
+  margin-left: auto;
+  font-size: 11px;
+  color: #93a7ad;
+}

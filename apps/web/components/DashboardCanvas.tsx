@@ -27,6 +27,17 @@ import {
 
 import { ScrollHint } from './ScrollHint';
 
+type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
+
+const periodOptions: Array<[ProductionPeriod, string]> = [
+  ['today', 'Hoje'],
+  ['7d', '7 dias'],
+  ['week', 'Semana'],
+  ['month', 'Mês'],
+  ['year', 'Ano'],
+  ['custom', 'Personalizado'],
+];
+
 interface CounterValue {
   widget_id: string;
   since_reset: number;
@@ -110,20 +121,22 @@ function number(value: number | null | undefined, decimals = 1) {
       });
 }
 
-function formatPeriod(minutes: number) {
-  if (minutes >= 60 * 24 * 28) return 'último mês';
-  if (minutes >= 60 * 24 * 7) return 'últimos 7 dias';
-  if (minutes >= 60 * 24) return 'último dia';
-  if (minutes >= 60) return `últimas ${minutes / 60} h`;
-  return `últimos ${minutes} min`;
+function periodLabel(period: ProductionPeriod, days: number) {
+  return {
+    today: 'hoje',
+    '7d': 'últimos 7 dias',
+    week: 'esta semana',
+    month: 'este mês',
+    year: 'este ano',
+    '30d': 'últimos 30 dias',
+    custom: `${days} dias selecionados`,
+  }[period];
 }
 
-function analysisPeriodLabel(days: number) {
-  if (days === 1) return 'hoje';
-  if (days === 7) return 'últimos 7 dias';
-  if (days === 30) return 'últimos 30 dias';
-  if (days === 365) return 'último ano';
-  return `${days} dias selecionados`;
+function shiftDay(date: string, days: number) {
+  const parsed = new Date(`${date}T12:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
 }
 
 const visualizationHelp: Record<DashboardWidget['widget_type'], string> = {
@@ -151,7 +164,7 @@ function Widget({
   widget,
   latest,
   history,
-  statistics,
+  dashboardId,
   counter,
   edit,
   remove,
@@ -162,7 +175,7 @@ function Widget({
   widget: DashboardWidget;
   latest?: Sample;
   history: Sample[];
-  statistics?: Statistic;
+  dashboardId: string;
   counter?: CounterValue;
   edit: () => void;
   remove: () => void;
@@ -171,6 +184,28 @@ function Widget({
   drop: () => void;
 }) {
   const color = widget.config.color ?? '#12b8a6';
+  // Each production chart owns its period, so two charts can compare different windows.
+  const [period, setPeriod] = useState<ProductionPeriod>(
+    widget.config.productionDefaultPeriod ?? '7d',
+  );
+  const localToday = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 10);
+  const [customFrom, setCustomFrom] = useState(() => shiftDay(localToday, -6));
+  const [customTo, setCustomTo] = useState(localToday);
+  // The config fingerprint in the path refetches at once after the widget is edited.
+  const fingerprint = encodeURIComponent(
+    `${widget.config.productionMetricKind ?? ''}:${widget.config.productionMinimumValue ?? ''}`,
+  );
+  const customRange = period === 'custom' ? `&from=${customFrom}&to=${customTo}` : '';
+  const productionPath =
+    widget.widget_type === 'production' &&
+    widget.tag_id &&
+    (period !== 'custom' || (customFrom && customTo))
+      ? `/dashboards/${dashboardId}/statistics?widgetId=${widget.id}&period=${period}${customRange}&v=${fingerprint}`
+      : null;
+  const productionStats = usePoll<Statistic[]>(productionPath, 30000);
+  const statistics = productionStats.data?.[0];
   const rawNumeric = latest?.value_number ?? null;
   // A zeroed counter shows what the server summed since the reset moment, which survives the
   // HMI rolling its own counter back to zero. Before the first reset it shows the raw value.
@@ -391,6 +426,39 @@ function Widget({
       )}
       {widget.widget_type === 'production' && (
         <div className="production-insight">
+          <div className="widget-period" role="group" aria-label="Período do gráfico">
+            {periodOptions.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={period === value ? 'active' : ''}
+                onClick={() => setPeriod(value)}
+              >
+                {label}
+              </button>
+            ))}
+            {period === 'custom' && (
+              <span className="widget-period-custom">
+                <input
+                  type="date"
+                  aria-label="De"
+                  value={customFrom}
+                  max={customTo}
+                  onChange={(event) => setCustomFrom(event.target.value)}
+                />
+                <span>até</span>
+                <input
+                  type="date"
+                  aria-label="Até"
+                  value={customTo}
+                  min={customFrom}
+                  max={localToday}
+                  onChange={(event) => setCustomTo(event.target.value)}
+                />
+              </span>
+            )}
+            {productionStats.loading && <span className="widget-period-loading">atualizando…</span>}
+          </div>
           <div className="production-kpis">
             <div>
               <span className="metric-label">
@@ -425,7 +493,7 @@ function Widget({
           </div>
           <div className="production-history">
             <div className="production-history-title">
-              <strong>Desempenho: {analysisPeriodLabel(statistics?.trend_days ?? 7)}</strong>
+              <strong>Desempenho: {periodLabel(period, statistics?.trend_days ?? 7)}</strong>
               <span>
                 Melhor {statistics?.bucket_granularity === 'month' ? 'mês' : 'dia'}:{' '}
                 {statistics?.best_day
@@ -537,7 +605,7 @@ function Widget({
             </span>
           </div>
           <small className="production-note">
-            Leitura: {formatPeriod(statistics?.period_minutes ?? 60)} · valores abaixo de{' '}
+            Leitura: {periodLabel(period, statistics?.trend_days ?? 7)} · valores abaixo de{' '}
             {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorados
           </small>
         </div>
@@ -570,20 +638,6 @@ export function DashboardCanvas({ id }: { id: string }) {
     deviceId ? `/devices/${deviceId}/production-context` : null,
     10000,
   );
-  const [analysisPeriod, setAnalysisPeriod] = useState<'today' | '7d' | '30d' | '365d' | 'custom'>(
-    '7d',
-  );
-  const today = new Date().toISOString().slice(0, 10);
-  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
-  const [customFrom, setCustomFrom] = useState(weekAgo);
-  const [customTo, setCustomTo] = useState(today);
-  const statisticsPath =
-    deviceId && (analysisPeriod !== 'custom' || (customFrom && customTo))
-      ? `/dashboards/${id}/statistics?period=${analysisPeriod}${
-          analysisPeriod === 'custom' ? `&from=${customFrom}&to=${customTo}` : ''
-        }`
-      : null;
-  const statistics = usePoll<Statistic[]>(statisticsPath, 30000);
   const hasCounters = Boolean(dashboard.data?.widgets?.some((widget) => widget.config.counterMode));
   const counters = usePoll<CounterValue[]>(
     hasCounters ? `/dashboards/${id}/counters` : null,
@@ -617,6 +671,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [productionMetricKind, setProductionMetricKind] = useState<
     'rate_average' | 'counter_delta'
   >('rate_average');
+  const [productionDefaultPeriod, setProductionDefaultPeriod] = useState<ProductionPeriod>('7d');
   const [productKey, setProductKey] = useState('');
   const [fallbackProductCode, setFallbackProductCode] = useState('ITEM GERAL');
   const [counterMode, setCounterMode] = useState(false);
@@ -638,7 +693,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setFallbackProductCode(productionContext.data.fallback_product_code);
   }, [productionContext.data]);
   const allLoaded = Boolean(
-    dashboard.data && device.data && latest.data && signals.data && statistics.data && history.data,
+    dashboard.data && device.data && latest.data && signals.data && history.data,
   );
   useEffect(() => {
     if (allLoaded) setLoadedOnce(true);
@@ -692,6 +747,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           productionPeriodMinutes: 60,
           productionMinimumValue: 0.1,
           productionMetricKind: 'rate_average',
+          productionDefaultPeriod: '7d',
           productionTrendDays: 7,
         },
       });
@@ -734,6 +790,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setGaugeNeedle(widget.config.gaugeNeedle ?? true);
     setProductionMinimumValue(widget.config.productionMinimumValue ?? 0.1);
     setProductionMetricKind(widget.config.productionMetricKind ?? 'rate_average');
+    setProductionDefaultPeriod(widget.config.productionDefaultPeriod ?? '7d');
     setCounterMode(widget.config.counterMode ?? false);
   }
   async function saveWidget(event: React.FormEvent) {
@@ -773,11 +830,12 @@ export function DashboardCanvas({ id }: { id: string }) {
           alarmRanges,
           productionMinimumValue,
           productionMetricKind,
+          productionDefaultPeriod,
           counterMode,
         },
       });
       setEditingWidget(null);
-      await Promise.all([dashboard.refresh(), productionContext.refresh(), statistics.refresh()]);
+      await Promise.all([dashboard.refresh(), productionContext.refresh()]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar indicador.');
     } finally {
@@ -813,12 +871,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   }
   if (!loadedOnce) {
     const loadError =
-      dashboard.error ||
-      device.error ||
-      latest.error ||
-      signals.error ||
-      statistics.error ||
-      history.error;
+      dashboard.error || device.error || latest.error || signals.error || history.error;
     if (loadingTimedOut && loadError)
       return (
         <div className="dashboard-load-failed">
@@ -884,48 +937,6 @@ export function DashboardCanvas({ id }: { id: string }) {
           A IHM também precisa publicar neste intervalo para chegar um valor novo a cada ciclo.
         </small>
       </div>
-      <div className="analysis-filter">
-        <div>
-          <strong>Período gerencial</strong>
-          <span>Total, comparação, histórico e produtos usam a mesma seleção.</span>
-        </div>
-        <select
-          aria-label="Período gerencial"
-          value={analysisPeriod}
-          onChange={(event) =>
-            setAnalysisPeriod(event.target.value as 'today' | '7d' | '30d' | '365d' | 'custom')
-          }
-        >
-          <option value="today">Hoje</option>
-          <option value="7d">Últimos 7 dias</option>
-          <option value="30d">Últimos 30 dias</option>
-          <option value="365d">Último ano</option>
-          <option value="custom">Período personalizado</option>
-        </select>
-        {analysisPeriod === 'custom' && (
-          <div className="custom-period">
-            <label>
-              De
-              <input
-                type="date"
-                value={customFrom}
-                max={customTo}
-                onChange={(event) => setCustomFrom(event.target.value)}
-              />
-            </label>
-            <label>
-              Até
-              <input
-                type="date"
-                value={customTo}
-                min={customFrom}
-                max={today}
-                onChange={(event) => setCustomTo(event.target.value)}
-              />
-            </label>
-          </div>
-        )}
-      </div>
       {(error || dashboard.error || latest.error) && (
         <div className="error-banner">{error || dashboard.error || latest.error}</div>
       )}
@@ -948,7 +959,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             widget={widget}
             latest={widget.tag_id ? byTag.get(widget.tag_id) : undefined}
             history={history.data ?? []}
-            statistics={statistics.data?.find((item) => item.widget_id === widget.id)}
+            dashboardId={id}
             counter={counters.data?.find((item) => item.widget_id === widget.id)}
             edit={() => startEdit(widget)}
             remove={() => setRemovingWidget(widget)}
@@ -1185,6 +1196,21 @@ export function DashboardCanvas({ id }: { id: string }) {
                     >
                       <option value="rate_average">Taxa instantânea (ex.: ton/h)</option>
                       <option value="counter_delta">Contador acumulativo (ex.: paletes)</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Período ao abrir o painel
+                    <select
+                      value={productionDefaultPeriod}
+                      onChange={(event) =>
+                        setProductionDefaultPeriod(event.target.value as ProductionPeriod)
+                      }
+                    >
+                      {periodOptions.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="field">

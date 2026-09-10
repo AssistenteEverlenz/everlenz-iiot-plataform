@@ -971,4 +971,66 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await db.query('DELETE FROM tags WHERE id=$1', [counterTag]);
     }
   });
+  it('answers one production chart at a time with calendar periods', async () => {
+    const dashboardId = '55555555-5555-4555-8555-555555555555';
+    const tagId = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM tags WHERE device_id=$1 AND key='temperatura'`,
+        [HAIWELL],
+      )
+    ).rows[0].id;
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    let widgetId: string | undefined;
+    try {
+      const add = (title: string) =>
+        api.inject({
+          method: 'POST',
+          url: `/api/dashboards/${dashboardId}/widgets`,
+          payload: {
+            deviceId: HAIWELL,
+            tagId,
+            widgetType: 'production',
+            title,
+            width: 'large',
+            config: { productionMetricKind: 'rate_average' },
+          },
+        });
+      expect((await add('Produção A')).statusCode).toBe(201);
+      expect((await add('Produção B')).statusCode).toBe(201);
+      const view = (await api.inject(`/api/dashboards/${dashboardId}`)).json();
+      widgetId = view.widgets.find((item: { title: string }) => item.title === 'Produção A').id;
+      const only = (period: string) =>
+        api
+          .inject(`/api/dashboards/${dashboardId}/statistics?widgetId=${widgetId}&period=${period}`)
+          .then((response) => response.json());
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const month = await only('month');
+      expect(month).toHaveLength(1);
+      expect(month[0]).toMatchObject({ widget_id: widgetId, period: 'month' });
+      expect(month[0].trend_days).toBe(Number(today.slice(8, 10)));
+      const week = await only('week');
+      expect(week[0].trend_days).toBeGreaterThanOrEqual(1);
+      expect(week[0].trend_days).toBeLessThanOrEqual(7);
+      const year = await only('year');
+      expect(year[0].bucket_granularity).toBe(year[0].trend_days > 60 ? 'month' : 'day');
+      // Without a widget filter every production chart is still answered together.
+      const all = (await api.inject(`/api/dashboards/${dashboardId}/statistics?period=7d`)).json();
+      expect(all.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      const view = (await api.inject(`/api/dashboards/${dashboardId}`)).json();
+      for (const widget of view.widgets.filter((item: { title: string }) =>
+        item.title.startsWith('Produção '),
+      ))
+        await api.inject({
+          method: 'DELETE',
+          url: `/api/dashboards/${dashboardId}/widgets/${widget.id}`,
+        });
+      await api.close();
+    }
+  });
 });

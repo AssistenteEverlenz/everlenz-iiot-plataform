@@ -95,6 +95,8 @@ export interface DashboardWidget {
     productionMinimumValue?: number;
     productionMetricKind?: 'rate_average' | 'counter_delta';
     productionTrendDays?: 7 | 30;
+    /** Period a production chart opens with; each chart can then change it on its own. */
+    productionDefaultPeriod?: 'today' | '7d' | 'week' | 'month' | 'year' | '30d' | 'custom';
     counterMode?: boolean;
     /** Legacy raw-value offset; ignored since zeroing moved to counterResetAt. */
     counterBaseline?: number;

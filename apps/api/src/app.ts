@@ -731,7 +731,11 @@ export async function createApp(
     const { id } = z.object({ id: uuid }).parse(req.params);
     const query = z
       .object({
-        period: z.enum(['today', '7d', '30d', '365d', 'custom']).default('7d'),
+        period: z
+          .enum(['today', '7d', 'week', 'month', 'year', '30d', '365d', 'custom'])
+          .default('7d'),
+        // One widget at a time: each production chart carries its own period filter.
+        widgetId: uuid.optional(),
         from: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -747,7 +751,16 @@ export async function createApp(
     if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
     let customFrom: string | null = null;
     let customTo: string | null = null;
-    let periodDays = { today: 1, '7d': 7, '30d': 30, '365d': 365, custom: 7 }[query.period];
+    let periodDays = {
+      today: 1,
+      '7d': 7,
+      week: 7,
+      month: 30,
+      year: 365,
+      '30d': 30,
+      '365d': 365,
+      custom: 7,
+    }[query.period];
     if (query.period === 'custom') {
       if (!query.from || !query.to)
         return reply.code(400).send({ error: 'from and to are required for a custom period' });
@@ -760,8 +773,29 @@ export async function createApp(
       customFrom = query.from;
       customTo = query.to;
     }
+    // Calendar periods up to today in plant time: the week starts on Monday.
+    if (query.period === 'week' || query.period === 'month' || query.period === 'year') {
+      const localToday = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      const todayNoon = new Date(`${localToday}T12:00:00Z`);
+      const start = new Date(todayNoon);
+      if (query.period === 'week')
+        start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
+      else if (query.period === 'month') start.setUTCDate(1);
+      else start.setUTCMonth(0, 1);
+      customFrom = start.toISOString().slice(0, 10);
+      customTo = localToday;
+      periodDays = Math.round((todayNoon.getTime() - start.getTime()) / 86400000) + 1;
+    }
     const productionWidgets = view.widgets.filter(
-      (widget) => widget.widget_type === 'production' && widget.tag_id,
+      (widget) =>
+        widget.widget_type === 'production' &&
+        widget.tag_id &&
+        (!query.widgetId || widget.id === query.widgetId),
     );
     return Promise.all(
       productionWidgets.map(async (widget) => {
