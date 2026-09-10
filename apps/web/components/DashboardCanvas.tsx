@@ -7,9 +7,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
+  LabelList,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -30,6 +28,7 @@ import {
 } from './data';
 
 import { ScrollHint } from './ScrollHint';
+import { QuickChart, valueLabel } from './QuickChart';
 
 type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
 
@@ -50,16 +49,6 @@ const analyticTypes = new Set<DashboardWidget['widget_type']>([
   'bar_vertical',
   'bar_horizontal',
 ]);
-const productPalette = [
-  '#12b8a6',
-  '#2f6fed',
-  '#f2a93b',
-  '#e4572e',
-  '#7b5ea7',
-  '#2bb3e6',
-  '#8aa29e',
-  '#d65db1',
-];
 
 interface CounterValue {
   widget_id: string;
@@ -337,28 +326,6 @@ function Widget({
       {productionStats.loading && <span className="widget-period-loading">atualizando…</span>}
     </div>
   );
-  const horizontalBars = widget.widget_type === 'bar_horizontal';
-  const quickBars =
-    widget.config.chartDimension === 'day'
-      ? (statistics?.daily_series ?? []).map((day) => ({
-          label: new Date(
-            `${day.date}${day.date.length === 7 ? '-01' : ''}T12:00:00`,
-          ).toLocaleDateString(
-            'pt-BR',
-            statistics?.bucket_granularity === 'month'
-              ? { month: 'short', year: '2-digit' }
-              : { day: '2-digit', month: 'short' },
-          ),
-          value: day.value ?? 0,
-        }))
-      : (statistics?.product_breakdown ?? []).map((product) => ({
-          label: product.product_code,
-          value: product.value,
-        }));
-  const quickEmpty =
-    widget.widget_type === 'donut'
-      ? !statistics?.product_breakdown?.length
-      : !quickBars.some((bar) => bar.value > 0);
   return (
     <article
       draggable
@@ -587,7 +554,7 @@ function Widget({
             <ResponsiveContainer width="100%" height={150}>
               <BarChart
                 data={statistics?.daily_series ?? []}
-                margin={{ top: 8, right: 4, bottom: 0, left: 0 }}
+                margin={{ top: 24, right: 4, bottom: 0, left: 0 }}
               >
                 <CartesianGrid stroke="#dfe8ea" strokeDasharray="3 5" vertical={false} />
                 <XAxis
@@ -632,7 +599,15 @@ function Widget({
                   radius={[5, 5, 0, 0]}
                   maxBarSize={44}
                   isAnimationActive={false}
-                />
+                >
+                  {/* Past two weeks of columns the labels would only crowd the chart. */}
+                  {(statistics?.daily_series?.length ?? 0) <= 14 && (
+                    <LabelList
+                      dataKey="value"
+                      content={valueLabel((value) => number(value, widget.config.decimals ?? 1))}
+                    />
+                  )}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -757,124 +732,12 @@ function Widget({
       {(widget.widget_type === 'donut' ||
         widget.widget_type === 'bar_vertical' ||
         widget.widget_type === 'bar_horizontal') && (
-        <div className="quick-chart">
-          {periodChips}
-          <div className="quick-chart-total">
-            <b>
-              {number(
-                statistics?.current_period_value ?? statistics?.average,
-                widget.config.decimals ?? 1,
-              )}
-            </b>
-            {widget.unit} · {periodLabel(period, statistics?.trend_days ?? 7)}
-          </div>
-          {quickEmpty ? (
-            <div className="quick-empty">Sem produção no período.</div>
-          ) : widget.widget_type === 'donut' ? (
-            <div className="quick-donut">
-              <div className="quick-donut-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={statistics?.product_breakdown ?? []}
-                      dataKey="value"
-                      nameKey="product_code"
-                      innerRadius="58%"
-                      outerRadius="95%"
-                      stroke="none"
-                      isAnimationActive={false}
-                    >
-                      {(statistics?.product_breakdown ?? []).map((product, index) => (
-                        <Cell
-                          key={product.product_code}
-                          fill={productPalette[index % productPalette.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(item) =>
-                        `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`
-                      }
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                <span>
-                  <b>{statistics?.product_breakdown?.length ?? 0}</b>
-                  produtos
-                </span>
-              </div>
-              <ScrollHint>
-                <ul className="quick-legend">
-                  {(statistics?.product_breakdown ?? []).map((product, index) => (
-                    <li key={product.product_code}>
-                      <i style={{ background: productPalette[index % productPalette.length] }} />
-                      <span title={product.product_code}>{product.product_code}</span>
-                      <b>
-                        {number(product.share_percent, 1)}%
-                        <small>{number(product.value, widget.config.decimals ?? 1)}</small>
-                      </b>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollHint>
-            </div>
-          ) : (
-            <div className="quick-chart-body">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={quickBars}
-                  layout={horizontalBars ? 'vertical' : 'horizontal'}
-                  margin={{ top: 4, right: 12, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid
-                    stroke="#dfe8ea"
-                    strokeDasharray="3 5"
-                    vertical={horizontalBars}
-                    horizontal={!horizontalBars}
-                  />
-                  <XAxis
-                    type={horizontalBars ? 'number' : 'category'}
-                    dataKey={horizontalBars ? undefined : 'label'}
-                    tick={{ fontSize: 10, fill: '#71868d' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    type={horizontalBars ? 'category' : 'number'}
-                    dataKey={horizontalBars ? 'label' : undefined}
-                    width={horizontalBars ? 96 : 42}
-                    tick={{ fontSize: 10, fill: '#71868d' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    formatter={(item) => [
-                      `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
-                      widget.title,
-                    ]}
-                  />
-                  <Bar
-                    dataKey="value"
-                    radius={horizontalBars ? [0, 5, 5, 0] : [5, 5, 0, 0]}
-                    maxBarSize={40}
-                    isAnimationActive={false}
-                  >
-                    {quickBars.map((bar, index) => (
-                      <Cell
-                        key={bar.label}
-                        fill={
-                          widget.config.chartDimension === 'day'
-                            ? color
-                            : productPalette[index % productPalette.length]
-                        }
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
+        <QuickChart
+          widget={widget}
+          statistics={statistics}
+          periodChips={periodChips}
+          periodText={periodLabel(period, statistics?.trend_days ?? 7)}
+        />
       )}
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
