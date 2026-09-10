@@ -1061,6 +1061,93 @@ export async function createApp(
     await saveDashboardView(db, current, dashboardId, view);
     return updated;
   });
+  // Zeroing records the moment, not the raw value. The HMI counter itself rolls back to zero
+  // on shift, recipe or power cycles, so a remembered raw baseline stopped meaning anything
+  // within minutes. Server time is used so a wrong client clock cannot shift the reset.
+  app.post('/api/dashboards/:dashboardId/widgets/:widgetId/reset-counter', async (req, reply) => {
+    const current = access.principal(req);
+    const { dashboardId, widgetId } = z
+      .object({ dashboardId: uuid, widgetId: uuid })
+      .parse(req.params);
+    const view = await dashboardView(
+      db,
+      current,
+      dashboardId,
+      await access.accessibleDeviceIds(req),
+    );
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    const index = view.widgets.findIndex((widget) => widget.id === widgetId);
+    if (index < 0) return reply.code(404).send({ error: 'Widget not found' });
+    const widget = view.widgets[index];
+    if (!widget.tag_id || (widget as { data_type?: string }).data_type !== 'number')
+      return reply.code(400).send({ error: 'Only numeric widgets can be zeroed' });
+    const resetAt = new Date().toISOString();
+    const config: Record<string, unknown> = { ...(widget.config as Record<string, unknown>) };
+    delete config.counterBaseline;
+    view.widgets[index] = {
+      ...widget,
+      config: { ...config, counterMode: true, counterResetAt: resetAt },
+    };
+    await saveDashboardView(db, current, dashboardId, view);
+    await recordAudit(db, req, current, {
+      action: 'dashboard.widget.counter_reset',
+      targetType: 'widget',
+      targetId: widgetId,
+      summary: { dashboard_id: dashboardId, reset_at: resetAt },
+    });
+    return view.widgets[index];
+  });
+  // Count since the reset = every positive increment after that moment, with the same rule
+  // as the production rollups: a drop is the HMI restarting, so the new value is added.
+  // The partial first hour comes from raw samples; whole hours after it from the rollups.
+  app.get('/api/dashboards/:id/counters', async (req, reply) => {
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    const zeroed = view.widgets.filter((widget) => {
+      const config = widget.config as { counterMode?: unknown; counterResetAt?: unknown };
+      return (
+        widget.tag_id && config.counterMode === true && typeof config.counterResetAt === 'string'
+      );
+    });
+    return Promise.all(
+      zeroed.map(async (widget) => {
+        const resetAt = (widget.config as { counterResetAt: string }).counterResetAt;
+        const result = await db.query<{ since_reset: number | null }>(
+          `WITH bounds AS (
+             SELECT $4::timestamptz reset_at,
+               date_trunc('hour',$4::timestamptz)+interval '1 hour' boundary
+           ), partial AS (
+             SELECT sum(CASE WHEN s.previous IS NULL OR s.timestamp <= b.reset_at THEN 0
+                 WHEN s.value_number >= s.previous THEN s.value_number-s.previous
+                 ELSE greatest(s.value_number,0) END) increment
+             FROM (
+               SELECT t.timestamp,t.value_number,
+                 lag(t.value_number) OVER (ORDER BY t.timestamp,t.id) previous
+               FROM telemetry_samples t CROSS JOIN bounds
+               WHERE t.tenant_id=$1 AND t.device_id=$2 AND t.tag_id=$3
+                 AND t.value_number IS NOT NULL
+                 AND t.timestamp > bounds.reset_at - interval '1 hour'
+                 AND t.timestamp < bounds.boundary
+             ) s CROSS JOIN bounds b
+           ), full_hours AS (
+             SELECT sum(r.positive_delta) increment
+             FROM telemetry_hourly_rollups r CROSS JOIN bounds b
+             WHERE r.tenant_id=$1 AND r.device_id=$2 AND r.tag_id=$3 AND r.bucket >= b.boundary
+           )
+           SELECT coalesce((SELECT increment FROM partial),0)
+             + coalesce((SELECT increment FROM full_hours),0) since_reset`,
+          [current.tenantId, widget.device_id, widget.tag_id, resetAt],
+        );
+        return {
+          widget_id: widget.id,
+          reset_at: resetAt,
+          since_reset: Number(result.rows[0]?.since_reset ?? 0),
+        };
+      }),
+    );
+  });
   app.patch('/api/dashboards/:id/layout', async (req, reply) => {
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);

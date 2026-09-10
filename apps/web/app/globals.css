@@ -2929,3 +2929,68 @@ footer {
   letter-spacing: 0;
   text-transform: none;
 }
+
+/* Production widget: fixed height whatever the number of recipes. Before, the product list
+   grew with every new recipe and stretched the performance chart beside it. */
+.production-insight .production-history,
+.production-insight .product-ranking {
+  height: 236px;
+  min-height: 0;
+}
+.production-insight .product-ranking {
+  display: flex;
+  flex-direction: column;
+}
+.production-insight .product-ranking .scroll-hint {
+  flex: 1;
+  margin-top: 12px;
+}
+.production-insight .product-ranking .scroll-hint .product-ranking-list {
+  margin-top: 0;
+}
+
+/* Scroll area without a scrollbar; arrows appear only where there is more content. */
+.scroll-hint {
+  position: relative;
+  min-height: 0;
+}
+.scroll-hint-body {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.scroll-hint-body::-webkit-scrollbar {
+  display: none;
+}
+.scroll-hint-arrow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: #7c9197;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.scroll-hint-arrow.up {
+  top: 0;
+  background: linear-gradient(#fbfcfc 35%, rgba(251, 252, 252, 0));
+}
+.scroll-hint-arrow.down {
+  bottom: 0;
+  background: linear-gradient(rgba(251, 252, 252, 0), #fbfcfc 65%);
+}
+.scroll-hint-arrow.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.scroll-hint-arrow:hover {
+  color: #12b8a6;
+}

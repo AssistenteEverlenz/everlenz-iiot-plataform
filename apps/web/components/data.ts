@@ -96,7 +96,10 @@ export interface DashboardWidget {
     productionMetricKind?: 'rate_average' | 'counter_delta';
     productionTrendDays?: 7 | 30;
     counterMode?: boolean;
+    /** Legacy raw-value offset; ignored since zeroing moved to counterResetAt. */
     counterBaseline?: number;
+    /** Server time of the last "Zerar contador"; the display sums increments after it. */
+    counterResetAt?: string;
   };
   key: string | null;
   tag_name: string | null;

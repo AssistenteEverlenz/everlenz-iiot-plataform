@@ -25,6 +25,14 @@ import {
   type Signal,
 } from './data';
 
+import { ScrollHint } from './ScrollHint';
+
+interface CounterValue {
+  widget_id: string;
+  since_reset: number;
+  reset_at: string;
+}
+
 interface Statistic {
   widget_id: string;
   tag_id: string;
@@ -144,6 +152,7 @@ function Widget({
   latest,
   history,
   statistics,
+  counter,
   edit,
   remove,
   reset,
@@ -154,6 +163,7 @@ function Widget({
   latest?: Sample;
   history: Sample[];
   statistics?: Statistic;
+  counter?: CounterValue;
   edit: () => void;
   remove: () => void;
   reset: () => void;
@@ -162,12 +172,12 @@ function Widget({
 }) {
   const color = widget.config.color ?? '#12b8a6';
   const rawNumeric = latest?.value_number ?? null;
+  // A zeroed counter shows what the server summed since the reset moment, which survives the
+  // HMI rolling its own counter back to zero. Before the first reset it shows the raw value.
   const numeric =
-    rawNumeric == null || !widget.config.counterMode
-      ? rawNumeric
-      : rawNumeric < (widget.config.counterBaseline ?? 0)
-        ? rawNumeric
-        : rawNumeric - (widget.config.counterBaseline ?? 0);
+    widget.config.counterMode && widget.config.counterResetAt
+      ? (counter?.since_reset ?? null)
+      : rawNumeric;
   const points = history
     .filter((sample) => sample.tag_id === widget.tag_id && sample.value_number != null)
     .reverse()
@@ -487,31 +497,33 @@ function Widget({
               <strong>Produção por produto</strong>
               <span>{statistics?.product_breakdown?.length ?? 0} receitas</span>
             </div>
-            <div className="product-ranking-list">
-              {(statistics?.product_breakdown ?? []).slice(0, 6).map((product, index) => (
-                <div className="product-ranking-row" key={product.product_code}>
-                  <span className="product-rank">{index + 1}</span>
-                  <div>
-                    <strong>{product.product_code}</strong>
-                    <i>
-                      <span
-                        style={{
-                          width: `${Math.max(3, product.share_percent)}%`,
-                          background: color,
-                        }}
-                      />
-                    </i>
+            <ScrollHint>
+              <div className="product-ranking-list">
+                {(statistics?.product_breakdown ?? []).map((product, index) => (
+                  <div className="product-ranking-row" key={product.product_code}>
+                    <span className="product-rank">{index + 1}</span>
+                    <div>
+                      <strong>{product.product_code}</strong>
+                      <i>
+                        <span
+                          style={{
+                            width: `${Math.max(3, product.share_percent)}%`,
+                            background: color,
+                          }}
+                        />
+                      </i>
+                    </div>
+                    <b>
+                      {number(product.value, widget.config.decimals ?? 1)} {widget.unit}
+                      <small>{number(product.share_percent, 1)}%</small>
+                    </b>
                   </div>
-                  <b>
-                    {number(product.value, widget.config.decimals ?? 1)} {widget.unit}
-                    <small>{number(product.share_percent, 1)}%</small>
-                  </b>
-                </div>
-              ))}
-              {!statistics?.product_breakdown?.length && (
-                <div className="product-ranking-empty">Aguardando produção no período.</div>
-              )}
-            </div>
+                ))}
+                {!statistics?.product_breakdown?.length && (
+                  <div className="product-ranking-empty">Aguardando produção no período.</div>
+                )}
+              </div>
+            </ScrollHint>
           </div>
           <div className="three-metrics">
             <span>
@@ -572,6 +584,11 @@ export function DashboardCanvas({ id }: { id: string }) {
         }`
       : null;
   const statistics = usePoll<Statistic[]>(statisticsPath, 30000);
+  const hasCounters = Boolean(dashboard.data?.widgets?.some((widget) => widget.config.counterMode));
+  const counters = usePoll<CounterValue[]>(
+    hasCounters ? `/dashboards/${id}/counters` : null,
+    refreshMs,
+  );
   const windowMinutes = dashboard.data?.time_window_minutes ?? 60;
   const from = new Date(
     Math.floor(Date.now() / 60000) * 60000 - windowMinutes * 60000,
@@ -773,12 +790,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     await dashboard.refresh();
   }
   async function resetCounter(widget: DashboardWidget) {
-    const current = widget.tag_id ? byTag.get(widget.tag_id)?.value_number : null;
-    if (current == null) throw new Error('O contador ainda não possui um valor numérico válido.');
-    await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'PATCH', {
-      config: { counterMode: true, counterBaseline: current },
-    });
-    await dashboard.refresh();
+    await mutate(`/dashboards/${id}/widgets/${widget.id}/reset-counter`, 'POST');
+    await Promise.all([dashboard.refresh(), counters.refresh()]);
   }
   async function dropWidget(targetId: string) {
     if (!draggedId || draggedId === targetId) return;
@@ -936,6 +949,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             latest={widget.tag_id ? byTag.get(widget.tag_id) : undefined}
             history={history.data ?? []}
             statistics={statistics.data?.find((item) => item.widget_id === widget.id)}
+            counter={counters.data?.find((item) => item.widget_id === widget.id)}
             edit={() => startEdit(widget)}
             remove={() => setRemovingWidget(widget)}
             reset={() => setResettingWidget(widget)}

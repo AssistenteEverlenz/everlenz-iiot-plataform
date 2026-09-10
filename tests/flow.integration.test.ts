@@ -902,4 +902,73 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await db.query('DELETE FROM tags WHERE id=ANY($1::uuid[])', [[pallets, rate, running]]);
     }
   });
+  it('zeroes a counter by moment and keeps counting through an HMI reset', async () => {
+    const dashboardId = '55555555-5555-4555-8555-555555555555';
+    const counterTag = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type)
+         VALUES($1,$2,'contador_zerar','Contador zerar','number') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    const sample = (offsetSeconds: number, value: number) =>
+      db.query(
+        `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality)
+         VALUES($1,'22222222-2222-4222-8222-222222222222',$2,$3,now()+($4::int*interval '1 second'),now(),$5,'good')`,
+        [TENANT, HAIWELL, counterTag, offsetSeconds, value],
+      );
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      const added = await api.inject({
+        method: 'POST',
+        url: `/api/dashboards/${dashboardId}/widgets`,
+        payload: {
+          deviceId: HAIWELL,
+          tagId: counterTag,
+          widgetType: 'value',
+          title: 'Contador para zerar',
+          width: 'small',
+          config: { counterMode: true, counterBaseline: 12 },
+        },
+      });
+      expect(added.statusCode).toBe(201);
+      const view = (await api.inject(`/api/dashboards/${dashboardId}`)).json();
+      const widget = view.widgets.find(
+        (item: { title: string }) => item.title === 'Contador para zerar',
+      );
+      // Raw history before the reset: must not count.
+      await sample(-600, 10);
+      await sample(-300, 12);
+      const reset = await api.inject({
+        method: 'POST',
+        url: `/api/dashboards/${dashboardId}/widgets/${widget.id}/reset-counter`,
+      });
+      expect(reset.statusCode).toBe(200);
+      expect(reset.json().config.counterResetAt).toEqual(expect.any(String));
+      expect(reset.json().config).not.toHaveProperty('counterBaseline');
+      // After the reset: 12 -> 15 (+3), HMI rolls back to 2 (+2), then 5 (+3) = 8.
+      await sample(60, 15);
+      await sample(120, 2);
+      await sample(180, 5);
+      const counters = (await api.inject(`/api/dashboards/${dashboardId}/counters`)).json();
+      expect(counters).toEqual([expect.objectContaining({ widget_id: widget.id, since_reset: 8 })]);
+      // A text or status widget cannot be zeroed.
+      const statusWidget = view.widgets.find(
+        (item: { data_type: string }) => item.data_type === 'boolean',
+      );
+      if (statusWidget)
+        expect(
+          (
+            await api.inject({
+              method: 'POST',
+              url: `/api/dashboards/${dashboardId}/widgets/${statusWidget.id}/reset-counter`,
+            })
+          ).statusCode,
+        ).toBe(400);
+    } finally {
+      await api.close();
+      await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [counterTag]);
+      await db.query('DELETE FROM tags WHERE id=$1', [counterTag]);
+    }
+  });
 });
