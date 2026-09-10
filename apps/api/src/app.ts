@@ -664,23 +664,31 @@ export async function createApp(
     });
     return updated.rows[0];
   });
+  // Deleting a device removes it and everything recorded for it (purge_device, migration 015):
+  // samples, raw messages, variables, topic, status and dashboard. Only the audit log keeps
+  // who deleted it and when. Deletion used to archive the device and leave all of that behind.
   app.delete('/api/devices/:id', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const result = await db.query<{ id: string; mqtt_username: string | null }>(
-      `UPDATE devices SET archived_at=now(),enabled=false,updated_at=now()
-       WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING id,mqtt_username`,
-      [access.principal(req).tenantId, id],
-    );
-    if (!result.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    const tenantId = access.principal(req).tenantId;
+    const found = await db.query<{
+      name: string;
+      device_code: string | null;
+      mqtt_username: string | null;
+    }>('SELECT name,device_code,mqtt_username FROM devices WHERE tenant_id=$1 AND id=$2', [
+      tenantId,
+      id,
+    ]);
+    if (!found.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    await db.query('SELECT purge_device($1,$2)', [tenantId, id]);
     await recordAudit(db, req, access.principal(req), {
-      action: 'device.archive',
+      action: 'device.delete',
       targetType: 'device',
       targetId: id,
-      summary: { mqtt_username: result.rows[0].mqtt_username },
+      summary: { ...found.rows[0] },
     });
-    if (result.rows[0].mqtt_username)
-      await provisionMqttRequest('delete', result.rows[0].mqtt_username, '', '');
+    if (found.rows[0].mqtt_username)
+      await provisionMqttRequest('delete', found.rows[0].mqtt_username, '', '');
     return reply.code(204).send();
   });
   app.get('/api/telemetry', async (req, reply) => {

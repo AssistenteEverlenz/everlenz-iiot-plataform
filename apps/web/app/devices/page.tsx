@@ -502,7 +502,7 @@ export default function Devices() {
       {confirmDelete && selected && (
         <ActionModal
           title="Excluir equipamento"
-          description={`O equipamento “${selected.name}” será desativado e suas credenciais MQTT serão revogadas.`}
+          description={`O equipamento “${selected.name}” será apagado definitivamente do servidor, com todos os seus dados: leituras, mensagens, variáveis e painel. A credencial MQTT será revogada. Esta ação não pode ser desfeita.`}
           confirmLabel="Excluir equipamento"
           danger
           onClose={() => setConfirmDelete(false)}

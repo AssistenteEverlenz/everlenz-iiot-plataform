@@ -225,6 +225,67 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     expect(seen.online).toBe(true);
     expect(new Date(seen.last_message_at).getTime()).toBeGreaterThan(Date.now() + 150_000);
   });
+  it('deletes a device and everything recorded for it', async () => {
+    const device = 'a1b2c3d4-0000-4000-8000-00000000d31e';
+    const topic = 'iiot/tenant-z/site-z/evl-apagar-teste/telemetry';
+    await db.query(
+      `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,mqtt_identifier,adapter_type,mqtt_username)
+       VALUES($1,$2,'22222222-2222-4222-8222-222222222222','apagar-teste','EVL-DEL-APAGAR','Apagar teste','Delta','DOP-107EV',$3,'generic','evl-del-apagar')`,
+      [device, TENANT, `device-${device}`],
+    );
+    await db.query(
+      `INSERT INTO device_topic_mappings(tenant_id,device_id,kind,topic) VALUES($1,$2,'exact',$3)`,
+      [TENANT, device, topic],
+    );
+    await db.query(
+      `INSERT INTO tags(tenant_id,device_id,key,name,data_type) VALUES($1,$2,'contagem','Contagem','number')`,
+      [TENANT, device],
+    );
+    await db.query(
+      `INSERT INTO dashboards(tenant_id,device_id,name,slug) VALUES($1,$2,'Apagar teste','apagar-teste')`,
+      [TENANT, device],
+    );
+    const sent = await pipeline.ingest({
+      topic,
+      payload: Buffer.from(JSON.stringify({ values: { contagem: 5, nova: 1 } })),
+      qos: 1,
+      retain: false,
+      receivedAt: new Date(),
+    });
+    expect(sent.status).toBe('processed');
+    // The signal catalog is written asynchronously after ingestion.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      expect(
+        (await api.inject({ method: 'DELETE', url: `/api/devices/${device}` })).statusCode,
+      ).toBe(204);
+      for (const table of [
+        'telemetry_samples',
+        'mqtt_messages_raw',
+        'device_status',
+        'dashboards',
+        'tags',
+        'device_topic_mappings',
+        'device_signal_catalog',
+      ]) {
+        const left = await db.query<{ count: number }>(
+          `SELECT count(*)::int count FROM ${table} WHERE device_id=$1`,
+          [device],
+        );
+        expect({ table, count: left.rows[0].count }).toEqual({ table, count: 0 });
+      }
+      const gone = await db.query('SELECT 1 FROM devices WHERE id=$1', [device]);
+      expect(gone.rows).toHaveLength(0);
+      // A second delete finds nothing.
+      expect(
+        (await api.inject({ method: 'DELETE', url: `/api/devices/${device}` })).statusCode,
+      ).toBe(404);
+    } finally {
+      await api.close();
+    }
+  });
   it('serves chart history averaged per minute', async () => {
     const tag = (
       await db.query<{ id: string }>(
