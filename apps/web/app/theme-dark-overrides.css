@@ -1,0 +1,79 @@
+/* Dark theme: what the generated theme-dark.css cannot reach. Colours written as attributes by
+   the chart library, native controls, and the page ground (the generator maps white to the
+   darkest shade, which would sink the cards below the page; here the page goes darker). */
+@media screen {
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    background: #091317;
+  }
+  :root[data-theme='dark'] body {
+    background: #091317;
+  }
+
+  /* Charts on the platform pages. The TV board has its own dark palette and is left alone. */
+  :root[data-theme='dark'] .platform-main .recharts-cartesian-grid line {
+    stroke: #22363d;
+  }
+  :root[data-theme='dark'] .platform-main .recharts-cartesian-axis-tick-value,
+  :root[data-theme='dark'] .platform-main .recharts-cartesian-axis-tick text {
+    fill: #8fa6ad;
+  }
+  :root[data-theme='dark'] .platform-main .recharts-default-tooltip {
+    background: #122025 !important;
+    border-color: #2a4148 !important;
+    color: #e2ecee;
+  }
+  :root[data-theme='dark'] .platform-main .recharts-tooltip-label {
+    color: #e2ecee;
+  }
+  /* Slice separators are drawn in the card colour. */
+  :root[data-theme='dark'] .platform-main .recharts-pie-sector path {
+    stroke: #122025;
+  }
+
+  /* Theme switch */
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #dae3e5;
+    border-radius: 9px;
+    background: #fff;
+    color: #324d57;
+    cursor: pointer;
+  }
+  .theme-toggle:hover {
+    border-color: #12b8a6;
+    color: #0f8f7e;
+  }
+  /* In the phone "Mais" sheet it reads as one more item of the list. */
+  .theme-toggle.with-label {
+    width: 100%;
+    height: auto;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border-color: transparent;
+    border-radius: 12px;
+    background: #f2f6f7;
+    font-size: 15px;
+  }
+  :root[data-theme='dark'] .theme-toggle.with-label {
+    border-color: transparent;
+    background: #182528;
+  }
+  :root[data-theme='dark'] .theme-toggle {
+    border-color: #2a4148;
+    background: #122025;
+    color: #d5e2e5;
+  }
+}
+@media print {
+  .theme-toggle {
+    display: none !important;
+  }
+}

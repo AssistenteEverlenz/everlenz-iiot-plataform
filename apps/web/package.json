@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1",
-    "build": "next build --webpack",
+    "dev": "node scripts/gen-dark-theme.mjs && next dev --hostname 127.0.0.1",
+    "build": "node scripts/gen-dark-theme.mjs && next build --webpack",
+    "theme": "node scripts/gen-dark-theme.mjs",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit"
   },

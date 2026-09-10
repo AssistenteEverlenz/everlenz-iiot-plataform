@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { NavIcon, type NavIconName } from './NavIcon';
+import { ThemeToggle } from './ThemeToggle';
 
 export interface PlatformUser {
   id: string;
@@ -202,6 +203,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             <span>PLATAFORMA IIoT</span>
             <div className="topbar-user">
               <span className="live-dot" /> Dados em tempo real <b>{session.user.fullName}</b>
+              <ThemeToggle />
             </div>
           </header>
           {children}
@@ -238,6 +240,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
                   <NavIcon name={item.icon} /> {item.label}
                 </Link>
               ))}
+              <ThemeToggle withLabel />
               <button className="danger-text" onClick={() => void logout()}>
                 Sair da plataforma
               </button>
