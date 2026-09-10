@@ -843,6 +843,9 @@ export async function createApp(
            (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date >= d.start_date is_current
          FROM telemetry_hourly_rollups r CROSS JOIN dated d
          WHERE r.tenant_id=$1 AND r.device_id=$2 AND r.tag_id=$3
+           AND r.product_code NOT IN (
+             SELECT h.product_code FROM hidden_products h WHERE h.device_id=r.device_id
+           )
            AND r.bucket >= (d.previous_start::timestamp AT TIME ZONE 'America/Sao_Paulo')
            AND r.bucket < ((d.end_date+1)::timestamp AT TIME ZONE 'America/Sao_Paulo')
          GROUP BY (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date,r.product_code,d.start_date
@@ -859,6 +862,12 @@ export async function createApp(
             ],
           )
         ).rows;
+        const hidden = (
+          await db.query<{ product_code: string }>(
+            'SELECT product_code FROM hidden_products WHERE tenant_id=$1 AND device_id=$2 ORDER BY product_code',
+            [current.tenantId, widget.device_id],
+          )
+        ).rows.map((row) => row.product_code);
         const currentRows = rows.filter((row) => row.is_current);
         const previousRows = rows.filter((row) => !row.is_current);
         const summarize = (selected: typeof rows) => {
@@ -979,6 +988,7 @@ export async function createApp(
           best_value: best?.value ?? null,
           daily_series: dailySeries,
           bucket_granularity: periodDays > 60 ? 'month' : 'day',
+          hidden_products: hidden,
           product_breakdown: productBreakdown.map((product) => ({
             ...product,
             share_percent: distributionTotal > 0 ? (product.value / distributionTotal) * 100 : 0,

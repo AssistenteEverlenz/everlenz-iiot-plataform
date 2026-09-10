@@ -3044,3 +3044,71 @@ footer {
   font-size: 11px;
   color: #93a7ad;
 }
+
+/* Hide a product: the rank badge turns into a discreet eye-off on hover (masters only). */
+.product-ranking-row {
+  position: relative;
+}
+.product-hide {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dce6e8;
+  border-radius: 999px;
+  background: #fff;
+  color: #93a7ad;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.product-ranking-row:hover .product-hide,
+.product-hide:focus-visible {
+  opacity: 1;
+}
+.product-hide:hover {
+  color: #dc3f45;
+  border-color: #dc3f45;
+}
+.hidden-products {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #93a7ad;
+}
+.hidden-products-toggle,
+.hidden-products-list button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.hidden-products-toggle {
+  color: #71868d;
+  text-decoration: underline dotted;
+}
+.hidden-products-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.hidden-products-list span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed #dce6e8;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.hidden-products-list button {
+  color: #12b8a6;
+}

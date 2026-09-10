@@ -107,6 +107,51 @@ function sumRange(series: Series, from: string, to: string) {
 }
 
 export function registerProductionRoutes(app: FastifyInstance, db: Database, access: Access) {
+  app.get('/api/devices/:id/hidden-products', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    return (
+      await db.query<{ product_code: string; hidden_at: string }>(
+        'SELECT product_code,hidden_at FROM hidden_products WHERE tenant_id=$1 AND device_id=$2 ORDER BY product_code',
+        [access.principal(req).tenantId, id],
+      )
+    ).rows;
+  });
+
+  // Hiding keeps every sample: the product only leaves totals and rankings, and restoring
+  // brings it back with its full history. Test recipes and discontinued items stop
+  // polluting the management view without destroying the audit trail.
+  app.post('/api/devices/:id/hidden-products', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const body = z
+      .object({ productCode: z.string().trim().min(1).max(120), hidden: z.boolean() })
+      .parse(req.body);
+    const current = access.principal(req);
+    await db.transaction(async (sql) => {
+      if (body.hidden)
+        await sql.query(
+          `INSERT INTO hidden_products(tenant_id,device_id,product_code,hidden_by)
+           VALUES($1,$2,$3,(SELECT id FROM app_users WHERE id=$4))
+           ON CONFLICT(device_id,product_code) DO NOTHING`,
+          [current.tenantId, id, body.productCode, current.id],
+        );
+      else
+        await sql.query(
+          'DELETE FROM hidden_products WHERE tenant_id=$1 AND device_id=$2 AND product_code=$3',
+          [current.tenantId, id, body.productCode],
+        );
+      await recordAudit(sql, req, current, {
+        action: body.hidden ? 'device.product.hide' : 'device.product.restore',
+        targetType: 'device',
+        targetId: id,
+        summary: { product_code: body.productCode },
+      });
+    });
+    return { product_code: body.productCode, hidden: body.hidden };
+  });
+
   app.get('/api/devices/:id/production-settings', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
@@ -219,6 +264,7 @@ export function registerProductionRoutes(app: FastifyInstance, db: Database, acc
          FROM telemetry_hourly_rollups
          WHERE tenant_id=$1 AND device_id=$2 AND tag_id=ANY($3::uuid[])
            AND bucket >= ($4::date::timestamp AT TIME ZONE '${TIME_ZONE}')
+           AND product_code NOT IN (SELECT product_code FROM hidden_products WHERE device_id=$2)
          GROUP BY tag_id,product_code,(bucket AT TIME ZONE '${TIME_ZONE}')::date`,
         [tenantId, id, tagIds, queryFrom],
       );
@@ -312,6 +358,7 @@ export function registerProductionRoutes(app: FastifyInstance, db: Database, acc
       const result = await db.query<{ average: number | null }>(
         `SELECT sum(value_sum)/nullif(sum(sample_count),0) average FROM telemetry_hourly_rollups
          WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_sum/sample_count > 0
+           AND product_code NOT IN (SELECT product_code FROM hidden_products WHERE device_id=$2)
            AND bucket >= ($4::date::timestamp AT TIME ZONE '${TIME_ZONE}')`,
         [tenantId, id, roles.rate_tag_id, today],
       );

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Area,
   AreaChart,
@@ -64,6 +65,8 @@ interface Statistic {
   best_value: number | null;
   daily_series: Array<{ date: string; value: number | null; samples: number }>;
   bucket_granularity: 'day' | 'month';
+  /** Products a master hid on this device; left out of every number above. */
+  hidden_products: string[];
   product_breakdown: Array<{
     product_code: string;
     value: number;
@@ -150,6 +153,21 @@ const visualizationHelp: Record<DashboardWidget['widget_type'], string> = {
   pareto: 'Precisa de eventos de parada com motivo e duração para ordenar as maiores perdas.',
 };
 
+function EyeOff() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M3 3l18 18M10.6 5.1A10.9 10.9 0 0 1 12 5c5 0 9 4.5 10 7-.4 1-1.3 2.4-2.6 3.7M6.2 6.2C4.3 7.6 2.8 9.6 2 12c1 2.5 5 7 10 7 1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function SixDots() {
   return (
     <span className="six-dots">
@@ -206,6 +224,14 @@ function Widget({
       : null;
   const productionStats = usePoll<Statistic[]>(productionPath, 30000);
   const statistics = productionStats.data?.[0];
+  const { user } = usePlatform();
+  const hiddenProducts = statistics?.hidden_products ?? [];
+  const [hidingProduct, setHidingProduct] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  async function toggleProduct(productCode: string, hidden: boolean) {
+    await mutate(`/devices/${widget.device_id}/hidden-products`, 'POST', { productCode, hidden });
+    await productionStats.refresh();
+  }
   const rawNumeric = latest?.value_number ?? null;
   // A zeroed counter shows what the server summed since the reset moment, which survives the
   // HMI rolling its own counter back to zero. Before the first reset it shows the raw value.
@@ -585,6 +611,17 @@ function Widget({
                       {number(product.value, widget.config.decimals ?? 1)} {widget.unit}
                       <small>{number(product.share_percent, 1)}%</small>
                     </b>
+                    {user.role === 'master' && (
+                      <button
+                        type="button"
+                        className="product-hide"
+                        title="Ocultar produto"
+                        aria-label={`Ocultar ${product.product_code}`}
+                        onClick={() => setHidingProduct(product.product_code)}
+                      >
+                        <EyeOff />
+                      </button>
+                    )}
                   </div>
                 ))}
                 {!statistics?.product_breakdown?.length && (
@@ -592,6 +629,32 @@ function Widget({
                 )}
               </div>
             </ScrollHint>
+            {hiddenProducts.length > 0 && (
+              <div className="hidden-products">
+                <button
+                  type="button"
+                  className="hidden-products-toggle"
+                  onClick={() => setShowHidden(!showHidden)}
+                >
+                  {hiddenProducts.length} oculto{hiddenProducts.length > 1 ? 's' : ''} ·{' '}
+                  {showHidden ? 'fechar' : 'mostrar'}
+                </button>
+                {showHidden && (
+                  <div className="hidden-products-list">
+                    {hiddenProducts.map((code) => (
+                      <span key={code}>
+                        {code}
+                        {user.role === 'master' && (
+                          <button type="button" onClick={() => void toggleProduct(code, false)}>
+                            restaurar
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="three-metrics">
             <span>
@@ -622,6 +685,18 @@ function Widget({
           <span>O gráfico surgirá quando motivos e duração das paradas forem coletados.</span>
         </div>
       )}
+      {/* Portal: a fixed modal inside a draggable card would be clipped by the card. */}
+      {hidingProduct &&
+        createPortal(
+          <ActionModal
+            title="Ocultar produto"
+            description={`“${hidingProduct}” deixa de aparecer nos totais, gráficos e rankings deste equipamento. Os dados continuam guardados e o produto pode ser restaurado a qualquer momento em “mostrar”.`}
+            confirmLabel="Ocultar"
+            onClose={() => setHidingProduct(null)}
+            onConfirm={() => toggleProduct(hidingProduct, true)}
+          />,
+          document.body,
+        )}
     </article>
   );
 }

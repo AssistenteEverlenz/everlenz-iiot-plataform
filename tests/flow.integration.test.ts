@@ -1033,4 +1033,83 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await api.close();
     }
   });
+  it('hides a test product from totals and rankings, and restores it intact', async () => {
+    const dashboardId = '55555555-5555-4555-8555-555555555555';
+    const tagId = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type)
+         VALUES($1,$2,'paletes_ocultar','Paletes ocultar','number') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    const sample = (seconds: number, value: number, product: string) =>
+      db.query(
+        `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality,product_code)
+         VALUES($1,'22222222-2222-4222-8222-222222222222',$2,$3,now()-($4::int*interval '1 second'),now(),$5,'good',$6)`,
+        [TENANT, HAIWELL, tagId, seconds, value, product],
+      );
+    // 0 -> 5 on the real product (+5), then 5 -> 8 on a test recipe (+3).
+    await sample(50, 0, 'BLOCO REAL');
+    await sample(40, 5, 'BLOCO REAL');
+    await sample(30, 8, 'RECEITA TESTE');
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      const added = await api.inject({
+        method: 'POST',
+        url: `/api/dashboards/${dashboardId}/widgets`,
+        payload: {
+          deviceId: HAIWELL,
+          tagId,
+          widgetType: 'production',
+          title: 'Ocultar produto',
+          width: 'large',
+          config: { productionMetricKind: 'counter_delta' },
+        },
+      });
+      expect(added.statusCode).toBe(201);
+      const view = (await api.inject(`/api/dashboards/${dashboardId}`)).json();
+      const widgetId = view.widgets.find(
+        (item: { title: string }) => item.title === 'Ocultar produto',
+      ).id;
+      const stats = async () =>
+        (
+          await api.inject(
+            `/api/dashboards/${dashboardId}/statistics?widgetId=${widgetId}&period=today`,
+          )
+        ).json()[0];
+      const codes = (breakdown: Array<{ product_code: string }>) =>
+        breakdown.map((product) => product.product_code);
+      const hide = (hidden: boolean) =>
+        api.inject({
+          method: 'POST',
+          url: `/api/devices/${HAIWELL}/hidden-products`,
+          payload: { productCode: 'RECEITA TESTE', hidden },
+        });
+
+      let current = await stats();
+      expect(current.current_period_value).toBe(8);
+      expect(codes(current.product_breakdown)).toEqual(['BLOCO REAL', 'RECEITA TESTE']);
+
+      expect((await hide(true)).statusCode).toBe(200);
+      current = await stats();
+      expect(current.current_period_value).toBe(5);
+      expect(codes(current.product_breakdown)).toEqual(['BLOCO REAL']);
+      expect(current.hidden_products).toEqual(['RECEITA TESTE']);
+      const audit = await db.query<{ action: string }>(
+        `SELECT action FROM audit_log WHERE action LIKE 'device.product.%' ORDER BY id`,
+      );
+      expect(audit.rows.map((row) => row.action)).toContain('device.product.hide');
+
+      // Restoring brings the full history back: nothing was deleted.
+      expect((await hide(false)).statusCode).toBe(200);
+      current = await stats();
+      expect(current.current_period_value).toBe(8);
+      expect(current.hidden_products).toEqual([]);
+    } finally {
+      await api.close();
+      await db.query('DELETE FROM hidden_products WHERE device_id=$1', [HAIWELL]);
+      await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [tagId]);
+      await db.query('DELETE FROM tags WHERE id=$1', [tagId]);
+    }
+  });
 });
