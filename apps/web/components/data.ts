@@ -109,6 +109,12 @@ export interface DashboardWidget {
     productionDefaultPeriod?: 'today' | '7d' | 'week' | 'month' | 'year' | '30d' | 'custom';
     /** Quick bar charts: one bar per product in the period, or one bar per day. */
     chartDimension?: 'product' | 'day';
+    /** Quick charts: tones of the widget colour (default, sober) or a categorical palette. */
+    chartPalette?: 'shades' | 'colorful';
+    /** Quick charts: per-product colour overrides, keyed by product code. */
+    productColors?: Record<string, string>;
+    /** Quick charts: show the top N products and fold the rest into "Outros"; 0 = all. */
+    maxProducts?: number;
     counterMode?: boolean;
     /** Legacy raw-value offset; ignored since zeroing moved to counterResetAt. */
     counterBaseline?: number;

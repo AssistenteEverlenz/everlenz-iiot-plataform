@@ -28,7 +28,7 @@ import {
 } from './data';
 
 import { ScrollHint } from './ScrollHint';
-import { QuickChart, valueLabel } from './QuickChart';
+import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
 type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
 
@@ -43,6 +43,12 @@ const periodOptions: Array<[ProductionPeriod, string]> = [
 
 // Types that read the production statistics: the full production card and the quick
 // analytic charts, which are lighter views of the same metric and filters.
+// Quick charts show product shares; a threshold alarm has no meaning on them.
+const quickTypes = new Set<DashboardWidget['widget_type']>([
+  'donut',
+  'bar_vertical',
+  'bar_horizontal',
+]);
 const analyticTypes = new Set<DashboardWidget['widget_type']>([
   'production',
   'donut',
@@ -794,6 +800,14 @@ export function DashboardCanvas({ id }: { id: string }) {
   );
   const [adding, setAdding] = useState(false);
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
+  // Products of the widget being edited, so each one can get its own colour.
+  const editingProducts = usePoll<Statistic[]>(
+    editingWidget && quickTypes.has(editingWidget.widget_type)
+      ? `/dashboards/${id}/statistics?widgetId=${editingWidget.id}&period=year`
+      : null,
+    60000,
+  );
+  const editingBreakdown = editingProducts.data?.[0]?.product_breakdown ?? [];
   const [tv, setTv] = useState(false);
   const [error, setError] = useState('');
   const [signalId, setSignalId] = useState('');
@@ -814,6 +828,9 @@ export function DashboardCanvas({ id }: { id: string }) {
   >('rate_average');
   const [productionDefaultPeriod, setProductionDefaultPeriod] = useState<ProductionPeriod>('7d');
   const [chartDimension, setChartDimension] = useState<'product' | 'day'>('product');
+  const [chartPalette, setChartPalette] = useState<'shades' | 'colorful'>('shades');
+  const [maxProducts, setMaxProducts] = useState(0);
+  const [productColors, setProductColors] = useState<Record<string, string>>({});
   const [productKey, setProductKey] = useState('');
   const [fallbackProductCode, setFallbackProductCode] = useState('ITEM GERAL');
   const [counterMode, setCounterMode] = useState(false);
@@ -940,6 +957,9 @@ export function DashboardCanvas({ id }: { id: string }) {
     setProductionMetricKind(widget.config.productionMetricKind ?? 'rate_average');
     setProductionDefaultPeriod(widget.config.productionDefaultPeriod ?? '7d');
     setChartDimension(widget.config.chartDimension ?? 'product');
+    setChartPalette(widget.config.chartPalette ?? 'shades');
+    setMaxProducts(widget.config.maxProducts ?? 0);
+    setProductColors(widget.config.productColors ?? {});
     setCounterMode(widget.config.counterMode ?? false);
   }
   async function saveWidget(event: React.FormEvent) {
@@ -975,12 +995,15 @@ export function DashboardCanvas({ id }: { id: string }) {
           decimals,
           gaugeStyle,
           gaugeNeedle,
-          alarmEnabled,
+          alarmEnabled: quickTypes.has(editingWidget.widget_type) ? false : alarmEnabled,
           alarmRanges,
           productionMinimumValue,
           productionMetricKind,
           productionDefaultPeriod,
           chartDimension,
+          chartPalette,
+          maxProducts,
+          productColors,
           counterMode,
         },
       });
@@ -1366,6 +1389,75 @@ export function DashboardCanvas({ id }: { id: string }) {
                       </select>
                     </label>
                   )}
+                  {quickTypes.has(editingWidget.widget_type) && (
+                    <>
+                      <label className="field">
+                        Cores
+                        <select
+                          value={chartPalette}
+                          onChange={(event) =>
+                            setChartPalette(event.target.value as 'shades' | 'colorful')
+                          }
+                        >
+                          <option value="shades">Tons da cor do item</option>
+                          <option value="colorful">Colorido</option>
+                        </select>
+                      </label>
+                      <label className="field">
+                        Mostrar
+                        <select
+                          value={maxProducts}
+                          onChange={(event) => setMaxProducts(Number(event.target.value))}
+                        >
+                          <option value={0}>Todos os produtos</option>
+                          {[3, 4, 5, 6, 8, 10].map((count) => (
+                            <option key={count} value={count}>
+                              {count} maiores + Outros
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {editingBreakdown.length > 0 && (
+                        <div className="field full-field">
+                          Cor de cada produto
+                          <div className="product-color-list">
+                            {editingBreakdown.map((product, index) => (
+                              <label key={product.product_code} className="product-color-item">
+                                <input
+                                  type="color"
+                                  value={seriesColor(
+                                    { ...editingWidget.config, color, chartPalette, productColors },
+                                    index,
+                                    editingBreakdown.length,
+                                    product.product_code,
+                                  )}
+                                  onChange={(event) =>
+                                    setProductColors({
+                                      ...productColors,
+                                      [product.product_code]: event.target.value,
+                                    })
+                                  }
+                                />
+                                <span title={product.product_code}>{product.product_code}</span>
+                                {productColors[product.product_code] && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = { ...productColors };
+                                      delete next[product.product_code];
+                                      setProductColors(next);
+                                    }}
+                                  >
+                                    padrão
+                                  </button>
+                                )}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <label className="field">
                     Período ao abrir o painel
                     <select
@@ -1441,14 +1533,16 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </small>
                 </>
               )}
-              <label className="check-field full-field">
-                <input
-                  type="checkbox"
-                  checked={alarmEnabled}
-                  onChange={(event) => setAlarmEnabled(event.target.checked)}
-                />
-                Ativar alarme visual por limite
-              </label>
+              {!quickTypes.has(editingWidget.widget_type) && (
+                <label className="check-field full-field">
+                  <input
+                    type="checkbox"
+                    checked={alarmEnabled}
+                    onChange={(event) => setAlarmEnabled(event.target.checked)}
+                  />
+                  Ativar alarme visual por limite
+                </label>
+              )}
               {alarmEnabled && (
                 <div className="full-field alarm-ranges-editor">
                   <div className="alarm-ranges-title">

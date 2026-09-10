@@ -3337,3 +3337,49 @@ footer {
   font-size: 12px;
   color: #93a7ad;
 }
+
+/* Quick chart editor: one colour swatch per product, resettable to the palette default. */
+.product-color-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.product-color-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #e2eaec;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #182e38;
+}
+.product-color-item input[type='color'] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.product-color-item span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.product-color-item button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: #12b8a6;
+  cursor: pointer;
+}
+/* KPI rules follow the widget colour instead of a fixed teal. */
+.quick-kpi {
+  border-left-color: var(--kpi-accent, #12b8a6);
+}
