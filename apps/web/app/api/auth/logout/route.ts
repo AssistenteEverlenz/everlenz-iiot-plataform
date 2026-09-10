@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiUrl, sessionCookie } from '../../../../lib/session';
+import { apiUrl, clientAddressHeaders, sessionCookie } from '../../../../lib/session';
 import { originAllowed } from '../../../../lib/origin';
 
 export async function POST(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   if (token)
     await fetch(apiUrl('auth/logout'), {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${token}`, ...clientAddressHeaders(request) },
       cache: 'no-store',
     }).catch(() => undefined);
   const response = NextResponse.json({ authenticated: false });

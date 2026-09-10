@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiUrl, sessionCookie, sessionCookieOptions } from '../../../../lib/session';
+import {
+  apiUrl,
+  clientAddressHeaders,
+  sessionCookie,
+  sessionCookieOptions,
+} from '../../../../lib/session';
 import { originAllowed } from '../../../../lib/origin';
 
 export async function POST(request: NextRequest) {
@@ -8,7 +13,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
   const result = await fetch(apiUrl('auth/login'), {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...clientAddressHeaders(request) },
     body: await request.text(),
     cache: 'no-store',
   });

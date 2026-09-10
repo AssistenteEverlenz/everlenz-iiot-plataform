@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiUrl, sessionCookie, sessionCookieOptions } from '../../../../lib/session';
+import {
+  apiUrl,
+  clientAddressHeaders,
+  sessionCookie,
+  sessionCookieOptions,
+} from '../../../../lib/session';
 import { originAllowed } from '../../../../lib/origin';
 
 export async function POST(request: NextRequest) {
@@ -10,7 +15,11 @@ export async function POST(request: NextRequest) {
   if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   const result = await fetch(apiUrl('auth/change-password'), {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      ...clientAddressHeaders(request),
+    },
     body: await request.text(),
     cache: 'no-store',
   });

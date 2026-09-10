@@ -68,10 +68,11 @@ export async function createApp(
 ) {
   const app = Fastify({
     bodyLimit: 2 * 1024 * 1024,
-    // Exactly one hop is trusted: the Coolify/Traefik proxy in front of this service.
-    // Without this, request.ip is the proxy for every caller and per-client throttling
-    // is meaningless. With `true`, any client could spoof X-Forwarded-For and forge an
-    // address; hop 0 is the immediate peer, which can only be the proxy itself.
+    // Exactly one hop is trusted: the immediate peer, which is always the web container,
+    // because the API is published only on the internal network (browser -> Traefik ->
+    // web -> api). The web proxy forwards the X-Forwarded-For that Traefik set, and the
+    // right-most entry becomes request.ip. With `true` instead, any client could forge
+    // its address by sending the header itself.
     trustProxy: (_address: string, hop: number) => hop === 0,
     logger: {
       base: { service: 'api' },
@@ -86,11 +87,19 @@ export async function createApp(
   if (process.env.NODE_ENV !== 'test')
     await app.register(rateLimit, {
       global: true,
-      max: 300,
+      // Keyed by the real client address, which the web proxy forwards. A whole plant
+      // usually sits behind one NAT address and every open dashboard polls roughly
+      // 140-230 requests/min, so this fits several screens at 1 s refresh while still
+      // stopping one runaway client. It is a per-client backstop, not capacity
+      // protection: login and export keep their own strict limits.
+      max: 1800,
       timeWindow: '1 minute',
       // Container healthchecks originate on loopback and must never be throttled.
       allowList: ['127.0.0.1', '::1'],
-      continueExceeding: true,
+      // Never renew the window while a client keeps exceeding it. Dashboards keep
+      // polling on errors, so renewal turned a single burst into a lockout lasting as
+      // long as any screen stayed open (SECURITY.md item 2, incident of 2026-09-10).
+      continueExceeding: false,
       addHeadersOnExceeding: { 'x-ratelimit-remaining': false },
     });
   const access = createAccessControl(db, {

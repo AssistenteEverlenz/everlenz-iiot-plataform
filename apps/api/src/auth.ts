@@ -245,7 +245,9 @@ export function registerAuthRoutes(
   // hard ceiling here, a handful of concurrent callers can exhaust the whole service.
   app.post(
     '/api/auth/login',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    // Per real client address; 20 leaves room for a shift change behind one plant NAT.
+    // Accounts are protected separately by the memory throttle and the durable lockout.
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const body = z
         .object({ email: z.email().max(254), password: z.string().min(1).max(128) })

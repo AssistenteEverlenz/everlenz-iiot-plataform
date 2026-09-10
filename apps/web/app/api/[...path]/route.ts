@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sessionCookie } from '../../../lib/session';
+import { clientAddressHeaders, sessionCookie } from '../../../lib/session';
 import { originAllowed } from '../../../lib/origin';
 
 const allowed =
@@ -24,6 +24,7 @@ async function forward(request: NextRequest, params: Promise<{ path: string[] }>
             ? { 'content-type': request.headers.get('content-type') ?? 'application/json' }
             : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...clientAddressHeaders(request),
         },
         cache: 'no-store',
         signal: AbortSignal.timeout(15000),

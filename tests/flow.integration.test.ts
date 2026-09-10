@@ -6,7 +6,7 @@ import { IngestionPipeline } from '../apps/ingestor/src/pipeline.js';
 import { simulatedMessage } from '../apps/simulator/src/messages.js';
 import { createApp } from '../apps/api/src/app.js';
 import type { Database } from '../packages/database/src/index.js';
-import { hashPassword } from '../packages/shared/src/index.js';
+import { hashPassword, sessionTokenHash } from '../packages/shared/src/index.js';
 let db: Database, close: () => Promise<void>, pipeline: IngestionPipeline;
 beforeAll(async () => {
   ({ db, close } = await memoryDatabase());
@@ -763,6 +763,41 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
         },
       });
       expect(unlocked.statusCode).toBe(200);
+    } finally {
+      await api.close();
+    }
+  });
+  it('records the real client behind the web proxy and ignores a forged address', async () => {
+    // Regression for the 2026-09-10 outage: the API only ever sees the web container
+    // (a 10.x Docker peer), so without the forwarded address every user collapsed into
+    // one rate-limit bucket and every session and audit row recorded the container.
+    const password = 'ProxyClient9!aa';
+    await db.query(
+      `INSERT INTO app_users(tenant_id,email,full_name,role,password_hash,must_change_password)
+       VALUES($1,'proxy@integration.test','Proxy Client','user',$2,false)`,
+      [TENANT, await hashPassword(password)],
+    );
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false, authRequired: true });
+    const sessionAddress = async (forwardedFor: string) => {
+      const login = await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        remoteAddress: '10.0.1.16',
+        headers: { 'x-forwarded-for': forwardedFor },
+        payload: { email: 'proxy@integration.test', password },
+      });
+      expect(login.statusCode).toBe(200);
+      const row = await db.query<{ ip_address: string }>(
+        'SELECT ip_address FROM app_sessions WHERE token_hash=$1',
+        [sessionTokenHash(login.json().token)],
+      );
+      return row.rows[0].ip_address;
+    };
+    try {
+      expect(await sessionAddress('198.51.100.77')).toBe('198.51.100.77');
+      // A client can prepend anything; only the right-most entry, appended by Traefik,
+      // is ever used, because the API trusts exactly one hop.
+      expect(await sessionAddress('6.6.6.6, 198.51.100.78')).toBe('198.51.100.78');
     } finally {
       await api.close();
     }

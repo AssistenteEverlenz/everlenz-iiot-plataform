@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiUrl, sessionCookie } from '../../../../lib/session';
+import { apiUrl, clientAddressHeaders, sessionCookie } from '../../../../lib/session';
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get(sessionCookie)?.value;
   if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   const result = await fetch(apiUrl('auth/session'), {
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${token}`, ...clientAddressHeaders(request) },
     cache: 'no-store',
   });
   const response = new NextResponse(await result.arrayBuffer(), {

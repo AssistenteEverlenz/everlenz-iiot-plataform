@@ -15,16 +15,16 @@ Comentários no código referenciam esses números como `SECURITY.md item N`.
 
 ## Validação executada
 
-| Verificação                                                 | Resultado                                                            |
-| ----------------------------------------------------------- | -------------------------------------------------------------------- |
-| `pnpm lint` (ESLint + TypeScript do monorepo e do frontend) | aprovado                                                             |
-| `pnpm format:check`                                         | aprovado                                                             |
-| `pnpm test`                                                 | **51 testes unitários aprovados**                                    |
-| `pnpm test:integration`                                     | **18 testes aprovados** (PGlite), incluindo o novo caso de segurança |
-| `pnpm build` (`IIOT_LOAD_ENV=false`)                        | aprovado, incluindo Next standalone                                  |
-| `pnpm audit --audit-level high --prod`                      | sem vulnerabilidades conhecidas                                      |
-| Runtime: rate limit                                         | **confirmado**: 10 requisições aceitas, seguintes com `429`          |
-| Runtime: custo constante de login                           | **confirmado**: ~150 ms mesmo para conta inexistente                 |
+| Verificação                                                 | Resultado                                                         |
+| ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| `pnpm lint` (ESLint + TypeScript do monorepo e do frontend) | aprovado                                                          |
+| `pnpm format:check`                                         | aprovado                                                          |
+| `pnpm test`                                                 | **51 testes unitários aprovados**                                 |
+| `pnpm test:integration`                                     | **21 testes aprovados** (PGlite), incluindo os casos de segurança |
+| `pnpm build` (`IIOT_LOAD_ENV=false`)                        | aprovado, incluindo Next standalone                               |
+| `pnpm audit --audit-level high --prod`                      | sem vulnerabilidades conhecidas                                   |
+| Runtime: rate limit                                         | **confirmado**: 10 requisições aceitas, seguintes com `429`       |
+| Runtime: custo constante de login                           | **confirmado**: ~150 ms mesmo para conta inexistente              |
 
 O teste de integração `never stores broker passwords, records an audit trail and locks out
 brute force` cobre quatro garantias de uma vez: a coluna `mqtt_password` não existe mais e
@@ -57,8 +57,29 @@ publica portas pela chain `DOCKER` do iptables, **avaliada antes do UFW**, entã
 A API não tinha limite algum, enquanto `/api/auth/login` custa ~100 ms de scrypt e o serviço
 satura perto de 15 req/s.
 
-**Feito:** `@fastify/rate-limit` registrado **antes** de qualquer rota — 300/min global
-(`allowList` de loopback para healthchecks), 10/min no login, 5/min no export CSV.
+**Feito:** `@fastify/rate-limit` registrado **antes** de qualquer rota — 1.800/min por cliente
+real (`allowList` de loopback para healthchecks), 20/min no login, 5/min no export CSV.
+
+> 🔴 **Incidente de 10/09/2026 — a plataforma parou de carregar, causado por este item.**
+>
+> A primeira versão limitava 300 req/min **por IP**, mas a API só é alcançada pelo proxy do
+> Next, que não repassava o IP do cliente. Toda requisição chegava do container web
+> (`10.0.1.16`), então o limite valia para **a plataforma inteira**. Um painel com atualização
+> de 1 s dispara ~140–230 req/min; com `continueExceeding: true` a janela se renovava enquanto
+> houvesse tela aberta, e o `usePoll` continua consultando mesmo com erro — o bloqueio se
+> retroalimentava. A prova estava no próprio banco: todas as linhas de `app_sessions` e
+> `audit_log` registravam `10.0.1.16`/`10.0.1.17` em vez do IP real.
+>
+> **Correção:** `apps/web/lib/session.ts` ganhou `clientAddressHeaders`, usado pelo proxy e
+> pelas quatro rotas `/api/auth/*` para repassar o `X-Forwarded-For` definido pelo Traefik. A
+> API confia em exatamente um salto (o container web) e usa a entrada mais à direita, então um
+> cliente que envie o próprio cabeçalho não consegue forjar o endereço. `continueExceeding`
+> passou a `false`. Coberto por teste de integração e verificado em runtime: dois clientes atrás
+> do mesmo container web agora têm baldes independentes.
+>
+> **Lição registrada:** o teste de runtime original disparava todas as requisições de um único
+> `remoteAddress`, então provava que o limite engatava, mas não que ele separava usuários. Qualquer
+> mudança de rate limit precisa testar **dois clientes distintos atrás do proxy**.
 
 **Duas armadilhas encontradas em runtime**, ambas deixariam o limite presente no código e
 inerte em produção:
