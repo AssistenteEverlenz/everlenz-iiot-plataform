@@ -40,6 +40,7 @@ export class TelemetryRepository {
       parsedJson: string | null;
       parser: string;
       processingError: string | null;
+      productCode: string;
       rows: unknown[][];
     },
   ) {
@@ -52,6 +53,7 @@ export class TelemetryRepository {
       options.processingError,
       options.receivedAt,
       options.topic,
+      options.productCode,
     ];
     const casts = [
       'uuid',
@@ -88,9 +90,9 @@ export class TelemetryRepository {
       ), inserted AS (
         INSERT INTO telemetry_samples(
           tenant_id,site_id,device_id,tag_id,timestamp,received_at,
-          value_number,value_text,value_boolean,quality,raw_message_id
+          value_number,value_text,value_boolean,quality,raw_message_id,product_code
         )
-        SELECT sample.* FROM (VALUES ${tuples.join(',')}) AS sample(
+        SELECT sample.*,$9 FROM (VALUES ${tuples.join(',')}) AS sample(
           tenant_id,site_id,device_id,tag_id,timestamp,received_at,
           value_number,value_text,value_boolean,quality,raw_message_id
         ) CROSS JOIN finalized_raw
@@ -153,6 +155,10 @@ export class IngestionPipeline {
   private resolutionCache?: { expiresAt: number; devices: Device[]; mappings: TopicMapping[] };
   private tagCache = new Map<string, { expiresAt: number; tags: TagConfig[] }>();
   private catalogObservedAt = new Map<string, number>();
+  private productionContextCache = new Map<
+    string,
+    { expiresAt: number; productKey: string | null; fallbackProductCode: string }
+  >();
 
   constructor(
     private db: Database,
@@ -188,6 +194,25 @@ export class IngestionPipeline {
     ).rows;
     this.tagCache.set(device.id, { expiresAt: Date.now() + 15_000, tags });
     return tags;
+  }
+  private async productionContext(device: Device) {
+    const cached = this.productionContextCache.get(device.id);
+    if (cached && cached.expiresAt > Date.now()) return cached;
+    const result = await this.db.query<{
+      product_key: string | null;
+      fallback_product_code: string;
+    }>(
+      `SELECT product_key,fallback_product_code FROM production_context_settings
+       WHERE tenant_id=$1 AND device_id=$2`,
+      [device.tenant_id, device.id],
+    );
+    const context = {
+      expiresAt: Date.now() + 5000,
+      productKey: result.rows[0]?.product_key ?? null,
+      fallbackProductCode: result.rows[0]?.fallback_product_code?.trim() || 'ITEM GERAL',
+    };
+    this.productionContextCache.set(device.id, context);
+    return context;
   }
   async ingest(message: MqttMessage) {
     const decoded = decodePayload(message.payload);
@@ -243,6 +268,14 @@ export class IngestionPipeline {
       }
       const tags = await this.configuredTags(device);
       const samples = adapter.parse(message);
+      const context = await this.productionContext(device);
+      const payloadProduct = context.productKey
+        ? samples.find((sample) => sample.key === context.productKey)?.value
+        : null;
+      const productCode =
+        payloadProduct == null || String(payloadProduct).trim() === ''
+          ? context.fallbackProductCode
+          : String(payloadProduct).trim().slice(0, 120);
       const lastCatalogObservation = this.catalogObservedAt.get(device.id) ?? 0;
       if (Date.now() - lastCatalogObservation >= 10_000) {
         this.catalogObservedAt.set(device.id, Date.now());
@@ -288,6 +321,7 @@ export class IngestionPipeline {
         processingError: ignored.length
           ? `Unconfigured tags: ${ignored.join(',').slice(0, 400)}`
           : null,
+        productCode,
         rows,
       });
       this.log.info({ event: 'telemetry_saved', rawId, deviceId: device.id, samples: rows.length });

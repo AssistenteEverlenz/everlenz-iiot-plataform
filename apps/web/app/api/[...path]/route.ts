@@ -3,7 +3,7 @@ import { sessionCookie } from '../../../lib/session';
 import { originAllowed } from '../../../lib/origin';
 
 const allowed =
-  /^(?:health|overview|tenants|sites|devices(?:\/[0-9a-f-]+(?:\/(?:tags|latest|signals|statistics|mqtt-credential))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|widgets(?:\/[0-9a-f-]+)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?)$/;
+  /^(?:health|overview|tenants|sites|devices(?:\/[0-9a-f-]+(?:\/(?:tags|latest|signals|statistics|mqtt-credential|production-context))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|widgets(?:\/[0-9a-f-]+)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?)$/;
 
 async function forward(request: NextRequest, params: Promise<{ path: string[] }>) {
   const path = (await params).path.join('/');

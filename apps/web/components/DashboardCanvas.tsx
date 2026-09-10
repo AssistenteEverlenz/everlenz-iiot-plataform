@@ -44,6 +44,18 @@ interface Statistic {
   best_day: string | null;
   best_value: number | null;
   daily_series: Array<{ date: string; value: number | null; samples: number }>;
+  bucket_granularity: 'day' | 'month';
+  product_breakdown: Array<{
+    product_code: string;
+    value: number;
+    samples: number;
+    share_percent: number;
+  }>;
+}
+
+interface ProductionContext {
+  product_key: string | null;
+  fallback_product_code: string;
 }
 
 type AlarmRange = NonNullable<DashboardWidget['config']['alarmRanges']>[number];
@@ -96,6 +108,14 @@ function formatPeriod(minutes: number) {
   if (minutes >= 60 * 24) return 'último dia';
   if (minutes >= 60) return `últimas ${minutes / 60} h`;
   return `últimos ${minutes} min`;
+}
+
+function analysisPeriodLabel(days: number) {
+  if (days === 1) return 'hoje';
+  if (days === 7) return 'últimos 7 dias';
+  if (days === 30) return 'últimos 30 dias';
+  if (days === 365) return 'último ano';
+  return `${days} dias selecionados`;
 }
 
 const visualizationHelp: Record<DashboardWidget['widget_type'], string> = {
@@ -395,13 +415,16 @@ function Widget({
           </div>
           <div className="production-history">
             <div className="production-history-title">
-              <strong>Desempenho dos últimos {statistics?.trend_days ?? 7} dias</strong>
+              <strong>Desempenho: {analysisPeriodLabel(statistics?.trend_days ?? 7)}</strong>
               <span>
-                Melhor dia:{' '}
+                Melhor {statistics?.bucket_granularity === 'month' ? 'mês' : 'dia'}:{' '}
                 {statistics?.best_day
-                  ? new Date(`${statistics.best_day}T12:00:00`).toLocaleDateString('pt-BR', {
-                      day: '2-digit',
+                  ? new Date(
+                      `${statistics.best_day}${statistics.best_day.length === 7 ? '-01' : ''}T12:00:00`,
+                    ).toLocaleDateString('pt-BR', {
+                      ...(statistics.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
                       month: 'short',
+                      ...(statistics.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
                     })
                   : '—'}{' '}
                 · {number(statistics?.best_value, widget.config.decimals ?? 1)} {widget.unit}
@@ -416,9 +439,12 @@ function Widget({
                 <XAxis
                   dataKey="date"
                   tickFormatter={(item) =>
-                    new Date(`${item}T12:00:00`).toLocaleDateString('pt-BR', {
-                      day: '2-digit',
+                    new Date(
+                      `${item}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
+                    ).toLocaleDateString('pt-BR', {
+                      ...(statistics?.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
                       month: 'short',
+                      ...(statistics?.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
                     })
                   }
                   tick={{ fontSize: 10, fill: '#71868d' }}
@@ -433,7 +459,13 @@ function Widget({
                 />
                 <Tooltip
                   labelFormatter={(item) =>
-                    new Date(`${String(item)}T12:00:00`).toLocaleDateString('pt-BR')
+                    new Date(
+                      `${String(item)}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
+                    ).toLocaleDateString('pt-BR', {
+                      month: 'long',
+                      year: 'numeric',
+                      ...(String(item).length === 10 ? { day: '2-digit' } : {}),
+                    })
                   }
                   formatter={(item) => [
                     `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
@@ -449,6 +481,37 @@ function Widget({
                 />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+          <div className="product-ranking">
+            <div className="production-history-title">
+              <strong>Produção por produto</strong>
+              <span>{statistics?.product_breakdown?.length ?? 0} receitas</span>
+            </div>
+            <div className="product-ranking-list">
+              {(statistics?.product_breakdown ?? []).slice(0, 6).map((product, index) => (
+                <div className="product-ranking-row" key={product.product_code}>
+                  <span className="product-rank">{index + 1}</span>
+                  <div>
+                    <strong>{product.product_code}</strong>
+                    <i>
+                      <span
+                        style={{
+                          width: `${Math.max(3, product.share_percent)}%`,
+                          background: color,
+                        }}
+                      />
+                    </i>
+                  </div>
+                  <b>
+                    {number(product.value, widget.config.decimals ?? 1)} {widget.unit}
+                    <small>{number(product.share_percent, 1)}%</small>
+                  </b>
+                </div>
+              ))}
+              {!statistics?.product_breakdown?.length && (
+                <div className="product-ranking-empty">Aguardando produção no período.</div>
+              )}
+            </div>
           </div>
           <div className="three-metrics">
             <span>
@@ -491,7 +554,24 @@ export function DashboardCanvas({ id }: { id: string }) {
   const device = usePoll<Device>(deviceId ? `/devices/${deviceId}` : null, refreshMs);
   const latest = usePoll<Sample[]>(deviceId ? `/devices/${deviceId}/latest` : null, refreshMs);
   const signals = usePoll<Signal[]>(deviceId ? `/devices/${deviceId}/signals` : null, 5000);
-  const statistics = usePoll<Statistic[]>(deviceId ? `/dashboards/${id}/statistics` : null, 30000);
+  const productionContext = usePoll<ProductionContext>(
+    deviceId ? `/devices/${deviceId}/production-context` : null,
+    10000,
+  );
+  const [analysisPeriod, setAnalysisPeriod] = useState<'today' | '7d' | '30d' | '365d' | 'custom'>(
+    '7d',
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+  const [customFrom, setCustomFrom] = useState(weekAgo);
+  const [customTo, setCustomTo] = useState(today);
+  const statisticsPath =
+    deviceId && (analysisPeriod !== 'custom' || (customFrom && customTo))
+      ? `/dashboards/${id}/statistics?period=${analysisPeriod}${
+          analysisPeriod === 'custom' ? `&from=${customFrom}&to=${customTo}` : ''
+        }`
+      : null;
+  const statistics = usePoll<Statistic[]>(statisticsPath, 30000);
   const windowMinutes = dashboard.data?.time_window_minutes ?? 60;
   const from = new Date(
     Math.floor(Date.now() / 60000) * 60000 - windowMinutes * 60000,
@@ -516,12 +596,12 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [alarmEnabled, setAlarmEnabled] = useState(false);
   const [alarmRanges, setAlarmRanges] = useState<AlarmRange[]>([]);
   const [gaugeNeedle, setGaugeNeedle] = useState(true);
-  const [productionPeriodMinutes, setProductionPeriodMinutes] = useState(60);
   const [productionMinimumValue, setProductionMinimumValue] = useState(0.1);
   const [productionMetricKind, setProductionMetricKind] = useState<
     'rate_average' | 'counter_delta'
   >('rate_average');
-  const [productionTrendDays, setProductionTrendDays] = useState<7 | 30>(7);
+  const [productKey, setProductKey] = useState('');
+  const [fallbackProductCode, setFallbackProductCode] = useState('ITEM GERAL');
   const [counterMode, setCounterMode] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -535,6 +615,11 @@ export function DashboardCanvas({ id }: { id: string }) {
     if (dashboard.data?.widgets)
       setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
   }, [dashboard.data?.widgets]);
+  useEffect(() => {
+    if (!productionContext.data) return;
+    setProductKey(productionContext.data.product_key ?? '');
+    setFallbackProductCode(productionContext.data.fallback_product_code);
+  }, [productionContext.data]);
   const allLoaded = Boolean(
     dashboard.data && device.data && latest.data && signals.data && statistics.data && history.data,
   );
@@ -630,10 +715,8 @@ export function DashboardCanvas({ id }: { id: string }) {
         : legacyAlarmRanges(widget, widget.config.min ?? 0, widget.config.max ?? 100),
     );
     setGaugeNeedle(widget.config.gaugeNeedle ?? true);
-    setProductionPeriodMinutes(widget.config.productionPeriodMinutes ?? 60);
     setProductionMinimumValue(widget.config.productionMinimumValue ?? 0.1);
     setProductionMetricKind(widget.config.productionMetricKind ?? 'rate_average');
-    setProductionTrendDays(widget.config.productionTrendDays ?? 7);
     setCounterMode(widget.config.counterMode ?? false);
   }
   async function saveWidget(event: React.FormEvent) {
@@ -653,6 +736,12 @@ export function DashboardCanvas({ id }: { id: string }) {
     setSavingModal(true);
     setError('');
     try {
+      if (editingWidget.widget_type === 'production') {
+        await mutate(`/devices/${deviceId}/production-context`, 'PATCH', {
+          productKey: productKey || null,
+          fallbackProductCode: fallbackProductCode.trim() || 'ITEM GERAL',
+        });
+      }
       await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', {
         title,
         width,
@@ -665,15 +754,13 @@ export function DashboardCanvas({ id }: { id: string }) {
           gaugeNeedle,
           alarmEnabled,
           alarmRanges,
-          productionPeriodMinutes,
           productionMinimumValue,
           productionMetricKind,
-          productionTrendDays,
           counterMode,
         },
       });
       setEditingWidget(null);
-      await dashboard.refresh();
+      await Promise.all([dashboard.refresh(), productionContext.refresh(), statistics.refresh()]);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar indicador.');
     } finally {
@@ -782,6 +869,48 @@ export function DashboardCanvas({ id }: { id: string }) {
         <small>
           A IHM também precisa publicar neste intervalo para chegar um valor novo a cada ciclo.
         </small>
+      </div>
+      <div className="analysis-filter">
+        <div>
+          <strong>Período gerencial</strong>
+          <span>Total, comparação, histórico e produtos usam a mesma seleção.</span>
+        </div>
+        <select
+          aria-label="Período gerencial"
+          value={analysisPeriod}
+          onChange={(event) =>
+            setAnalysisPeriod(event.target.value as 'today' | '7d' | '30d' | '365d' | 'custom')
+          }
+        >
+          <option value="today">Hoje</option>
+          <option value="7d">Últimos 7 dias</option>
+          <option value="30d">Últimos 30 dias</option>
+          <option value="365d">Último ano</option>
+          <option value="custom">Período personalizado</option>
+        </select>
+        {analysisPeriod === 'custom' && (
+          <div className="custom-period">
+            <label>
+              De
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo}
+                onChange={(event) => setCustomFrom(event.target.value)}
+              />
+            </label>
+            <label>
+              Até
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom}
+                max={today}
+                onChange={(event) => setCustomTo(event.target.value)}
+              />
+            </label>
+          </div>
+        )}
       </div>
       {(error || dashboard.error || latest.error) && (
         <div className="error-banner">{error || dashboard.error || latest.error}</div>
@@ -1044,33 +1173,34 @@ export function DashboardCanvas({ id }: { id: string }) {
                     </select>
                   </label>
                   <label className="field">
-                    Histórico gerencial
+                    Variável de produto/receita
                     <select
-                      value={productionTrendDays}
-                      onChange={(event) =>
-                        setProductionTrendDays(Number(event.target.value) as 7 | 30)
-                      }
+                      value={productKey}
+                      onChange={(event) => setProductKey(event.target.value)}
                     >
-                      <option value={7}>Últimos 7 dias</option>
-                      <option value={30}>Últimos 30 dias</option>
+                      <option value="">A IHM não envia (usar produto padrão)</option>
+                      {signals.data?.map((signal) => (
+                        <option value={signal.key} key={signal.id}>
+                          {signal.key}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="field">
-                    Período analisado
-                    <select
-                      value={productionPeriodMinutes}
-                      onChange={(event) => setProductionPeriodMinutes(Number(event.target.value))}
-                    >
-                      <option value={10}>Últimos 10 minutos</option>
-                      <option value={30}>Últimos 30 minutos</option>
-                      <option value={60}>Última hora</option>
-                      <option value={360}>Últimas 6 horas</option>
-                      <option value={720}>Últimas 12 horas</option>
-                      <option value={1440}>Último dia</option>
-                      <option value={10080}>Últimos 7 dias</option>
-                      <option value={43200}>Último mês</option>
-                    </select>
+                    Produto padrão
+                    <input
+                      required
+                      maxLength={120}
+                      value={fallbackProductCode}
+                      onChange={(event) => setFallbackProductCode(event.target.value)}
+                      placeholder="Ex.: BLOCO GERAL"
+                    />
                   </label>
+                  <small className="full-field alarm-range-help">
+                    Quando a variável de receita vier no payload, ela identifica cada incremento.
+                    Quando não vier, a plataforma usa o produto padrão. Sem configuração, registra
+                    como ITEM GERAL.
+                  </small>
                   <label className="field">
                     Desconsiderar valores abaixo de
                     <input

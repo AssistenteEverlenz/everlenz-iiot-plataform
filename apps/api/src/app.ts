@@ -262,6 +262,47 @@ export async function createApp(
       )
     ).rows;
   });
+  app.get('/api/devices/:id/production-context', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const result = await db.query<{
+      product_key: string | null;
+      fallback_product_code: string;
+    }>(
+      `SELECT product_key,fallback_product_code FROM production_context_settings
+       WHERE tenant_id=$1 AND device_id=$2`,
+      [access.principal(req).tenantId, id],
+    );
+    return result.rows[0] ?? { product_key: null, fallback_product_code: 'ITEM GERAL' };
+  });
+  app.patch('/api/devices/:id/production-context', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const body = z
+      .object({
+        productKey: z.string().trim().min(1).max(120).nullable(),
+        fallbackProductCode: z.string().trim().min(1).max(120),
+      })
+      .parse(req.body);
+    const current = access.principal(req);
+    const result = await db.query(
+      `INSERT INTO production_context_settings(
+         tenant_id,device_id,product_key,fallback_product_code
+       ) VALUES($1,$2,$3,$4)
+       ON CONFLICT(device_id) DO UPDATE SET product_key=EXCLUDED.product_key,
+         fallback_product_code=EXCLUDED.fallback_product_code,updated_at=now()
+       RETURNING product_key,fallback_product_code`,
+      [current.tenantId, id, body.productKey, body.fallbackProductCode],
+    );
+    await recordAudit(db, req, current, {
+      action: 'device.production_context.update',
+      targetType: 'device',
+      targetId: id,
+      summary: { productKey: body.productKey, fallbackProductCode: body.fallbackProductCode },
+    });
+    return result.rows[0];
+  });
   app.post('/api/devices/:id/tags', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     // Tag scaling rewrites how every future sample is interpreted: master only.
@@ -674,137 +715,240 @@ export async function createApp(
     const view = await dashboardView(db, current, id, deviceIds);
     return view ?? reply.code(404).send({ error: 'Dashboard not found' });
   });
+
   app.get('/api/dashboards/:id/statistics', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
+    const query = z
+      .object({
+        period: z.enum(['today', '7d', '30d', '365d', 'custom']).default('7d'),
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        to: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+      })
+      .parse(req.query);
     const current = access.principal(req);
     const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
     if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    let customFrom: string | null = null;
+    let customTo: string | null = null;
+    let periodDays = { today: 1, '7d': 7, '30d': 30, '365d': 365, custom: 7 }[query.period];
+    if (query.period === 'custom') {
+      if (!query.from || !query.to)
+        return reply.code(400).send({ error: 'from and to are required for a custom period' });
+      periodDays =
+        Math.floor(
+          (Date.parse(`${query.to}T12:00:00Z`) - Date.parse(`${query.from}T12:00:00Z`)) / 86400000,
+        ) + 1;
+      if (periodDays < 1 || periodDays > 366)
+        return reply.code(400).send({ error: 'Custom period must contain between 1 and 366 days' });
+      customFrom = query.from;
+      customTo = query.to;
+    }
     const productionWidgets = view.widgets.filter(
       (widget) => widget.widget_type === 'production' && widget.tag_id,
     );
     return Promise.all(
       productionWidgets.map(async (widget) => {
         const widgetConfig = widget.config as {
-          productionPeriodMinutes?: unknown;
           productionMinimumValue?: unknown;
           productionMetricKind?: unknown;
-          productionTrendDays?: unknown;
         };
-        const requestedPeriod = Number(widgetConfig.productionPeriodMinutes ?? 60);
-        const periodMinutes = Math.min(
-          60 * 24 * 31,
-          Math.max(1, Number.isFinite(requestedPeriod) ? requestedPeriod : 60),
-        );
         const requestedMinimum = Number(widgetConfig.productionMinimumValue ?? 0.1);
         const minimumValue = Number.isFinite(requestedMinimum) ? requestedMinimum : 0.1;
         const metricKind =
           widgetConfig.productionMetricKind === 'counter_delta' ? 'counter_delta' : 'rate_average';
-        const trendDays = Number(widgetConfig.productionTrendDays) === 30 ? 30 : 7;
-        const [result, trend] = await Promise.all([
-          db.query<{
-            samples: number;
-            ignored_samples: number;
-            minimum: number | null;
-            maximum: number | null;
-            average: number | null;
-            trend_per_second: number | null;
-          }>(
-            `SELECT
-            count(*) FILTER (WHERE value_number >= $5)::int samples,
-            count(*) FILTER (WHERE value_number < $5)::int ignored_samples,
-            min(value_number) FILTER (WHERE value_number >= $5) minimum,
-            max(value_number) FILTER (WHERE value_number >= $5) maximum,
-            avg(value_number) FILTER (WHERE value_number >= $5) average,
-            regr_slope(value_number,extract(epoch from timestamp))
-              FILTER (WHERE value_number >= $5) trend_per_second
-           FROM telemetry_samples
-           WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
-             AND timestamp >= now()-($4::double precision * interval '1 minute')`,
-            [current.tenantId, widget.device_id, widget.tag_id, periodMinutes, minimumValue],
-          ),
-          db.query<{
+        const rows = (
+          await db.query<{
             date: string;
+            product_code: string;
             value: number | null;
             samples: number;
+            minimum: number | null;
+            maximum: number | null;
             is_current: boolean;
           }>(
-            `WITH bounds AS (
-               SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date today
-             ), aggregated AS (
-               SELECT (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date local_day,
-                 CASE WHEN $4='counter_delta'
-                   THEN sum(r.positive_delta)
-                   ELSE sum(r.value_sum) FILTER (WHERE r.value_sum/r.sample_count >= $6)
-                     / nullif(sum(r.sample_count) FILTER (WHERE r.value_sum/r.sample_count >= $6),0)
-                 END value,
-                 sum(r.sample_count) FILTER (
-                   WHERE $4='counter_delta' OR r.value_sum/r.sample_count >= $6
-                 )::int samples
-               FROM telemetry_hourly_rollups r CROSS JOIN bounds b
-               WHERE r.tenant_id=$1 AND r.device_id=$2 AND r.tag_id=$3
-                 AND r.bucket >= ((b.today-(($5::int*2)-1))::timestamp AT TIME ZONE 'America/Sao_Paulo')
-               GROUP BY (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date
-             ), days AS (
-               SELECT generate_series(
-                 b.today-(($5::int*2)-1),b.today,interval '1 day'
-               )::date bucket_date,b.today
-               FROM bounds b
-             )
-             SELECT to_char(d.bucket_date,'YYYY-MM-DD') date,a.value,
-               coalesce(a.samples,0)::int samples,
-               d.bucket_date >= d.today-($5::int-1) is_current
-             FROM days d LEFT JOIN aggregated a ON a.local_day=d.bucket_date
-             ORDER BY d.bucket_date`,
+            `WITH selected AS (
+           SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date today
+         ), bounds AS (
+           SELECT coalesce($7::date,today-($5::int-1)) start_date,
+             coalesce($8::date,today) end_date FROM selected
+         ), dated AS (
+           SELECT b.*,(b.start_date-(b.end_date-b.start_date+1)) previous_start FROM bounds b
+         )
+         SELECT to_char((r.bucket AT TIME ZONE 'America/Sao_Paulo')::date,'YYYY-MM-DD') date,
+           r.product_code,
+           CASE WHEN $4='counter_delta' THEN sum(r.positive_delta)
+             ELSE sum(r.value_sum) FILTER (WHERE r.value_sum/r.sample_count >= $6)
+               / nullif(sum(r.sample_count) FILTER (WHERE r.value_sum/r.sample_count >= $6),0)
+           END value,
+           coalesce(sum(r.sample_count) FILTER (
+             WHERE $4='counter_delta' OR r.value_sum/r.sample_count >= $6
+           ),0)::int samples,
+           min(r.value_min) FILTER (
+             WHERE $4='counter_delta' OR r.value_sum/r.sample_count >= $6
+           ) minimum,
+           max(r.value_max) FILTER (
+             WHERE $4='counter_delta' OR r.value_sum/r.sample_count >= $6
+           ) maximum,
+           (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date >= d.start_date is_current
+         FROM telemetry_hourly_rollups r CROSS JOIN dated d
+         WHERE r.tenant_id=$1 AND r.device_id=$2 AND r.tag_id=$3
+           AND r.bucket >= (d.previous_start::timestamp AT TIME ZONE 'America/Sao_Paulo')
+           AND r.bucket < ((d.end_date+1)::timestamp AT TIME ZONE 'America/Sao_Paulo')
+         GROUP BY (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date,r.product_code,d.start_date
+         ORDER BY date,r.product_code`,
             [
               current.tenantId,
               widget.device_id,
               widget.tag_id,
               metricKind,
-              trendDays,
+              periodDays,
               minimumValue,
+              customFrom,
+              customTo,
             ],
-          ),
-        ]);
-        const currentSeries = trend.rows.filter((row) => row.is_current);
-        const previousSeries = trend.rows.filter((row) => !row.is_current);
-        const summarize = (rows: typeof trend.rows) => {
-          const values = rows.flatMap((row) => (row.value == null ? [] : [Number(row.value)]));
-          if (!values.length) return null;
+          )
+        ).rows;
+        const currentRows = rows.filter((row) => row.is_current);
+        const previousRows = rows.filter((row) => !row.is_current);
+        const summarize = (selected: typeof rows) => {
+          const usable = selected.filter((row) => row.value != null);
+          if (!usable.length) return null;
           return metricKind === 'counter_delta'
-            ? values.reduce((total, value) => total + value, 0)
-            : values.reduce((total, value) => total + value, 0) / values.length;
+            ? usable.reduce((total, row) => total + Number(row.value), 0)
+            : usable.reduce((total, row) => total + Number(row.value) * row.samples, 0) /
+                Math.max(
+                  1,
+                  usable.reduce((total, row) => total + row.samples, 0),
+                );
         };
-        const currentPeriodValue = summarize(currentSeries);
-        const previousPeriodValue = summarize(previousSeries);
-        const best = currentSeries
-          .filter((row) => row.value != null)
-          .sort((a, b) => Number(b.value) - Number(a.value))[0];
+        const currentPeriodValue = summarize(currentRows);
+        const previousPeriodValue = summarize(previousRows);
+        const byDate = new Map<string, { total: number; weighted: number; samples: number }>();
+        for (const row of currentRows) {
+          if (row.value == null) continue;
+          const day = byDate.get(row.date) ?? { total: 0, weighted: 0, samples: 0 };
+          day.total += Number(row.value);
+          day.weighted += Number(row.value) * row.samples;
+          day.samples += row.samples;
+          byDate.set(row.date, day);
+        }
+        const localToday = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'America/Sao_Paulo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date());
+        const periodEnd = customTo ?? localToday;
+        const offsetDate = (date: string, amount: number) => {
+          const parsed = new Date(`${date}T12:00:00Z`);
+          parsed.setUTCDate(parsed.getUTCDate() + amount);
+          return parsed.toISOString().slice(0, 10);
+        };
+        const periodStart = customFrom ?? offsetDate(periodEnd, -(periodDays - 1));
+        const dailySeries =
+          periodDays <= 60
+            ? Array.from({ length: periodDays }, (_, index) => {
+                const date = offsetDate(periodStart, index);
+                const day = byDate.get(date);
+                return {
+                  date,
+                  value: day
+                    ? metricKind === 'counter_delta'
+                      ? day.total
+                      : day.weighted / Math.max(1, day.samples)
+                    : null,
+                  samples: day?.samples ?? 0,
+                };
+              })
+            : [
+                ...[...byDate.entries()].reduce((months, [date, day]) => {
+                  const month = date.slice(0, 7);
+                  const aggregate = months.get(month) ?? { total: 0, weighted: 0, samples: 0 };
+                  aggregate.total += day.total;
+                  aggregate.weighted += day.weighted;
+                  aggregate.samples += day.samples;
+                  months.set(month, aggregate);
+                  return months;
+                }, new Map<string, { total: number; weighted: number; samples: number }>()),
+              ].map(([date, month]) => ({
+                date,
+                value:
+                  metricKind === 'counter_delta'
+                    ? month.total
+                    : month.weighted / Math.max(1, month.samples),
+                samples: month.samples,
+              }));
+        const byProduct = new Map<string, { total: number; weighted: number; samples: number }>();
+        for (const row of currentRows) {
+          if (row.value == null) continue;
+          const product = byProduct.get(row.product_code) ?? { total: 0, weighted: 0, samples: 0 };
+          product.total += Number(row.value);
+          product.weighted += Number(row.value) * row.samples;
+          product.samples += row.samples;
+          byProduct.set(row.product_code, product);
+        }
+        const productBreakdown = [...byProduct.entries()]
+          .map(([product_code, product]) => ({
+            product_code,
+            value:
+              metricKind === 'counter_delta'
+                ? product.total
+                : product.weighted / Math.max(1, product.samples),
+            samples: product.samples,
+          }))
+          .sort((a, b) => b.value - a.value);
+        const distributionTotal = productBreakdown.reduce(
+          (total, product) => total + product.value,
+          0,
+        );
+        const best = [...dailySeries].sort((a, b) => Number(b.value) - Number(a.value))[0];
         const changePercent =
           currentPeriodValue != null && previousPeriodValue != null && previousPeriodValue !== 0
             ? ((currentPeriodValue - previousPeriodValue) / Math.abs(previousPeriodValue)) * 100
             : null;
+        const minimumValues = currentRows.flatMap((row) =>
+          row.minimum == null ? [] : [Number(row.minimum)],
+        );
+        const maximumValues = currentRows.flatMap((row) =>
+          row.maximum == null ? [] : [Number(row.maximum)],
+        );
         return {
           widget_id: widget.id,
           tag_id: widget.tag_id,
-          period_minutes: periodMinutes,
+          period: query.period,
+          period_days: periodDays,
+          period_minutes: periodDays * 1440,
           minimum_value: minimumValue,
           metric_kind: metricKind,
-          trend_days: trendDays,
+          trend_days: periodDays,
           current_period_value: currentPeriodValue,
           previous_period_value: previousPeriodValue,
           change_percent: changePercent,
           best_day: best?.date ?? null,
-          best_value: best?.value == null ? null : Number(best.value),
-          daily_series: currentSeries.map((row) => ({
-            date: row.date,
-            value: row.value == null ? null : Number(row.value),
-            samples: row.samples,
+          best_value: best?.value ?? null,
+          daily_series: dailySeries,
+          bucket_granularity: periodDays > 60 ? 'month' : 'day',
+          product_breakdown: productBreakdown.map((product) => ({
+            ...product,
+            share_percent: distributionTotal > 0 ? (product.value / distributionTotal) * 100 : 0,
           })),
-          ...result.rows[0],
+          samples: currentRows.reduce((total, row) => total + row.samples, 0),
+          ignored_samples: 0,
+          minimum: minimumValues.length ? Math.min(...minimumValues) : null,
+          maximum: maximumValues.length ? Math.max(...maximumValues) : null,
+          average: metricKind === 'rate_average' ? currentPeriodValue : null,
+          trend_per_second: null,
         };
       }),
     );
   });
+
   app.patch('/api/dashboards/:id', async (req, reply) => {
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);

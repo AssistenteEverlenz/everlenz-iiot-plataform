@@ -68,6 +68,31 @@ refugo?” e “quanto gás foi consumido por metro quadrado de primeira qualida
 
 ## Contrato mínimo de dados
 
+### Sinais necessários para a visão gerencial
+
+| Resultado              | Sinal obrigatório                                      | Fonte alternativa                                               |
+| ---------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| Produção por produto   | `recipe_code` ou `product_code` em cada payload        | Produto padrão definido no equipamento; sem ambos, `ITEM GERAL` |
+| Blocos produzidos      | `blocks_total`, contador numérico acumulativo          | Contador por ciclo convertido no CLP                            |
+| Paletes produzidos     | `pallets_total`, contador numérico acumulativo         | Contador por ciclo convertido no CLP                            |
+| Toneladas produzidas   | `tons_total`, contador numérico acumulativo            | Massa por peça × `blocks_total`, com massa nominal na receita   |
+| Taxa atual             | `tons_per_hour`, valor numérico instantâneo            | Variação de `tons_total` em uma janela curta                    |
+| Disponibilidade do OEE | `line_running` e calendário planejado                  | Estado inferido por velocidade/produção                         |
+| Performance do OEE     | `total_count` e ciclo ideal ou taxa nominal da receita | Meta por produto cadastrada na plataforma                       |
+| Qualidade do OEE       | `good_count` ou `reject_count`                         | Apontamento do operador ou inspeção                             |
+| Motivos de parada      | `stop_reason_code` durante a parada                    | Classificação posterior pelo operador                           |
+| Consumo específico     | Contadores acumulativos de energia e gás               | Medidores externos integrados                                   |
+
+Todo payload deve ter horário com fuso ou usar o horário de recebimento validado pelo gateway. Os
+contadores devem ser monotônicos e podem zerar por reset, troca de turno ou receita; a plataforma
+soma apenas diferenças positivas e atribui cada incremento ao produto vigente naquele payload.
+
+Para uma primeira entrega gerencial completa, o conjunto mínimo é:
+`timestamp`, `line_running`, `product_code` (ou produto padrão), `blocks_total`,
+`pallets_total`, `tons_total`, `tons_per_hour`, `total_count`, `good_count` ou
+`reject_count`, e ciclo ideal/taxa nominal da receita. Sem o motivo de parada é possível calcular
+OEE; não é possível explicar por que a fábrica perdeu disponibilidade.
+
 O Haiwell aceita chaves escalares no nível principal. Os nomes abaixo são canônicos; o cadastro do
 equipamento poderá mapear nomes existentes do CLP para esses papéis sem exigir que toda IHM seja
 reprogramada.

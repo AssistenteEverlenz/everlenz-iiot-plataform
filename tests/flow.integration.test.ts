@@ -101,6 +101,77 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [tag.id]);
     await db.query('DELETE FROM tags WHERE id=$1', [tag.id]);
   });
+  it('attributes counter increments to the HMI recipe and falls back to the configured product', async () => {
+    const tag = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type,unit)
+         VALUES($1,$2,'QuantidadePaletesProduto','Paletes por produto','number','paletes')
+         RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0];
+    await db.query(
+      `INSERT INTO production_context_settings(
+         tenant_id,device_id,product_key,fallback_product_code
+       ) VALUES($1,$2,'receita','PRODUTO PADRAO')`,
+      [TENANT, HAIWELL],
+    );
+    const productPipeline = new IngestionPipeline(db);
+    const send = (receita: string, value: number) =>
+      productPipeline.ingest({
+        topic: 'data/POC/group1/A7-001',
+        payload: Buffer.from(
+          JSON.stringify({
+            _terminalTime: new Date(Date.now() + value * 1000).toISOString(),
+            _groupName: 'group1',
+            receita,
+            QuantidadePaletesProduto: String(value),
+          }),
+        ),
+        qos: 1,
+        retain: false,
+        receivedAt: new Date(Date.now() + value * 1000),
+      });
+    await send('BLOCO A', 10);
+    await send('BLOCO A', 14);
+    await send('BLOCO B', 18);
+    await db.query('UPDATE production_context_settings SET product_key=NULL WHERE device_id=$1', [
+      HAIWELL,
+    ]);
+    const fallbackPipeline = new IngestionPipeline(db);
+    await fallbackPipeline.ingest({
+      topic: 'data/POC/group1/A7-001',
+      payload: Buffer.from(
+        JSON.stringify({
+          _terminalTime: new Date(Date.now() + 21000).toISOString(),
+          _groupName: 'group1',
+          QuantidadePaletesProduto: '20',
+        }),
+      ),
+      qos: 1,
+      retain: false,
+      receivedAt: new Date(Date.now() + 21000),
+    });
+    const rollups = await db.query<{ product_code: string; positive_delta: number }>(
+      `SELECT product_code,sum(positive_delta) positive_delta
+       FROM telemetry_hourly_rollups WHERE device_id=$1 AND tag_id=$2
+       GROUP BY product_code ORDER BY product_code`,
+      [HAIWELL, tag.id],
+    );
+    expect(rollups.rows).toEqual([
+      { product_code: 'BLOCO A', positive_delta: 4 },
+      { product_code: 'BLOCO B', positive_delta: 4 },
+      { product_code: 'PRODUTO PADRAO', positive_delta: 2 },
+    ]);
+    await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [tag.id]);
+    await db.query('DELETE FROM production_context_settings WHERE device_id=$1', [HAIWELL]);
+    await db.query(
+      `DELETE FROM device_signal_catalog
+       WHERE device_id=$1 AND key IN ('receita','QuantidadePaletesProduto')`,
+      [HAIWELL],
+    );
+    await db.query('DELETE FROM tags WHERE id=$1', [tag.id]);
+  });
   it('preserves unknown binary and invalid JSON, then processes next valid message', async () => {
     const binary = await ingest('unknown/device', Buffer.from([0xff, 0x00, 0xfe]));
     expect(binary.status).toBe('unrecognized');
@@ -277,7 +348,13 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(signals.map((signal) => signal.key)).toEqual(
         expect.arrayContaining(['temperatura', 'corrente_motor', 'velocidade', 'status']),
       );
-      expect(signals.every((signal) => signal.configured)).toBe(true);
+      expect(
+        signals
+          .filter((signal) =>
+            ['temperatura', 'corrente_motor', 'velocidade', 'status'].includes(signal.key),
+          )
+          .every((signal) => signal.configured),
+      ).toBe(true);
 
       const dashboards = (await api.inject('/api/dashboards')).json() as { id: string }[];
       expect(dashboards).toHaveLength(1);
@@ -305,9 +382,11 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(dashboardStatistics).toEqual([
         expect.objectContaining({
           widget_id: production.json().id,
-          period_minutes: 30,
+          period_minutes: 10080,
+          period: '7d',
           minimum_value: 1,
           samples: expect.any(Number),
+          product_breakdown: expect.any(Array),
         }),
       ]);
 
