@@ -3383,3 +3383,112 @@ footer {
 .quick-kpi {
   border-left-color: var(--kpi-accent, #12b8a6);
 }
+
+/* Dashboard grid in squares: 12 columns by 64px rows. Each card spans --cols x --rows,
+   set by dragging its bottom-right corner, and its content flexes to the area given. */
+.widget-grid {
+  grid-auto-rows: 64px;
+  grid-auto-flow: row dense;
+}
+.dashboard-widget.sized {
+  grid-column: span var(--cols);
+  grid-row: span var(--rows);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard-widget.sized > .widget-chart {
+  flex: 1;
+  height: auto;
+  min-height: 90px;
+}
+.dashboard-widget.sized .production-insight {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}
+.dashboard-widget.sized .production-insight .production-history,
+.dashboard-widget.sized .production-insight .product-ranking {
+  height: auto;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+}
+.production-chart {
+  flex: 1;
+  min-height: 110px;
+}
+.dashboard-widget.sized .quick-chart,
+.dashboard-widget.sized .quick-layout {
+  flex: 1;
+  min-height: 0;
+}
+.dashboard-widget.sized .quick-visual,
+.dashboard-widget.sized .quick-donut-chart,
+.dashboard-widget.sized .quick-legend-scroll {
+  height: 100%;
+  min-height: 150px;
+}
+.resize-handle {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  z-index: 3;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  background: linear-gradient(
+    135deg,
+    transparent 48%,
+    #9fb3b8 48%,
+    #9fb3b8 56%,
+    transparent 56%,
+    transparent 68%,
+    #9fb3b8 68%,
+    #9fb3b8 76%,
+    transparent 76%
+  );
+}
+.dashboard-widget:hover .resize-handle,
+.dashboard-widget.resizing .resize-handle {
+  opacity: 1;
+}
+.dashboard-widget.resizing {
+  outline: 2px dashed #12b8a6;
+  outline-offset: -2px;
+}
+.resize-badge {
+  position: absolute;
+  right: 26px;
+  bottom: 6px;
+  z-index: 3;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #e5f6f1;
+  color: #0b2028;
+  font-size: 11px;
+  font-weight: 700;
+}
+@media (max-width: 1100px) {
+  .dashboard-widget.sized {
+    grid-column: span 6;
+  }
+  .dashboard-widget.sized.wide {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 700px) {
+  .widget-grid {
+    grid-auto-rows: auto;
+  }
+  .dashboard-widget.sized {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .resize-handle {
+    display: none;
+  }
+}

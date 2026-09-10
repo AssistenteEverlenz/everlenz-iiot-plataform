@@ -115,6 +115,9 @@ export interface DashboardWidget {
     productColors?: Record<string, string>;
     /** Quick charts: show the top N products and fold the rest into "Outros"; 0 = all. */
     maxProducts?: number;
+    /** Grid size set by dragging the card corner: columns of 12 and 64px rows. */
+    colSpan?: number;
+    rowSpan?: number;
     counterMode?: boolean;
     /** Legacy raw-value offset; ignored since zeroing moved to counterResetAt. */
     counterBaseline?: number;

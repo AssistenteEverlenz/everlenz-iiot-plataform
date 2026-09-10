@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Area,
@@ -55,6 +55,32 @@ const analyticTypes = new Set<DashboardWidget['widget_type']>([
   'bar_vertical',
   'bar_horizontal',
 ]);
+
+const widthColumns: Record<DashboardWidget['width'], number> = {
+  small: 3,
+  medium: 4,
+  large: 8,
+  full: 12,
+};
+// Rows (64px each) a card occupies until someone resizes it: close to today's heights.
+const defaultRows: Record<DashboardWidget['widget_type'], number> = {
+  value: 3,
+  status: 3,
+  gauge: 4,
+  line: 4,
+  production: 10,
+  oee: 3,
+  pareto: 3,
+  donut: 6,
+  bar_vertical: 6,
+  bar_horizontal: 6,
+};
+function spansOf(widget: DashboardWidget) {
+  return {
+    cols: Math.max(2, Math.min(12, widget.config.colSpan ?? widthColumns[widget.width])),
+    rows: Math.max(2, Math.min(20, widget.config.rowSpan ?? defaultRows[widget.widget_type])),
+  };
+}
 
 interface CounterValue {
   widget_id: string;
@@ -204,6 +230,7 @@ function Widget({
   history,
   dashboardId,
   counter,
+  resize,
   edit,
   remove,
   reset,
@@ -215,6 +242,7 @@ function Widget({
   history: Sample[];
   dashboardId: string;
   counter?: CounterValue;
+  resize: (cols: number, rows: number) => void;
   edit: () => void;
   remove: () => void;
   reset: () => void;
@@ -332,14 +360,72 @@ function Widget({
       {productionStats.loading && <span className="widget-period-loading">atualizando…</span>}
     </div>
   );
+  const spans = spansOf(widget);
+  const [liveSpan, setLiveSpan] = useState<{ cols: number; rows: number } | null>(null);
+  const resizingRef = useRef(false);
+  const shownSpan = liveSpan ?? spans;
+  // Once the saved size reaches the widget, the live preview is no longer needed.
+  useEffect(() => setLiveSpan(null), [spans.cols, spans.rows]);
+  function startResize(event: React.PointerEvent<HTMLSpanElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const grid = event.currentTarget.closest('.widget-grid');
+    if (!(grid instanceof HTMLElement)) return;
+    const styles = getComputedStyle(grid);
+    const gap = parseFloat(styles.columnGap) || 14;
+    const rowGap = parseFloat(styles.rowGap) || gap;
+    const columnWidth = (grid.clientWidth - gap * 11) / 12;
+    const rowHeight = parseFloat(styles.gridAutoRows) || 64;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const start = spans;
+    let next = start;
+    resizingRef.current = true;
+    // Snaps to whole squares while dragging, so the preview is exactly what gets saved.
+    const move = (pointer: PointerEvent) => {
+      next = {
+        cols: Math.max(
+          2,
+          Math.min(12, start.cols + Math.round((pointer.clientX - startX) / (columnWidth + gap))),
+        ),
+        rows: Math.max(
+          2,
+          Math.min(20, start.rows + Math.round((pointer.clientY - startY) / (rowHeight + rowGap))),
+        ),
+      };
+      setLiveSpan(next);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      resizingRef.current = false;
+      if (next.cols !== start.cols || next.rows !== start.rows) resize(next.cols, next.rows);
+      else setLiveSpan(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
   return (
     <article
       draggable
-      onDragStart={dragStart}
+      onDragStart={(event) => {
+        // A drag that begins on the resize corner must not reorder the card.
+        if (resizingRef.current) {
+          event.preventDefault();
+          return;
+        }
+        dragStart();
+      }}
       onDragOver={(event) => event.preventDefault()}
       onDrop={drop}
-      className={`dashboard-widget widget-${widget.width} ${currentRange ? 'alarm-active' : ''}`}
-      style={{ '--accent': activeColor } as React.CSSProperties}
+      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${currentRange ? 'alarm-active' : ''}`}
+      style={
+        {
+          '--accent': activeColor,
+          '--cols': shownSpan.cols,
+          '--rows': shownSpan.rows,
+        } as React.CSSProperties
+      }
     >
       <div className="widget-head">
         <button className="drag-handle" title="Arrastar para reorganizar">
@@ -557,65 +643,67 @@ function Widget({
                 · {number(statistics?.best_value, widget.config.decimals ?? 1)} {widget.unit}
               </span>
             </div>
-            <ResponsiveContainer width="100%" height={150}>
-              <BarChart
-                data={statistics?.daily_series ?? []}
-                margin={{ top: 24, right: 4, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid stroke="#dfe8ea" strokeDasharray="3 5" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(item) =>
-                    new Date(
-                      `${item}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
-                    ).toLocaleDateString('pt-BR', {
-                      ...(statistics?.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
-                      month: 'short',
-                      ...(statistics?.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
-                    })
-                  }
-                  tick={{ fontSize: 10, fill: '#71868d' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: '#71868d' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={42}
-                />
-                <Tooltip
-                  labelFormatter={(item) =>
-                    new Date(
-                      `${String(item)}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
-                    ).toLocaleDateString('pt-BR', {
-                      month: 'long',
-                      year: 'numeric',
-                      ...(String(item).length === 10 ? { day: '2-digit' } : {}),
-                    })
-                  }
-                  formatter={(item) => [
-                    `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
-                    widget.title,
-                  ]}
-                />
-                <Bar
-                  dataKey="value"
-                  fill={color}
-                  radius={[5, 5, 0, 0]}
-                  maxBarSize={44}
-                  isAnimationActive={false}
+            <div className="production-chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={statistics?.daily_series ?? []}
+                  margin={{ top: 24, right: 4, bottom: 0, left: 0 }}
                 >
-                  {/* Past two weeks of columns the labels would only crowd the chart. */}
-                  {(statistics?.daily_series?.length ?? 0) <= 14 && (
-                    <LabelList
-                      dataKey="value"
-                      content={valueLabel((value) => number(value, widget.config.decimals ?? 1))}
-                    />
-                  )}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  <CartesianGrid stroke="#dfe8ea" strokeDasharray="3 5" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={(item) =>
+                      new Date(
+                        `${item}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
+                      ).toLocaleDateString('pt-BR', {
+                        ...(statistics?.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
+                        month: 'short',
+                        ...(statistics?.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
+                      })
+                    }
+                    tick={{ fontSize: 10, fill: '#71868d' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#71868d' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={42}
+                  />
+                  <Tooltip
+                    labelFormatter={(item) =>
+                      new Date(
+                        `${String(item)}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
+                      ).toLocaleDateString('pt-BR', {
+                        month: 'long',
+                        year: 'numeric',
+                        ...(String(item).length === 10 ? { day: '2-digit' } : {}),
+                      })
+                    }
+                    formatter={(item) => [
+                      `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
+                      widget.title,
+                    ]}
+                  />
+                  <Bar
+                    dataKey="value"
+                    fill={color}
+                    radius={[5, 5, 0, 0]}
+                    maxBarSize={44}
+                    isAnimationActive={false}
+                  >
+                    {/* Past two weeks of columns the labels would only crowd the chart. */}
+                    {(statistics?.daily_series?.length ?? 0) <= 14 && (
+                      <LabelList
+                        dataKey="value"
+                        content={valueLabel((value) => number(value, widget.config.decimals ?? 1))}
+                      />
+                    )}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
           <div className="product-ranking">
             <div className="production-history-title">
@@ -769,6 +857,17 @@ function Widget({
           />,
           document.body,
         )}
+      <span
+        className="resize-handle"
+        title="Arraste para redimensionar"
+        aria-hidden="true"
+        onPointerDown={startResize}
+      />
+      {liveSpan && (
+        <span className="resize-badge">
+          {liveSpan.cols} × {liveSpan.rows}
+        </span>
+      )}
     </article>
   );
 }
@@ -818,6 +917,8 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [minimum, setMinimum] = useState(0);
   const [maximum, setMaximum] = useState(100);
   const [decimals, setDecimals] = useState(1);
+  const [colSpanInput, setColSpanInput] = useState(4);
+  const [rowSpanInput, setRowSpanInput] = useState(4);
   const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
   const [alarmEnabled, setAlarmEnabled] = useState(false);
   const [alarmRanges, setAlarmRanges] = useState<AlarmRange[]>([]);
@@ -945,6 +1046,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMinimum(widget.config.min ?? 0);
     setMaximum(widget.config.max ?? 100);
     setDecimals(widget.config.decimals ?? 1);
+    setColSpanInput(spansOf(widget).cols);
+    setRowSpanInput(spansOf(widget).rows);
     setGaugeStyle(widget.config.gaugeStyle ?? 'top');
     setAlarmEnabled(widget.config.alarmEnabled ?? false);
     setAlarmRanges(
@@ -993,6 +1096,9 @@ export function DashboardCanvas({ id }: { id: string }) {
           min: minimum,
           max: maximum,
           decimals,
+          // Picking a preset width replaces a dragged width; otherwise keep the squares.
+          colSpan: width !== editingWidget.width ? widthColumns[width] : colSpanInput,
+          rowSpan: rowSpanInput,
           gaugeStyle,
           gaugeNeedle,
           alarmEnabled: quickTypes.has(editingWidget.widget_type) ? false : alarmEnabled,
@@ -1023,6 +1129,24 @@ export function DashboardCanvas({ id }: { id: string }) {
   async function resetCounter(widget: DashboardWidget) {
     await mutate(`/dashboards/${id}/widgets/${widget.id}/reset-counter`, 'POST');
     await Promise.all([dashboard.refresh(), counters.refresh()]);
+  }
+  async function resizeWidget(widget: DashboardWidget, cols: number, rows: number) {
+    // Optimistic: the card keeps its new size immediately; the server merges the config.
+    setWidgets((current) =>
+      current.map((item) =>
+        item.id === widget.id
+          ? { ...item, config: { ...item.config, colSpan: cols, rowSpan: rows } }
+          : item,
+      ),
+    );
+    try {
+      await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'PATCH', {
+        config: { colSpan: cols, rowSpan: rows },
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar o tamanho.');
+      await dashboard.refresh();
+    }
   }
   async function dropWidget(targetId: string) {
     if (!draggedId || draggedId === targetId) return;
@@ -1137,6 +1261,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             edit={() => startEdit(widget)}
             remove={() => setRemovingWidget(widget)}
             reset={() => setResettingWidget(widget)}
+            resize={(cols, rows) => void resizeWidget(widget, cols, rows)}
             dragStart={() => setDraggedId(widget.id)}
             drop={() => void dropWidget(widget.id)}
           />
@@ -1288,6 +1413,30 @@ export function DashboardCanvas({ id }: { id: string }) {
                   <option value="large">Grande</option>
                   <option value="full">Linha inteira</option>
                 </select>
+              </label>
+              <label className="field">
+                Largura (colunas de 12)
+                <input
+                  type="number"
+                  min="2"
+                  max="12"
+                  value={colSpanInput}
+                  onChange={(event) =>
+                    setColSpanInput(Math.max(2, Math.min(12, Number(event.target.value) || 2)))
+                  }
+                />
+              </label>
+              <label className="field">
+                Altura (linhas)
+                <input
+                  type="number"
+                  min="2"
+                  max="20"
+                  value={rowSpanInput}
+                  onChange={(event) =>
+                    setRowSpanInput(Math.max(2, Math.min(20, Number(event.target.value) || 2)))
+                  }
+                />
               </label>
               <label className="field">
                 Casas decimais
