@@ -236,6 +236,9 @@ function Widget({
   reset,
   dragStart,
   drop,
+  dropTarget,
+  dragEnter,
+  dragEnd,
 }: {
   widget: DashboardWidget;
   latest?: Sample;
@@ -248,6 +251,9 @@ function Widget({
   reset: () => void;
   dragStart: () => void;
   drop: () => void;
+  dropTarget: boolean;
+  dragEnter: () => void;
+  dragEnd: () => void;
 }) {
   const color = widget.config.color ?? '#12b8a6';
   // Each production chart owns its period, so two charts can compare different windows.
@@ -371,6 +377,12 @@ function Widget({
     event.stopPropagation();
     const grid = event.currentTarget.closest('.widget-grid');
     if (!(grid instanceof HTMLElement)) return;
+    const handle = event.currentTarget;
+    const article = handle.closest('article');
+    // The card is draggable for reordering. Switched off now, before the browser can turn
+    // this gesture into a native drag, which would swallow the pointer and freeze the resize.
+    article?.setAttribute('draggable', 'false');
+    handle.setPointerCapture(event.pointerId);
     const styles = getComputedStyle(grid);
     const gap = parseFloat(styles.columnGap) || 14;
     const rowGap = parseFloat(styles.rowGap) || gap;
@@ -398,12 +410,15 @@ function Widget({
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      article?.setAttribute('draggable', 'true');
       resizingRef.current = false;
       if (next.cols !== start.cols || next.rows !== start.rows) resize(next.cols, next.rows);
       else setLiveSpan(null);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   }
   return (
     <article
@@ -417,8 +432,10 @@ function Widget({
         dragStart();
       }}
       onDragOver={(event) => event.preventDefault()}
+      onDragEnter={dragEnter}
+      onDragEnd={dragEnd}
       onDrop={drop}
-      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${currentRange ? 'alarm-active' : ''}`}
+      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${dropTarget ? 'drop-target' : ''} ${currentRange ? 'alarm-active' : ''}`}
       style={
         {
           '--accent': activeColor,
@@ -575,8 +592,8 @@ function Widget({
       {widget.widget_type === 'value' && (
         <>
           <div className="hero-value">
-            {latest?.value_number != null
-              ? number(latest.value_number, widget.config.decimals ?? 1)
+            {numeric != null
+              ? number(numeric, widget.config.decimals ?? 1)
               : latest?.value_boolean != null
                 ? latest.value_boolean
                   ? 'Ligado'
@@ -937,16 +954,32 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [counterMode, setCounterMode] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const [savingModal, setSavingModal] = useState(false);
   const [savingRefresh, setSavingRefresh] = useState(false);
   const [removingWidget, setRemovingWidget] = useState<DashboardWidget | null>(null);
   const [resettingWidget, setResettingWidget] = useState<DashboardWidget | null>(null);
+  // A poll that left before a move or resize was saved would bring the old layout back
+  // and make the card jump. Local edits hold the server copy off until they are saved
+  // and a fresh read has had time to arrive.
+  const pendingEdits = useRef(0);
+  const holdServerUntil = useRef(0);
   useEffect(() => {
-    if (dashboard.data?.widgets)
-      setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
+    if (!dashboard.data?.widgets) return;
+    if (pendingEdits.current > 0 || Date.now() < holdServerUntil.current) return;
+    setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
   }, [dashboard.data?.widgets]);
+  async function persistLocalEdit(action: () => Promise<unknown>) {
+    pendingEdits.current += 1;
+    try {
+      await action();
+    } finally {
+      pendingEdits.current -= 1;
+      holdServerUntil.current = Date.now() + 3000;
+    }
+  }
   useEffect(() => {
     if (!productionContext.data) return;
     setProductKey(productionContext.data.product_key ?? '');
@@ -1140,9 +1173,11 @@ export function DashboardCanvas({ id }: { id: string }) {
       ),
     );
     try {
-      await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'PATCH', {
-        config: { colSpan: cols, rowSpan: rows },
-      });
+      await persistLocalEdit(() =>
+        mutate(`/dashboards/${id}/widgets/${widget.id}`, 'PATCH', {
+          config: { colSpan: cols, rowSpan: rows },
+        }),
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar o tamanho.');
       await dashboard.refresh();
@@ -1157,10 +1192,13 @@ export function DashboardCanvas({ id }: { id: string }) {
     next.splice(toIndex, 0, moved);
     setWidgets(next);
     setDraggedId(null);
+    setDragOverId(null);
     try {
-      await mutate(`/dashboards/${id}/layout`, 'PATCH', {
-        widgetIds: next.map((widget) => widget.id),
-      });
+      await persistLocalEdit(() =>
+        mutate(`/dashboards/${id}/layout`, 'PATCH', {
+          widgetIds: next.map((widget) => widget.id),
+        }),
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar a ordem.');
       await dashboard.refresh();
@@ -1264,6 +1302,14 @@ export function DashboardCanvas({ id }: { id: string }) {
             resize={(cols, rows) => void resizeWidget(widget, cols, rows)}
             dragStart={() => setDraggedId(widget.id)}
             drop={() => void dropWidget(widget.id)}
+            dropTarget={dragOverId === widget.id && draggedId !== widget.id}
+            dragEnter={() => {
+              if (draggedId) setDragOverId(widget.id);
+            }}
+            dragEnd={() => {
+              setDraggedId(null);
+              setDragOverId(null);
+            }}
           />
         ))}
         {!widgets.length && (

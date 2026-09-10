@@ -1023,11 +1023,18 @@ export async function createApp(
         'UPDATE dashboards SET name=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2',
         [current.tenantId, id, body.name],
       );
-    await saveDashboardView(db, current, id, {
-      refresh_ms: body.refreshMs ?? view.refresh_ms,
-      time_window_minutes: body.timeWindowMinutes ?? view.time_window_minutes,
-      widgets: view.widgets,
-    });
+    // Only the dashboard row changes; rewriting every card here used to erase a card edit
+    // saved a moment earlier by another tab or request.
+    await db.query(
+      `UPDATE dashboards SET refresh_ms=$3,time_window_minutes=$4,updated_at=now()
+       WHERE tenant_id=$1 AND id=$2`,
+      [
+        current.tenantId,
+        id,
+        body.refreshMs ?? view.refresh_ms,
+        body.timeWindowMinutes ?? view.time_window_minutes,
+      ],
+    );
     return dashboardView(db, current, id, await access.accessibleDeviceIds(req));
   });
   app.post('/api/dashboards/:id/widgets', async (req, reply) => {
@@ -1083,8 +1090,25 @@ export async function createApp(
       unit: tag?.unit ?? null,
       data_type: tag?.data_type ?? null,
     };
-    await saveDashboardView(db, current, id, { ...view, widgets: [...view.widgets, widget] });
-    return reply.code(201).send(widget);
+    const inserted = await db.query<{ position: number }>(
+      `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,position,width,config)
+       VALUES($1,$2,$3,$4,$5,$6,$7,
+         (SELECT COALESCE(max(position)+1,0) FROM dashboard_widgets WHERE tenant_id=$2 AND dashboard_id=$3),
+         $8,$9::jsonb)
+       RETURNING position`,
+      [
+        widget.id,
+        current.tenantId,
+        id,
+        widget.device_id,
+        widget.tag_id,
+        widget.widget_type,
+        widget.title,
+        widget.width,
+        JSON.stringify(widget.config),
+      ],
+    );
+    return reply.code(201).send({ ...widget, position: inserted.rows[0].position });
   });
   app.patch('/api/dashboards/:dashboardId/widgets/:widgetId', async (req, reply) => {
     const current = access.principal(req);
@@ -1113,9 +1137,28 @@ export async function createApp(
       ...(body.width ? { width: body.width } : {}),
       ...(body.config ? { config: { ...view.widgets[index].config, ...body.config } } : {}),
     };
-    view.widgets[index] = updated;
-    await saveDashboardView(db, current, dashboardId, view);
-    return updated;
+    // One row, config merged inside the database: concurrent edits to other cards, or to
+    // other keys of this one, are never overwritten by a stale copy of the dashboard.
+    await db.query(
+      `UPDATE dashboard_widgets SET title=COALESCE($4,title),width=COALESCE($5,width),
+         config=config || $6::jsonb,updated_at=now()
+       WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3`,
+      [
+        current.tenantId,
+        dashboardId,
+        widgetId,
+        body.title ?? null,
+        body.width ?? null,
+        JSON.stringify(body.config ?? {}),
+      ],
+    );
+    const fresh = await dashboardView(
+      db,
+      current,
+      dashboardId,
+      await access.accessibleDeviceIds(req),
+    );
+    return fresh?.widgets.find((widget) => widget.id === widgetId) ?? updated;
   });
   // Zeroing records the moment, not the raw value. The HMI counter itself rolls back to zero
   // on shift, recipe or power cycles, so a remembered raw baseline stopped meaning anything
@@ -1144,7 +1187,14 @@ export async function createApp(
       ...widget,
       config: { ...config, counterMode: true, counterResetAt: resetAt },
     };
-    await saveDashboardView(db, current, dashboardId, view);
+    await db.query(
+      `UPDATE dashboard_widgets
+       SET config=(config - 'counterBaseline')
+         || jsonb_build_object('counterMode', true, 'counterResetAt', $4::text),
+         updated_at=now()
+       WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3`,
+      [current.tenantId, dashboardId, widgetId, resetAt],
+    );
     await recordAudit(db, req, current, {
       action: 'dashboard.widget.counter_reset',
       targetType: 'widget',
@@ -1220,7 +1270,19 @@ export async function createApp(
       ...view.widgets.find((widget) => widget.id === widgetId)!,
       position,
     }));
-    await saveDashboardView(db, current, id, view);
+    // Positions are unique per dashboard, so they move out of the way first, then land.
+    await db.transaction(async (sql) => {
+      await sql.query(
+        'UPDATE dashboard_widgets SET position=-position-1 WHERE tenant_id=$1 AND dashboard_id=$2',
+        [current.tenantId, id],
+      );
+      await sql.query(
+        `UPDATE dashboard_widgets w SET position=v.ordinality-1,updated_at=now()
+         FROM unnest($3::uuid[]) WITH ORDINALITY AS v(widget_id, ordinality)
+         WHERE w.tenant_id=$1 AND w.dashboard_id=$2 AND w.id=v.widget_id`,
+        [current.tenantId, id, widgetIds],
+      );
+    });
     return { widgets: view.widgets };
   });
   app.delete('/api/dashboards/:dashboardId/widgets/:widgetId', async (req, reply) => {
@@ -1238,10 +1300,10 @@ export async function createApp(
     const widgets = view.widgets.filter((widget) => widget.id !== widgetId);
     if (widgets.length === view.widgets.length)
       return reply.code(404).send({ error: 'Widget not found' });
-    await saveDashboardView(db, current, dashboardId, {
-      ...view,
-      widgets: widgets.map((widget, position) => ({ ...widget, position })),
-    });
+    await db.query(
+      'DELETE FROM dashboard_widgets WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3',
+      [current.tenantId, dashboardId, widgetId],
+    );
     return reply.code(204).send();
   });
   // Separate local operator scope is needed to inspect messages whose tenant is still unknown.
@@ -1404,41 +1466,4 @@ async function dashboardView(
   );
   return { ...dashboard.rows[0], widgets: widgets.rows } as Record<string, unknown> &
     DashboardViewSettings;
-}
-
-async function saveDashboardView(
-  db: Database,
-  current: Principal,
-  dashboardId: string,
-  view: DashboardViewSettings,
-) {
-  await db.transaction(async (sql) => {
-    await sql.query(
-      `UPDATE dashboards SET refresh_ms=$3,time_window_minutes=$4,updated_at=now()
-       WHERE tenant_id=$1 AND id=$2`,
-      [current.tenantId, dashboardId, view.refresh_ms, view.time_window_minutes],
-    );
-    await sql.query('DELETE FROM dashboard_widgets WHERE tenant_id=$1 AND dashboard_id=$2', [
-      current.tenantId,
-      dashboardId,
-    ]);
-    for (const [position, widget] of view.widgets.entries()) {
-      await sql.query(
-        `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,position,width,config)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
-        [
-          widget.id,
-          current.tenantId,
-          dashboardId,
-          widget.device_id,
-          widget.tag_id,
-          widget.widget_type,
-          widget.title,
-          position,
-          widget.width,
-          JSON.stringify(widget.config),
-        ],
-      );
-    }
-  });
 }

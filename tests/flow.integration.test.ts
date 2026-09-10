@@ -1166,4 +1166,49 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await db.query('DELETE FROM tags WHERE id=$1', [tagId]);
     }
   });
+  it('keeps simultaneous card edits instead of letting the last write erase the others', async () => {
+    // Regression: every card edit used to rewrite the whole dashboard from a copy read a
+    // moment earlier, so resizing one card while another change was saving undid it.
+    const dashboardId = '55555555-5555-4555-8555-555555555555';
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      const view = (await api.inject(`/api/dashboards/${dashboardId}`)).json();
+      expect(view.widgets.length).toBeGreaterThanOrEqual(2);
+      const [first, second] = view.widgets as Array<{ id: string }>;
+      const reversed = [...view.widgets].reverse().map((widget: { id: string }) => widget.id);
+      const results = await Promise.all([
+        api.inject({
+          method: 'PATCH',
+          url: `/api/dashboards/${dashboardId}/widgets/${first.id}`,
+          payload: { config: { colSpan: 7, rowSpan: 5 } },
+        }),
+        api.inject({
+          method: 'PATCH',
+          url: `/api/dashboards/${dashboardId}/widgets/${second.id}`,
+          payload: { config: { colSpan: 5 } },
+        }),
+        api.inject({
+          method: 'PATCH',
+          url: `/api/dashboards/${dashboardId}`,
+          payload: { refreshMs: 5000 },
+        }),
+        api.inject({
+          method: 'PATCH',
+          url: `/api/dashboards/${dashboardId}/layout`,
+          payload: { widgetIds: reversed },
+        }),
+      ]);
+      expect(results.map((response) => response.statusCode)).toEqual([200, 200, 200, 200]);
+      const after = (await api.inject(`/api/dashboards/${dashboardId}`)).json();
+      const byId = new Map(
+        after.widgets.map((widget: { id: string }) => [widget.id, widget]),
+      ) as Map<string, { config: Record<string, unknown> }>;
+      expect(byId.get(first.id)?.config).toMatchObject({ colSpan: 7, rowSpan: 5 });
+      expect(byId.get(second.id)?.config).toMatchObject({ colSpan: 5 });
+      expect(after.refresh_ms).toBe(5000);
+      expect(after.widgets.map((widget: { id: string }) => widget.id)).toEqual(reversed);
+    } finally {
+      await api.close();
+    }
+  });
 });
