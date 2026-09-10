@@ -58,6 +58,8 @@ export default function Devices() {
   const [addingSite, setAddingSite] = useState(false);
   const [siteForm, setSiteForm] = useState({ name: '', reference: '' });
   const [error, setError] = useState('');
+  const [rotating, setRotating] = useState(false);
+  const [rotated, setRotated] = useState<Connection | null>(null);
   const [saving, setSaving] = useState(false);
   const [siteSaving, setSiteSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -121,9 +123,12 @@ export default function Devices() {
     setCreated(null);
     setSelected(null);
     setError('');
+    // The password only ever lived in this component's state; closing discards it.
+    setRotated(null);
   }
   function selectDevice(device: Device) {
     setSelected(device);
+    setRotated(null);
     setForm({
       siteId: device.site_id,
       name: device.name,
@@ -157,8 +162,28 @@ export default function Devices() {
     await devices.refresh();
     close();
   }
+  async function rotateCredential() {
+    if (!selected) return;
+    setRotating(true);
+    setError('');
+    try {
+      const result = await mutate<{ connection: Connection }>(
+        `/devices/${selected.id}/mqtt-credential`,
+        'POST',
+      );
+      setRotated(result.connection);
+      await devices.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao gerar credencial.');
+    } finally {
+      setRotating(false);
+    }
+  }
+  // The broker password is never persisted, so it can only come from the response of a
+  // creation or a rotation performed in this very session.
   const connection =
     created?.connection ??
+    rotated ??
     (selected
       ? {
           host: 'mqtt.everlenz.com.br',
@@ -166,7 +191,6 @@ export default function Devices() {
           tls: true,
           topic: selected.mqtt_topic ?? '—',
           username: selected.mqtt_username ?? selected.device_code.toLowerCase(),
-          password: selected.mqtt_password,
           clientReference: selected.site_reference ?? '—',
         }
       : null);
@@ -237,7 +261,22 @@ export default function Devices() {
                   </button>
                 </div>
                 {selected && connection && (
-                  <ConnectionCard connection={connection} deviceCode={selected.device_code} />
+                  <>
+                    <ConnectionCard connection={connection} deviceCode={selected.device_code} />
+                    {rotated ? (
+                      <div className="notice">
+                        <b>Anote a senha agora</b>
+                        Ela não é armazenada e não poderá ser consultada depois. Ao fechar esta
+                        janela, só será possível gerar uma nova.
+                      </div>
+                    ) : (
+                      <div className="modal-actions">
+                        <button type="button" disabled={rotating} onClick={rotateCredential}>
+                          {rotating ? 'Gerando…' : 'Gerar nova senha MQTT'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
                 <div className="wizard-steps">
                   <span className="active">1 Cliente</span>
@@ -421,7 +460,7 @@ function ConnectionCard({
       <span>User name</span>
       <code>{connection.username}</code>
       <span>Password</span>
-      <code>{connection.password ?? 'Disponível após ativar a credencial MQTT'}</code>
+      <code>{connection.password ?? 'Não armazenada — gere uma nova senha'}</code>
     </div>
   );
 }
@@ -432,8 +471,8 @@ function CredentialCard({ created, onClose }: { created: CreatedDevice; onClose:
       <div className="eyebrow">IDENTIDADE E CREDENCIAL CRIADAS</div>
       <h2>{created.device.name}</h2>
       <p>
-        Use estes dados no campo User info da IHM. Eles continuam disponíveis ao abrir o
-        equipamento.
+        Use estes dados no campo User info da IHM. <b>Anote a senha agora:</b> ela não é armazenada
+        e não poderá ser consultada depois — só substituída por uma nova.
       </p>
       <ConnectionCard connection={created.connection} deviceCode={created.device.device_code} />
       {created.connection.credentialActive === false && (

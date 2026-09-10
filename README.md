@@ -168,6 +168,10 @@ O navegador usa uma sessão aleatória em cookie HttpOnly, `SameSite=Strict`, co
 
 Headers e query strings não podem escolher outro tenant. As exportações e a API JSON usam a mesma autorização da sessão. Tokens de serviço para integrações automáticas ainda serão implementados.
 
+Uma sessão também expira após 4 horas sem atividade, além do teto de 12 horas. Dez tentativas de login erradas bloqueiam a conta por 15 minutos; o bloqueio sobrevive a redeploy, e o reset de senha feito por um master desfaz o bloqueio. Login sempre responde `401` com a mesma mensagem, seja qual for o motivo, para não revelar quais contas existem.
+
+**A senha MQTT do equipamento não é armazenada.** Ela aparece uma única vez, no cadastro do dispositivo, e depois só pode ser substituída em **Gerar nova senha MQTT** na tela do equipamento. Anote-a ao cadastrar. Toda alteração de usuário, equipamento, tag ou credencial fica registrada em `audit_log`. Consulte [SECURITY.md](SECURITY.md) para o estado completo, as pendências e as verificações que precisam rodar no servidor.
+
 | Endpoint                      | Filtros                                                            |
 | ----------------------------- | ------------------------------------------------------------------ |
 | `GET /health`                 | 200 quando banco acessível; broker é diagnóstico adicional         |

@@ -18,7 +18,9 @@ export interface Device {
   site_reference?: string;
   mqtt_topic?: string;
   mqtt_username?: string;
-  mqtt_password?: string;
+  /** The broker password is never stored or returned: it exists only in the response of
+   *  device creation and of POST /devices/:id/mqtt-credential. */
+  mqtt_credential_rotated_at?: string | null;
 }
 export interface Sample {
   tag_id: string;

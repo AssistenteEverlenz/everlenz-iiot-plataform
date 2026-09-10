@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { randomBytes } from 'node:crypto';
 import type { Database, SqlExecutor } from '@iiot/database';
+import { recordAudit } from './audit.js';
 import {
   hashPassword,
   sessionToken,
@@ -24,6 +25,16 @@ function decoyHash() {
 // item 7) before running more than one API instance.
 const MAX_TRACKED_LOGINS = 20_000;
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+
+/** Durable per-account lockout (SECURITY.md item 7b), applied on top of the memory map. */
+const ACCOUNT_LOCK_THRESHOLD = 10;
+const ACCOUNT_LOCK_MINUTES = 15;
+/**
+ * A session also dies after this much silence, independently of its 12h absolute cap.
+ * Chosen above the dashboard poll interval so an operator with a screen open is never
+ * logged out mid-shift, while an abandoned browser stops being a usable credential.
+ */
+const SESSION_IDLE_HOURS = 4;
 
 export interface Principal {
   id: string;
@@ -91,11 +102,17 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
     }>(
       `SELECT u.id,u.tenant_id,u.email,u.full_name,u.role,u.status,u.must_change_password,s.last_seen_at
        FROM app_sessions s JOIN app_users u ON u.id=s.user_id
-       WHERE s.token_hash=$1 AND s.expires_at>now()`,
-      [tokenHash],
+       WHERE s.token_hash=$1 AND s.expires_at>now()
+         AND s.last_seen_at > now()-($2::int * interval '1 hour')`,
+      [tokenHash, SESSION_IDLE_HOURS],
     );
     const row = result.rows[0];
-    if (!row) return reply.code(401).send({ error: 'Session expired' });
+    if (!row) {
+      // Also clears a row that only failed the idle check, so an abandoned session does
+      // not linger until its absolute expiry.
+      await db.query('DELETE FROM app_sessions WHERE token_hash=$1', [tokenHash]);
+      return reply.code(401).send({ error: 'Session expired' });
+    }
     if (row.status !== 'active') {
       await db.query('DELETE FROM app_sessions WHERE token_hash=$1', [tokenHash]);
       return reply.code(403).send({ error: 'User inactive' });
@@ -249,24 +266,43 @@ export function registerAuthRoutes(
         status: 'active' | 'inactive';
         password_hash: string;
         must_change_password: boolean;
+        failed_attempts: number;
+        locked_until: Date | string | null;
       }>('SELECT * FROM app_users WHERE lower(email)=lower($1)', [body.email.trim()]);
       const user = result.rows[0];
-      // Always pay the scrypt cost, and answer unknown / wrong password / inactive with
-      // one identical 401. Distinguishing them leaks the account list, which is the raw
-      // material for targeted phishing. A deactivated user is told by their operator.
+      const locked = user?.locked_until
+        ? new Date(user.locked_until).getTime() > Date.now()
+        : false;
+      // Always pay the scrypt cost, and answer unknown / wrong password / inactive /
+      // locked with one identical 401. Distinguishing them leaks the account list, which
+      // is the raw material for targeted phishing. A locked-out or deactivated user is
+      // told by their operator, not by this endpoint.
       const passwordValid = await verifyPassword(
         body.password,
         user ? user.password_hash : await decoyHash(),
       );
-      if (!user || !passwordValid || user.status !== 'active') {
+      if (!user || !passwordValid || user.status !== 'active' || locked) {
         access.failedLogin(originKey, 8);
         access.failedLogin(accountKey, 20);
+        // Durable counterpart of the memory throttle: survives redeploys and is shared
+        // between replicas. Only reachable for an account that actually exists.
+        if (user && !locked)
+          await db.query(
+            `UPDATE app_users SET failed_attempts=failed_attempts+1,
+               locked_until=CASE WHEN failed_attempts+1 >= $2
+                 THEN now()+($3::int * interval '1 minute') ELSE locked_until END
+             WHERE id=$1`,
+            [user.id, ACCOUNT_LOCK_THRESHOLD, ACCOUNT_LOCK_MINUTES],
+          );
         return reply.code(401).send({ error: 'Invalid email or password' });
       }
       access.clearLoginAttempts(originKey);
       access.clearLoginAttempts(accountKey);
       const token = await access.createSession(user.id, request);
-      await db.query('UPDATE app_users SET last_login_at=now() WHERE id=$1', [user.id]);
+      await db.query(
+        'UPDATE app_users SET last_login_at=now(),failed_attempts=0,locked_until=NULL WHERE id=$1',
+        [user.id],
+      );
       return { token, user: publicUser(user) };
     },
   );
@@ -437,6 +473,16 @@ export function registerAuthRoutes(
         ],
       );
       await replaceDeviceAccess(sql, current.tenantId, created.rows[0].id, body.deviceIds);
+      await recordAudit(sql, request, current, {
+        action: 'user.create',
+        targetType: 'user',
+        targetId: created.rows[0].id,
+        summary: {
+          email: body.email.trim().toLowerCase(),
+          status: body.status,
+          device_count: body.deviceIds.length,
+        },
+      });
       return created.rows[0];
     });
     return reply
@@ -481,6 +527,16 @@ export function registerAuthRoutes(
       if (body.deviceIds) await replaceDeviceAccess(sql, current.tenantId, id, body.deviceIds);
       if (body.status === 'inactive')
         await sql.query('DELETE FROM app_sessions WHERE user_id=$1', [id]);
+      await recordAudit(sql, request, current, {
+        action: 'user.update',
+        targetType: 'user',
+        targetId: id,
+        summary: {
+          changed: Object.keys(body),
+          status: body.status ?? null,
+          device_count: body.deviceIds?.length ?? null,
+        },
+      });
       return updated.rows[0];
     });
     const deviceIds =
@@ -498,11 +554,21 @@ export function registerAuthRoutes(
     if (!access.requireMaster(request, reply)) return;
     const current = access.principal(request);
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
-    const removed = await db.query(
-      `DELETE FROM app_users WHERE tenant_id=$1 AND id=$2 AND role='user' RETURNING id`,
-      [current.tenantId, id],
-    );
-    return removed.rows.length
+    const removed = await db.transaction(async (sql) => {
+      const result = await sql.query<{ id: string; email: string }>(
+        `DELETE FROM app_users WHERE tenant_id=$1 AND id=$2 AND role='user' RETURNING id,email`,
+        [current.tenantId, id],
+      );
+      if (result.rows.length)
+        await recordAudit(sql, request, current, {
+          action: 'user.delete',
+          targetType: 'user',
+          targetId: id,
+          summary: { email: result.rows[0].email },
+        });
+      return result.rows.length;
+    });
+    return removed
       ? reply.code(204).send()
       : reply.code(404).send({ error: 'User not found or protected' });
   });
@@ -514,12 +580,23 @@ export function registerAuthRoutes(
     const initialPassword = temporaryPassword();
     const passwordHash = await hashPassword(initialPassword);
     const updated = await db.transaction(async (sql) => {
+      // Also the administrative unlock path: a per-account lockout can be triggered
+      // deliberately by an attacker, so a master must be able to end it without waiting.
       const result = await sql.query(
-        `UPDATE app_users SET password_hash=$3,must_change_password=true,updated_at=now()
+        `UPDATE app_users SET password_hash=$3,must_change_password=true,
+           failed_attempts=0,locked_until=NULL,updated_at=now()
          WHERE tenant_id=$1 AND id=$2 AND role='user' RETURNING id`,
         [current.tenantId, id, passwordHash],
       );
-      if (result.rows.length) await sql.query('DELETE FROM app_sessions WHERE user_id=$1', [id]);
+      if (result.rows.length) {
+        await sql.query('DELETE FROM app_sessions WHERE user_id=$1', [id]);
+        await recordAudit(sql, request, current, {
+          action: 'user.reset_password',
+          targetType: 'user',
+          targetId: id,
+          summary: { sessions_revoked: true, lock_cleared: true },
+        });
+      }
       return result.rows.length;
     });
     return updated

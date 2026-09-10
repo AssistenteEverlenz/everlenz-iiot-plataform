@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Security advisories are picked up automatically; the weekly schedule covers the rest.
+  # Grouped so a routine bump does not open a dozen pull requests, while anything that
+  # changes a major version still arrives on its own for a deliberate review.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      production-minor-and-patch:
+        applies-to: version-updates
+        dependency-type: production
+        update-types: ['minor', 'patch']
+      development-minor-and-patch:
+        applies-to: version-updates
+        dependency-type: development
+        update-types: ['minor', 'patch']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /infrastructure/mosquitto
+    schedule:
+      interval: weekly

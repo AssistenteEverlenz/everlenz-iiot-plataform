@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { access as accessFile, mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createAccessControl, registerAuthRoutes, type Principal } from './auth.js';
+import { recordAudit } from './audit.js';
 const uuid = z.uuid();
 const pagination = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -169,22 +170,31 @@ export async function createApp(
       .parse(req.body);
     const id = randomUUID();
     const suffix = id.replace(/-/g, '').slice(0, 5).toLowerCase();
-    return reply.code(201).send(
-      (
-        await db.query(
-          `INSERT INTO sites(id,tenant_id,slug,name,reference) VALUES($1,$2,$3,$4,upper($5))
-           RETURNING *`,
-          [
-            id,
-            current.tenantId,
-            `${slug(body.name) || 'cliente'}-${suffix}`,
-            body.name.trim(),
-            body.reference.trim(),
-          ],
-        )
-      ).rows[0],
-    );
+    const site = await db.transaction(async (sql) => {
+      const created = await sql.query(
+        `INSERT INTO sites(id,tenant_id,slug,name,reference) VALUES($1,$2,$3,$4,upper($5))
+         RETURNING *`,
+        [
+          id,
+          current.tenantId,
+          `${slug(body.name) || 'cliente'}-${suffix}`,
+          body.name.trim(),
+          body.reference.trim(),
+        ],
+      );
+      await recordAudit(sql, req, current, {
+        action: 'site.create',
+        targetType: 'site',
+        targetId: id,
+        summary: { name: body.name.trim(), reference: body.reference.trim() },
+      });
+      return created.rows[0];
+    });
+    return reply.code(201).send(site);
   });
+  // `d.*` reaches the browser. Never add a secret column to `devices`: the plaintext
+  // mqtt_password used to be exposed exactly this way (SECURITY.md item 12). Any new
+  // sensitive column must be returned by an explicit, separately authorised route.
   const deviceSelect = `SELECT d.*,s.name site_name,s.reference site_reference,m.topic mqtt_topic,
     COALESCE(d.mqtt_username,lower(d.device_code)) mqtt_username,ds.last_message_at,
     COALESCE(d.enabled AND ds.last_message_at > now()-($2::int * interval '1 second'),false) online
@@ -277,15 +287,16 @@ export async function createApp(
       id,
     ]);
     if (!device.rows.length) return reply.code(404).send({ error: 'Device not found' });
-    return (
-      await db.query(
+    const current = access.principal(req);
+    return db.transaction(async (sql) => {
+      const saved = await sql.query<{ id: string }>(
         `INSERT INTO tags(tenant_id,device_id,key,name,data_type,unit,scale_multiplier,scale_offset)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8)
          ON CONFLICT(device_id,key) DO UPDATE SET name=EXCLUDED.name,data_type=EXCLUDED.data_type,
          unit=EXCLUDED.unit,scale_multiplier=EXCLUDED.scale_multiplier,scale_offset=EXCLUDED.scale_offset,enabled=true
          RETURNING *`,
         [
-          access.principal(req).tenantId,
+          current.tenantId,
           id,
           body.key,
           body.name,
@@ -294,8 +305,23 @@ export async function createApp(
           body.scaleMultiplier,
           body.scaleOffset,
         ],
-      )
-    ).rows[0];
+      );
+      // Scaling is recorded because changing it retroactively reinterprets the meaning
+      // of every later sample; an investigation needs to see when that happened.
+      await recordAudit(sql, req, current, {
+        action: 'tag.upsert',
+        targetType: 'tag',
+        targetId: saved.rows[0].id,
+        summary: {
+          device_id: id,
+          key: body.key,
+          data_type: body.dataType,
+          scale_multiplier: body.scaleMultiplier,
+          scale_offset: body.scaleOffset,
+        },
+      });
+      return saved.rows[0];
+    });
   });
   app.post('/api/devices', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
@@ -331,9 +357,11 @@ export async function createApp(
     const mqttPassword = temporaryPassword(20);
     const dashboardId = randomUUID();
     const row = await db.transaction(async (sql) => {
+      // The generated password is never stored: it is returned once, here, and can only
+      // be replaced afterwards through POST /api/devices/:id/mqtt-credential.
       const created = await sql.query(
-        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_password)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,$13) RETURNING *`,
+        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_credential_rotated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,now()) RETURNING *`,
         [
           id,
           current.tenantId,
@@ -347,7 +375,6 @@ export async function createApp(
           `device-${id}`,
           adapterType,
           mqttUsername,
-          mqttPassword,
         ],
       );
       await sql.query(
@@ -366,6 +393,12 @@ export async function createApp(
           `Painel operacional de ${body.name.trim()}`,
         ],
       );
+      await recordAudit(sql, req, current, {
+        action: 'device.create',
+        targetType: 'device',
+        targetId: id,
+        summary: { device_code: code, name: body.name, manufacturer: body.manufacturer, topic },
+      });
       return created.rows[0];
     });
     const credentialActive = await provisionMqttRequest(
@@ -388,6 +421,57 @@ export async function createApp(
         credentialActive,
       },
     });
+  });
+  // Replaces the old "read the stored password back" flow. The secret exists only in
+  // this response; losing it costs a rotation, not a database lookup.
+  app.post('/api/devices/:id/mqtt-credential', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const device = await db.query<{
+      device_code: string;
+      mqtt_username: string | null;
+      topic: string | null;
+      site_reference: string;
+    }>(
+      `SELECT d.device_code,COALESCE(d.mqtt_username,lower(d.device_code)) mqtt_username,
+        s.reference site_reference,
+        (SELECT CASE WHEN dm.kind='haiwell' AND dm.topic NOT LIKE 'data/%' THEN 'data/'||dm.topic ELSE dm.topic END
+         FROM device_topic_mappings dm WHERE dm.device_id=d.id AND dm.tenant_id=d.tenant_id ORDER BY dm.id LIMIT 1) topic
+       FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
+       WHERE d.tenant_id=$1 AND d.id=$2 AND d.archived_at IS NULL`,
+      [current.tenantId, id],
+    );
+    if (!device.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    const { device_code, mqtt_username, topic, site_reference } = device.rows[0];
+    if (!topic) return reply.code(409).send({ error: 'Device has no MQTT topic mapping' });
+    const username = mqtt_username ?? device_code.toLowerCase();
+    const password = temporaryPassword(20);
+    await db.transaction(async (sql) => {
+      await sql.query(
+        'UPDATE devices SET mqtt_username=$3,mqtt_credential_rotated_at=now(),updated_at=now() WHERE tenant_id=$1 AND id=$2',
+        [current.tenantId, id, username],
+      );
+      await recordAudit(sql, req, current, {
+        action: 'device.mqtt_credential.rotate',
+        targetType: 'device',
+        targetId: id,
+        summary: { device_code, mqtt_username: username },
+      });
+    });
+    const credentialActive = await provisionMqttRequest('upsert', username, password, topic);
+    return {
+      connection: {
+        host: env.MQTT_PUBLIC_HOST ?? env.MQTT_HOST,
+        port: env.MQTT_TLS_PORT,
+        tls: true,
+        topic,
+        username,
+        password,
+        clientReference: site_reference,
+        credentialActive,
+      },
+    };
   });
   app.patch('/api/devices/:id', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
@@ -429,7 +513,14 @@ export async function createApp(
         adapterType,
       ],
     );
-    return updated.rows[0] ?? reply.code(404).send({ error: 'Device not found' });
+    if (!updated.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    await recordAudit(db, req, current, {
+      action: 'device.update',
+      targetType: 'device',
+      targetId: id,
+      summary: { changed: Object.keys(body), manufacturer, model },
+    });
+    return updated.rows[0];
   });
   app.delete('/api/devices/:id', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
@@ -440,6 +531,12 @@ export async function createApp(
       [access.principal(req).tenantId, id],
     );
     if (!result.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    await recordAudit(db, req, access.principal(req), {
+      action: 'device.archive',
+      targetType: 'device',
+      targetId: id,
+      summary: { mqtt_username: result.rows[0].mqtt_username },
+    });
     if (result.rows[0].mqtt_username)
       await provisionMqttRequest('delete', result.rows[0].mqtt_username, '', '');
     return reply.code(204).send();

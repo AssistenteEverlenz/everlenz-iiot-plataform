@@ -514,4 +514,150 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await api.close();
     }
   });
+  it('never stores broker passwords, records an audit trail and locks out brute force', async () => {
+    const password = 'SecurityMaster9!';
+    await db.query(
+      `INSERT INTO app_users(tenant_id,email,full_name,role,password_hash,must_change_password)
+       VALUES($1,'security@integration.test','Security Master','master',$2,false)`,
+      [TENANT, await hashPassword(password)],
+    );
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false, authRequired: true });
+    try {
+      const login = await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'security@integration.test', password },
+      });
+      const token = login.json().token as string;
+      const auth = { authorization: `Bearer ${token}` };
+
+      // Item 12: the generated password is returned exactly once and never persisted.
+      const siteId = (await api.inject({ url: '/api/sites', headers: auth })).json()[0].id;
+      const createdDevice = await api.inject({
+        method: 'POST',
+        url: '/api/devices',
+        headers: auth,
+        payload: { siteId, name: 'Prensa Segura', manufacturer: 'Haiwell', model: 'A7' },
+      });
+      expect(createdDevice.statusCode).toBe(201);
+      expect(createdDevice.json().connection.password).toMatch(/^.{20}$/);
+      const deviceId = createdDevice.json().device.id as string;
+      expect(createdDevice.json().device).not.toHaveProperty('mqtt_password');
+      const listed = (await api.inject({ url: '/api/devices', headers: auth })).json();
+      for (const device of listed) expect(device).not.toHaveProperty('mqtt_password');
+      const columns = await db.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_name='devices' AND column_name='mqtt_password'`,
+      );
+      expect(columns.rows).toHaveLength(0);
+
+      // Rotation is the only way back to a usable secret, and it differs from the first.
+      const rotated = await api.inject({
+        method: 'POST',
+        url: `/api/devices/${deviceId}/mqtt-credential`,
+        headers: auth,
+      });
+      expect(rotated.statusCode).toBe(200);
+      expect(rotated.json().connection.password).not.toBe(createdDevice.json().connection.password);
+
+      // Item 16: both the creation and the rotation are attributable.
+      const trail = await db.query<{ action: string; actor_email: string; target_id: string }>(
+        'SELECT action,actor_email,target_id FROM audit_log WHERE target_id=$1 ORDER BY id',
+        [deviceId],
+      );
+      expect(trail.rows.map((row) => row.action)).toEqual([
+        'device.create',
+        'device.mqtt_credential.rotate',
+      ]);
+      expect(trail.rows[0].actor_email).toBe('security@integration.test');
+
+      // Item 4: a viewer cannot rewrite tag scaling.
+      const viewer = await api.inject({
+        method: 'POST',
+        url: '/api/users',
+        headers: auth,
+        payload: {
+          email: 'viewer@integration.test',
+          fullName: 'Viewer Test',
+          status: 'active',
+          deviceIds: [HAIWELL],
+        },
+      });
+      const viewerFirst = await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: {
+          email: 'viewer@integration.test',
+          password: viewer.json().temporaryPassword,
+        },
+      });
+      const viewerToken = (
+        await api.inject({
+          method: 'POST',
+          url: '/api/auth/change-password',
+          headers: { authorization: `Bearer ${viewerFirst.json().token}` },
+          payload: { password: 'PermanentViewer9!', confirmation: 'PermanentViewer9!' },
+        })
+      ).json().token as string;
+      expect(
+        (
+          await api.inject({
+            method: 'POST',
+            url: `/api/devices/${HAIWELL}/tags`,
+            headers: { authorization: `Bearer ${viewerToken}` },
+            payload: { key: 'forjada', name: 'Forjada', dataType: 'number', scaleMultiplier: 1000 },
+          })
+        ).statusCode,
+      ).toBe(403);
+
+      // Item 7b: the lockout is durable and survives coming from fresh addresses, which
+      // is exactly what defeats the per-origin memory throttle.
+      for (let attempt = 0; attempt < 10; attempt += 1)
+        expect(
+          (
+            await api.inject({
+              method: 'POST',
+              url: '/api/auth/login',
+              remoteAddress: `198.51.100.${attempt + 1}`,
+              payload: { email: 'viewer@integration.test', password: 'WrongPassword9!' },
+            })
+          ).statusCode,
+        ).toBe(401);
+      const locked = await db.query<{ failed_attempts: number; locked_until: Date | null }>(
+        'SELECT failed_attempts,locked_until FROM app_users WHERE email=$1',
+        ['viewer@integration.test'],
+      );
+      expect(locked.rows[0].failed_attempts).toBe(10);
+      expect(locked.rows[0].locked_until).not.toBeNull();
+      // The correct password is now refused, with the same opaque 401 as a wrong one.
+      const refused = await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        remoteAddress: '198.51.100.200',
+        payload: { email: 'viewer@integration.test', password: 'PermanentViewer9!' },
+      });
+      expect(refused.statusCode).toBe(401);
+      expect(refused.json().error).toBe('Invalid email or password');
+
+      // A master reset is the administrative way out of a deliberate lockout.
+      const reset = await api.inject({
+        method: 'POST',
+        url: `/api/users/${viewer.json().user.id}/reset-password`,
+        headers: auth,
+      });
+      expect(reset.statusCode).toBe(200);
+      const unlocked = await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        remoteAddress: '198.51.100.201',
+        payload: {
+          email: 'viewer@integration.test',
+          password: reset.json().temporaryPassword,
+        },
+      });
+      expect(unlocked.statusCode).toBe(200);
+    } finally {
+      await api.close();
+    }
+  });
 });
