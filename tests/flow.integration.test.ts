@@ -185,6 +185,46 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     const m = simulatedMessage('haiwell', 2);
     expect((await ingest(m.topic, m.payload)).status).toBe('processed');
   });
+  it('puts a talking device online even when its message stores no samples', async () => {
+    const status = () =>
+      db.query<{ online: boolean; last_message_at: Date }>(
+        'SELECT online,last_message_at FROM device_status WHERE device_id=$1',
+        [HAIWELL],
+      );
+    const send = (payload: unknown, offsetSeconds: number) =>
+      pipeline.ingest({
+        topic: 'data/POC/group1/A7-001',
+        payload: Buffer.from(JSON.stringify(payload)),
+        qos: 1,
+        retain: false,
+        receivedAt: new Date(Date.now() + offsetSeconds * 1000),
+      });
+    await db.query('UPDATE device_status SET online=false WHERE device_id=$1', [HAIWELL]);
+
+    // Freshly commissioned: only variables nobody configured yet.
+    const noTags = await send(
+      { _terminalTime: 'x', _groupName: 'group1', variavel_nova: '1' },
+      120,
+    );
+    expect(noTags.status).toBe('unrecognized');
+    expect((await status()).rows[0].online).toBe(true);
+    const raw = await db.query<{ device_id: string; processing_error: string }>(
+      'SELECT device_id,processing_error FROM mqtt_messages_raw WHERE id=$1',
+      [noTags.rawId],
+    );
+    expect(raw.rows[0]).toMatchObject({
+      device_id: HAIWELL,
+      processing_error: 'No configured tags in payload',
+    });
+
+    // A payload in another format still proves the link works.
+    await db.query('UPDATE device_status SET online=false WHERE device_id=$1', [HAIWELL]);
+    const otherFormat = await send({ formato: 'desconhecido' }, 180);
+    expect(otherFormat.status).toBe('unrecognized');
+    const seen = (await status()).rows[0];
+    expect(seen.online).toBe(true);
+    expect(new Date(seen.last_message_at).getTime()).toBeGreaterThan(Date.now() + 150_000);
+  });
   it('stores valid UTF8 containing NUL without losing original bytes', async () => {
     const result = await ingest('unknown/nul', 'a\u0000b');
     expect(result.status).toBe('unrecognized');

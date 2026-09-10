@@ -263,6 +263,7 @@ export class IngestionPipeline {
           'UPDATE mqtt_messages_raw SET tenant_id=$2,device_id=$3,parsed_json=$4::jsonb WHERE id=$1',
           [rawId, device.tenant_id, device.id, safeJson],
         );
+        await this.markDeviceSeen(device, message.receivedAt, message.topic);
         await this.mark(rawId, 'unrecognized', parser, 'Payload does not match configured adapter');
         return { rawId, status: 'unrecognized' };
       }
@@ -308,6 +309,11 @@ export class IngestionPipeline {
         ]);
       }
       if (!rows.length) {
+        await this.db.query(
+          'UPDATE mqtt_messages_raw SET tenant_id=$2,device_id=$3,parsed_json=$4::jsonb WHERE id=$1',
+          [rawId, device.tenant_id, device.id, safeJson],
+        );
+        await this.markDeviceSeen(device, message.receivedAt, message.topic);
         await this.mark(rawId, 'unrecognized', parser, 'No configured tags in payload');
         return { rawId, status: 'unrecognized' };
       }
@@ -348,6 +354,19 @@ export class IngestionPipeline {
       );
       return { rawId, status: 'error' };
     }
+  }
+  // A device that talks is online, whether or not its message yields samples: a freshly
+  // commissioned HMI has no variables configured yet, and a payload in an unexpected format
+  // still proves the link works. Only the message status records why nothing was stored.
+  private async markDeviceSeen(device: Device, receivedAt: Date, topic: string) {
+    await this.db.query(
+      `INSERT INTO device_status(device_id,tenant_id,last_message_at,online,last_topic)
+       VALUES($1,$2,$3,true,$4)
+       ON CONFLICT(device_id) DO UPDATE SET
+         last_message_at=GREATEST(device_status.last_message_at,EXCLUDED.last_message_at),
+         online=true,last_topic=EXCLUDED.last_topic,updated_at=now()`,
+      [device.id, device.tenant_id, receivedAt, topic],
+    );
   }
   private async mark(id: string, status: string, parser: string | null, error: string | null) {
     await this.db.query(
