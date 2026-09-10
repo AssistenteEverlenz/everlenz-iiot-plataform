@@ -3534,3 +3534,238 @@ footer {
   outline-offset: -2px;
   background: #f3fbfa;
 }
+
+/* Phones: the grid returns to automatic heights, so charts that fill "100% of the card"
+   collapsed to their minimum. They get explicit heights, and wide pairs stack. */
+@media (max-width: 700px) {
+  .dashboard-widget.sized {
+    padding: 16px;
+  }
+  .dashboard-widget.sized .quick-layout,
+  .dashboard-widget.sized .quick-layout.is-donut {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-widget.sized .quick-donut-chart {
+    height: 240px;
+  }
+  .dashboard-widget.sized .quick-legend-scroll {
+    height: auto;
+    max-height: 280px;
+    min-height: 0;
+  }
+  .dashboard-widget.sized .quick-visual {
+    height: 240px;
+  }
+  .dashboard-widget.sized .production-insight {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-widget.sized .production-insight .production-history {
+    min-height: 0;
+  }
+  .dashboard-widget.sized .production-chart {
+    flex: none;
+    height: 180px;
+  }
+  .dashboard-widget.sized .production-insight .product-ranking {
+    height: 260px;
+  }
+  .dashboard-widget.sized .gauge-v2 {
+    height: 200px;
+  }
+}
+
+/* ---------- Print / PDF ----------
+   A4 landscape. "Exportar PDF" first lays the page out at the printable width (body gets
+   .print-layout) so every chart redraws for paper, then prints; see components/print.ts. */
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+body.print-layout .platform-sidebar,
+body.print-layout .platform-topbar,
+body.print-layout .bottom-navigation {
+  display: none !important;
+}
+body.print-layout .platform-main,
+body.print-layout .sidebar-collapsed .platform-main {
+  width: 1040px !important;
+  max-width: 1040px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+body.print-layout .widget-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: auto;
+}
+/* On paper a card taller than a sheet was split across two pages, its inner grid shrank and
+   the chart, still at its screen height, spilled over the figures below. Cards take their
+   natural height instead, with charts at fixed heights measured before printing. */
+/* The printable sheet is ~1040px wide, which trips the tablet rule (max-width: 1100px) on
+   paper only: cards kept their screen widths for measuring and then printed at half width. */
+body.print-layout .dashboard-widget.sized {
+  grid-column: span var(--cols) !important;
+  grid-row: auto !important;
+}
+body.print-layout .dashboard-widget.sized .production-insight {
+  grid-template-rows: auto;
+}
+body.print-layout .dashboard-widget.sized .production-chart {
+  flex: none;
+  height: 220px;
+}
+body.print-layout .dashboard-widget.sized .production-insight .production-history,
+body.print-layout .dashboard-widget.sized .production-insight .product-ranking {
+  height: auto;
+  min-height: 0;
+}
+body.print-layout .dashboard-widget.sized .quick-visual,
+body.print-layout .dashboard-widget.sized .quick-donut-chart {
+  height: 260px;
+  min-height: 0;
+}
+body.print-layout .dashboard-widget.sized .quick-legend-scroll {
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
+}
+body.print-layout .dashboard-widget.sized > .widget-chart {
+  flex: none;
+  height: 220px;
+}
+body.print-layout .dashboard-widget.sized .gauge-v2 {
+  flex: none;
+  height: 190px;
+}
+/* The share of a thin slice is written outside the ring; it must not be cut at the edge. */
+.quick-donut-chart .recharts-surface {
+  overflow: visible;
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .widget-actions,
+  .drag-handle,
+  .resize-handle,
+  .resize-badge,
+  .widget-period,
+  .counter-reset,
+  .toolbar-actions,
+  .editor-bar,
+  .analysis-filter,
+  .scroll-hint-arrow,
+  .hidden-products-toggle,
+  .product-hide {
+    display: none !important;
+  }
+  .dashboard-widget {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none;
+  }
+  .scroll-hint-body {
+    overflow: visible;
+    height: auto;
+  }
+}
+
+/* ---------- Phones ----------
+   Reviewed screen by screen at 390px. The grid returns to automatic heights there, so
+   charts that fill "100% of the card" collapsed: they get explicit heights. */
+@media (max-width: 700px) {
+  /* Four destinations, four columns: a fifth empty column made the bar look unfinished. */
+  .bottom-navigation {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 6px 8px;
+  }
+  .bottom-navigation a,
+  .bottom-navigation button {
+    gap: 3px;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .mobile-menu-sheet > a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+  }
+  .mobile-menu-sheet > a svg {
+    flex-shrink: 0;
+  }
+  /* Page headers: the action button no longer wraps into two lines beside the title. */
+  .heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    margin: 22px 0 18px;
+  }
+  .heading > .primary-button,
+  .heading > button,
+  .heading > a {
+    width: 100%;
+    text-align: center;
+  }
+  .heading .toolbar-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .heading .toolbar-actions > * {
+    flex: 1;
+  }
+  /* Tables scroll sideways inside their card instead of squeezing every column. */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  th,
+  td {
+    white-space: nowrap;
+  }
+  .dashboard-widget.sized {
+    padding: 16px;
+  }
+  .dashboard-widget.sized .quick-layout,
+  .dashboard-widget.sized .quick-layout.is-donut {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-widget.sized .quick-donut-chart {
+    height: 250px;
+  }
+  .dashboard-widget.sized .quick-legend-scroll {
+    height: auto;
+    max-height: 290px;
+    min-height: 0;
+  }
+  .dashboard-widget.sized .quick-visual {
+    height: 250px;
+  }
+  .dashboard-widget.sized .production-insight {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-widget.sized .production-insight .production-history {
+    min-height: 0;
+  }
+  .dashboard-widget.sized .production-chart {
+    flex: none;
+    height: 190px;
+  }
+  .dashboard-widget.sized .production-insight .product-ranking {
+    height: 270px;
+  }
+  .dashboard-widget.sized .gauge-v2 {
+    height: 200px;
+    flex: none;
+  }
+  .dashboard-widget.sized > .widget-chart {
+    flex: none;
+    height: 200px;
+  }
+}

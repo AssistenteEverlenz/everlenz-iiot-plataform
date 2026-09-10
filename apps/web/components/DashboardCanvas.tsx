@@ -28,6 +28,7 @@ import {
 } from './data';
 
 import { ScrollHint } from './ScrollHint';
+import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
 type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
@@ -1238,7 +1239,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             <span />
             {device.data?.online ? 'Online' : 'Offline'}
           </span>
-          <button onClick={() => window.print()}>Exportar PDF</button>
+          <button onClick={() => void printDashboard()}>Exportar PDF</button>
           <a
             className="secondary-button"
             href={`/api/export/telemetry.csv?deviceId=${deviceId}&limit=10000`}

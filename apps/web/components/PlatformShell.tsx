@@ -92,6 +92,24 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
       router.replace('/');
   }, [pathname, router, session]);
 
+  // A plant user comes for their equipment's dashboard: land there directly instead of the
+  // command centre. With several equipments, the list of dashboards comes first. The other
+  // screens stay reachable from the navigation.
+  useEffect(() => {
+    if (session?.user.role !== 'user' || pathname !== '/') return;
+    let cancelled = false;
+    void fetch('/api/dashboards', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((dashboards: Array<{ id: string }>) => {
+        if (cancelled || !Array.isArray(dashboards)) return;
+        router.replace(dashboards.length === 1 ? `/dashboards/${dashboards[0].id}` : '/dashboards');
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, router, session]);
+
   const style = useMemo(
     () =>
       ({
