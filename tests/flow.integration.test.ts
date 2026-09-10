@@ -225,6 +225,43 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     expect(seen.online).toBe(true);
     expect(new Date(seen.last_message_at).getTime()).toBeGreaterThan(Date.now() + 150_000);
   });
+  it('serves chart history averaged per minute', async () => {
+    const tag = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type)
+         VALUES($1,$2,'grafico_minuto','Gráfico por minuto','number') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    const sample = (at: string, value: number) =>
+      db.query(
+        `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality)
+         VALUES($1,'22222222-2222-4222-8222-222222222222',$2,$3,$4,now(),$5,'good')`,
+        [TENANT, HAIWELL, tag, at, value],
+      );
+    await sample('2026-03-01T10:00:05Z', 10);
+    await sample('2026-03-01T10:00:25Z', 20);
+    await sample('2026-03-01T10:00:55Z', 30);
+    await sample('2026-03-01T10:01:10Z', 40);
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      const rows = (
+        await api.inject(
+          `/api/telemetry?deviceId=${HAIWELL}&tagId=${tag}&from=2026-03-01T09:59:00Z&to=2026-03-01T10:05:00Z&bucket=minute`,
+        )
+      ).json() as { tag_id: string; timestamp: string; value_number: number }[];
+      // Newest first, as the raw history: one point per minute, the minute's average.
+      expect(rows.map((row) => [new Date(row.timestamp).toISOString(), row.value_number])).toEqual([
+        ['2026-03-01T10:01:00.000Z', 40],
+        ['2026-03-01T10:00:00.000Z', 20],
+      ]);
+      expect(rows.every((row) => row.tag_id === tag)).toBe(true);
+    } finally {
+      await api.close();
+      await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [tag]);
+      await db.query('DELETE FROM tags WHERE id=$1', [tag]);
+    }
+  });
   it('stores valid UTF8 containing NUL without losing original bytes', async () => {
     const result = await ingest('unknown/nul', 'a\u0000b');
     expect(result.status).toBe('unrecognized');

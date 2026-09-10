@@ -685,10 +685,43 @@ export async function createApp(
   });
   app.get('/api/telemetry', async (req, reply) => {
     const q = telemetryPagination
-      .extend({ deviceId: uuid, tagId: uuid.optional(), ...timeRange })
+      .extend({
+        deviceId: uuid,
+        tagId: uuid.optional(),
+        bucket: z.enum(['minute']).optional(),
+        ...timeRange,
+      })
       .parse(req.query);
     checkRange(q);
     if (!(await access.requireDevice(req, reply, q.deviceId))) return;
+    // Chart history: one averaged point per numeric variable and minute, with only the columns
+    // a chart draws. Dashboards polled the raw rows of the whole window every 2 s (over a
+    // thousand full rows per call), which alone drained the database egress allowance.
+    if (q.bucket === 'minute')
+      return (
+        await db.query(
+          `SELECT s.tag_id,t.key,t.unit,
+             date_bin('1 minute',s.timestamp,timestamptz '2000-01-01') AS timestamp,
+             avg(s.value_number)::double precision value_number,
+             NULL::text value_text,NULL::boolean value_boolean,'good' quality
+           FROM telemetry_samples s JOIN tags t ON t.id=s.tag_id AND t.tenant_id=s.tenant_id
+           WHERE s.tenant_id=$1 AND s.device_id=$2 AND ($3::uuid IS NULL OR s.tag_id=$3)
+             AND s.value_number IS NOT NULL
+             AND ($4::timestamptz IS NULL OR s.timestamp >= $4)
+             AND ($5::timestamptz IS NULL OR s.timestamp <= $5)
+           GROUP BY s.tag_id,t.key,t.unit,4
+           ORDER BY 4 DESC LIMIT $6 OFFSET $7`,
+          [
+            access.principal(req).tenantId,
+            q.deviceId,
+            q.tagId ?? null,
+            q.from ?? null,
+            q.to ?? null,
+            q.limit,
+            q.offset,
+          ],
+        )
+      ).rows;
     return (
       await db.query(
         `SELECT s.*,t.key,t.unit FROM telemetry_samples s JOIN tags t ON t.id=s.tag_id AND t.tenant_id=s.tenant_id WHERE s.tenant_id=$1 AND s.device_id=$2 AND ($3::uuid IS NULL OR s.tag_id=$3) AND ($4::timestamptz IS NULL OR s.timestamp >= $4) AND ($5::timestamptz IS NULL OR s.timestamp <= $5) ORDER BY s.timestamp DESC,s.id DESC LIMIT $6 OFFSET $7`,

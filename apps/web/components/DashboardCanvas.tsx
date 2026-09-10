@@ -890,6 +890,8 @@ function Widget({
   );
 }
 
+const HISTORY_REFRESH_MS = 30000;
+
 export function DashboardCanvas({ id }: { id: string }) {
   const { branding } = usePlatform();
   const dashboard = usePoll<Dashboard>(`/dashboards/${id}`, 2000);
@@ -911,9 +913,14 @@ export function DashboardCanvas({ id }: { id: string }) {
   const from = new Date(
     Math.floor(Date.now() / 60000) * 60000 - windowMinutes * 60000,
   ).toISOString();
+  // Trend history, averaged per minute by the API and refreshed every 30 s: a trend line does
+  // not need the dashboard's 2 s refresh, and pulling every raw sample of the window at that
+  // rate exhausted the database transfer allowance. Value cards still use /latest at refreshMs.
   const history = usePoll<Sample[]>(
-    deviceId ? `/telemetry?deviceId=${deviceId}&from=${encodeURIComponent(from)}&limit=2000` : null,
-    refreshMs,
+    deviceId
+      ? `/telemetry?deviceId=${deviceId}&from=${encodeURIComponent(from)}&bucket=minute&limit=5000`
+      : null,
+    Math.max(refreshMs, HISTORY_REFRESH_MS),
   );
   const [adding, setAdding] = useState(false);
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
