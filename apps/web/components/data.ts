@@ -93,6 +93,8 @@ export interface DashboardWidget {
     }>;
     productionPeriodMinutes?: number;
     productionMinimumValue?: number;
+    productionMetricKind?: 'rate_average' | 'counter_delta';
+    productionTrendDays?: 7 | 30;
     counterMode?: boolean;
     counterBaseline?: number;
   };

@@ -73,6 +73,34 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     );
     expect(pending.rows[0].count).toBe(0);
   });
+  it('rolls numeric telemetry up and preserves counter increments across a reset', async () => {
+    const tag = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type,unit)
+         VALUES($1,$2,'test_counter_rollup','Contador de teste','number','un') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0];
+    await db.query(
+      `INSERT INTO telemetry_samples(
+        tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality
+       ) VALUES
+        ($1,'22222222-2222-4222-8222-222222222222',$2,$3,'2026-09-10T10:00:00Z',now(),10,'good'),
+        ($1,'22222222-2222-4222-8222-222222222222',$2,$3,'2026-09-10T10:01:00Z',now(),15,'good'),
+        ($1,'22222222-2222-4222-8222-222222222222',$2,$3,'2026-09-10T10:02:00Z',now(),2,'good')`,
+      [TENANT, HAIWELL, tag.id],
+    );
+    const rollup = (
+      await db.query<{ sample_count: number; positive_delta: number }>(
+        `SELECT sample_count::int sample_count,positive_delta
+         FROM telemetry_hourly_rollups WHERE device_id=$1 AND tag_id=$2`,
+        [HAIWELL, tag.id],
+      )
+    ).rows[0];
+    expect(rollup).toMatchObject({ sample_count: 3, positive_delta: 7 });
+    await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [tag.id]);
+    await db.query('DELETE FROM tags WHERE id=$1', [tag.id]);
+  });
   it('preserves unknown binary and invalid JSON, then processes next valid message', async () => {
     const binary = await ingest('unknown/device', Buffer.from([0xff, 0x00, 0xfe]));
     expect(binary.status).toBe('unrecognized');

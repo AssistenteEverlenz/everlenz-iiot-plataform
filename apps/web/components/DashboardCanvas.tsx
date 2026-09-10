@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
   ReferenceLine,
   ResponsiveContainer,
@@ -34,6 +36,14 @@ interface Statistic {
   maximum: number | null;
   average: number | null;
   trend_per_second: number | null;
+  metric_kind: 'rate_average' | 'counter_delta';
+  trend_days: number;
+  current_period_value: number | null;
+  previous_period_value: number | null;
+  change_percent: number | null;
+  best_day: string | null;
+  best_value: number | null;
+  daily_series: Array<{ date: string; value: number | null; samples: number }>;
 }
 
 type AlarmRange = NonNullable<DashboardWidget['config']['alarmRanges']>[number];
@@ -149,6 +159,11 @@ function Widget({
   const max = widget.config.max ?? 100;
   const progress =
     numeric == null ? 0 : Math.max(0, Math.min(100, ((numeric - min) / (max - min || 1)) * 100));
+  const needleAngle = Math.PI - (progress / 100) * Math.PI;
+  const needleTip = {
+    x: 110 + Math.cos(needleAngle) * 68,
+    y: 108 - Math.sin(needleAngle) * 68,
+  };
   const ranges = widget.config.alarmRanges?.length
     ? widget.config.alarmRanges
     : legacyAlarmRanges(widget, min, max);
@@ -299,14 +314,8 @@ function Widget({
                 })}
               {widget.config.gaugeNeedle !== false && numeric != null && (
                 <g className="gauge-needle">
-                  <line
-                    x1="110"
-                    y1="108"
-                    x2="110"
-                    y2="38"
-                    transform={`rotate(${progress * 1.8 - 90} 110 108)`}
-                  />
-                  <circle cx="110" cy="108" r="8" />
+                  <line x1="110" y1="108" x2={needleTip.x} y2={needleTip.y} />
+                  <circle cx="110" cy="108" r="5" />
                 </g>
               )}
             </svg>
@@ -351,14 +360,99 @@ function Widget({
         </>
       )}
       {widget.widget_type === 'production' && (
-        <>
-          <div className="hero-value">
-            {number(statistics?.average, widget.config.decimals ?? 1)}
-            <span>{widget.unit} média</span>
+        <div className="production-insight">
+          <div className="production-kpis">
+            <div>
+              <span className="metric-label">
+                {statistics?.metric_kind === 'counter_delta'
+                  ? 'Produção no período'
+                  : 'Média operacional'}
+              </span>
+              <div className="hero-value">
+                {number(
+                  statistics?.metric_kind === 'counter_delta'
+                    ? statistics.current_period_value
+                    : statistics?.average,
+                  widget.config.decimals ?? 1,
+                )}
+                <span>{widget.unit}</span>
+              </div>
+            </div>
+            <div
+              className={`period-comparison ${(statistics?.change_percent ?? 0) < 0 ? 'negative' : ''}`}
+            >
+              <span>vs. período anterior</span>
+              <strong>
+                {statistics?.change_percent == null
+                  ? '—'
+                  : `${statistics.change_percent >= 0 ? '+' : ''}${number(statistics.change_percent, 1)}%`}
+              </strong>
+              <small>
+                {number(statistics?.previous_period_value, widget.config.decimals ?? 1)}{' '}
+                {widget.unit}
+              </small>
+            </div>
+          </div>
+          <div className="production-history">
+            <div className="production-history-title">
+              <strong>Desempenho dos últimos {statistics?.trend_days ?? 7} dias</strong>
+              <span>
+                Melhor dia:{' '}
+                {statistics?.best_day
+                  ? new Date(`${statistics.best_day}T12:00:00`).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                    })
+                  : '—'}{' '}
+                · {number(statistics?.best_value, widget.config.decimals ?? 1)} {widget.unit}
+              </span>
+            </div>
+            <ResponsiveContainer width="100%" height={150}>
+              <BarChart
+                data={statistics?.daily_series ?? []}
+                margin={{ top: 8, right: 4, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid stroke="#dfe8ea" strokeDasharray="3 5" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(item) =>
+                    new Date(`${item}T12:00:00`).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                    })
+                  }
+                  tick={{ fontSize: 10, fill: '#71868d' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#71868d' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={42}
+                />
+                <Tooltip
+                  labelFormatter={(item) =>
+                    new Date(`${String(item)}T12:00:00`).toLocaleDateString('pt-BR')
+                  }
+                  formatter={(item) => [
+                    `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
+                    widget.title,
+                  ]}
+                />
+                <Bar
+                  dataKey="value"
+                  fill={color}
+                  radius={[5, 5, 0, 0]}
+                  maxBarSize={44}
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
           <div className="three-metrics">
             <span>
-              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>mínimo
+              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>mínimo operacional
             </span>
             <span>
               <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>pico
@@ -368,11 +462,10 @@ function Widget({
             </span>
           </div>
           <small className="production-note">
-            Período: {formatPeriod(statistics?.period_minutes ?? 60)} · abaixo de{' '}
-            {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorado
-            {statistics?.ignored_samples ? ` · ${statistics.ignored_samples} descartadas` : ''}
+            Leitura: {formatPeriod(statistics?.period_minutes ?? 60)} · valores abaixo de{' '}
+            {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorados
           </small>
-        </>
+        </div>
       )}
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
@@ -425,6 +518,10 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [gaugeNeedle, setGaugeNeedle] = useState(true);
   const [productionPeriodMinutes, setProductionPeriodMinutes] = useState(60);
   const [productionMinimumValue, setProductionMinimumValue] = useState(0.1);
+  const [productionMetricKind, setProductionMetricKind] = useState<
+    'rate_average' | 'counter_delta'
+  >('rate_average');
+  const [productionTrendDays, setProductionTrendDays] = useState<7 | 30>(7);
   const [counterMode, setCounterMode] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -492,6 +589,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           gaugeNeedle: true,
           productionPeriodMinutes: 60,
           productionMinimumValue: 0.1,
+          productionMetricKind: 'rate_average',
+          productionTrendDays: 7,
         },
       });
       setAdding(false);
@@ -533,6 +632,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     setGaugeNeedle(widget.config.gaugeNeedle ?? true);
     setProductionPeriodMinutes(widget.config.productionPeriodMinutes ?? 60);
     setProductionMinimumValue(widget.config.productionMinimumValue ?? 0.1);
+    setProductionMetricKind(widget.config.productionMetricKind ?? 'rate_average');
+    setProductionTrendDays(widget.config.productionTrendDays ?? 7);
     setCounterMode(widget.config.counterMode ?? false);
   }
   async function saveWidget(event: React.FormEvent) {
@@ -566,6 +667,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           alarmRanges,
           productionPeriodMinutes,
           productionMinimumValue,
+          productionMetricKind,
+          productionTrendDays,
           counterMode,
         },
       });
@@ -926,6 +1029,32 @@ export function DashboardCanvas({ id }: { id: string }) {
               )}
               {editingWidget.widget_type === 'production' && (
                 <>
+                  <label className="field">
+                    Tipo de medição
+                    <select
+                      value={productionMetricKind}
+                      onChange={(event) =>
+                        setProductionMetricKind(
+                          event.target.value as 'rate_average' | 'counter_delta',
+                        )
+                      }
+                    >
+                      <option value="rate_average">Taxa instantânea (ex.: ton/h)</option>
+                      <option value="counter_delta">Contador acumulativo (ex.: paletes)</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Histórico gerencial
+                    <select
+                      value={productionTrendDays}
+                      onChange={(event) =>
+                        setProductionTrendDays(Number(event.target.value) as 7 | 30)
+                      }
+                    >
+                      <option value={7}>Últimos 7 dias</option>
+                      <option value={30}>Últimos 30 dias</option>
+                    </select>
+                  </label>
                   <label className="field">
                     Período analisado
                     <select

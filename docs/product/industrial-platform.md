@@ -54,6 +54,9 @@ O painel já contém os espaços de OEE e Pareto e deixa explícito quando falta
 
 ## Próximas extensões do produto
 
+O escopo, o contrato de sinais e a ordem de implantação da camada gerencial cerâmica estão em
+[Inteligência de produção cerâmica](./ceramic-intelligence.md).
+
 1. Perfis de configuração por fabricante/modelo com imagens reais da IHM, campos destacados e instruções versionadas.
 2. Eventos de parada e classificação pelo operador para Pareto automático.
 3. Agregações horárias e diárias para anos de histórico com custo previsível.

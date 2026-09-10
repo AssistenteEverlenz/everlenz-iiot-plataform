@@ -687,6 +687,8 @@ export async function createApp(
         const widgetConfig = widget.config as {
           productionPeriodMinutes?: unknown;
           productionMinimumValue?: unknown;
+          productionMetricKind?: unknown;
+          productionTrendDays?: unknown;
         };
         const requestedPeriod = Number(widgetConfig.productionPeriodMinutes ?? 60);
         const periodMinutes = Math.min(
@@ -695,15 +697,19 @@ export async function createApp(
         );
         const requestedMinimum = Number(widgetConfig.productionMinimumValue ?? 0.1);
         const minimumValue = Number.isFinite(requestedMinimum) ? requestedMinimum : 0.1;
-        const result = await db.query<{
-          samples: number;
-          ignored_samples: number;
-          minimum: number | null;
-          maximum: number | null;
-          average: number | null;
-          trend_per_second: number | null;
-        }>(
-          `SELECT
+        const metricKind =
+          widgetConfig.productionMetricKind === 'counter_delta' ? 'counter_delta' : 'rate_average';
+        const trendDays = Number(widgetConfig.productionTrendDays) === 30 ? 30 : 7;
+        const [result, trend] = await Promise.all([
+          db.query<{
+            samples: number;
+            ignored_samples: number;
+            minimum: number | null;
+            maximum: number | null;
+            average: number | null;
+            trend_per_second: number | null;
+          }>(
+            `SELECT
             count(*) FILTER (WHERE value_number >= $5)::int samples,
             count(*) FILTER (WHERE value_number < $5)::int ignored_samples,
             min(value_number) FILTER (WHERE value_number >= $5) minimum,
@@ -714,13 +720,86 @@ export async function createApp(
            FROM telemetry_samples
            WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
              AND timestamp >= now()-($4::double precision * interval '1 minute')`,
-          [current.tenantId, widget.device_id, widget.tag_id, periodMinutes, minimumValue],
-        );
+            [current.tenantId, widget.device_id, widget.tag_id, periodMinutes, minimumValue],
+          ),
+          db.query<{
+            date: string;
+            value: number | null;
+            samples: number;
+            is_current: boolean;
+          }>(
+            `WITH bounds AS (
+               SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date today
+             ), aggregated AS (
+               SELECT (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date local_day,
+                 CASE WHEN $4='counter_delta'
+                   THEN sum(r.positive_delta)
+                   ELSE sum(r.value_sum) FILTER (WHERE r.value_sum/r.sample_count >= $6)
+                     / nullif(sum(r.sample_count) FILTER (WHERE r.value_sum/r.sample_count >= $6),0)
+                 END value,
+                 sum(r.sample_count) FILTER (
+                   WHERE $4='counter_delta' OR r.value_sum/r.sample_count >= $6
+                 )::int samples
+               FROM telemetry_hourly_rollups r CROSS JOIN bounds b
+               WHERE r.tenant_id=$1 AND r.device_id=$2 AND r.tag_id=$3
+                 AND r.bucket >= ((b.today-(($5::int*2)-1))::timestamp AT TIME ZONE 'America/Sao_Paulo')
+               GROUP BY (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date
+             ), days AS (
+               SELECT generate_series(
+                 b.today-(($5::int*2)-1),b.today,interval '1 day'
+               )::date bucket_date,b.today
+               FROM bounds b
+             )
+             SELECT to_char(d.bucket_date,'YYYY-MM-DD') date,a.value,
+               coalesce(a.samples,0)::int samples,
+               d.bucket_date >= d.today-($5::int-1) is_current
+             FROM days d LEFT JOIN aggregated a ON a.local_day=d.bucket_date
+             ORDER BY d.bucket_date`,
+            [
+              current.tenantId,
+              widget.device_id,
+              widget.tag_id,
+              metricKind,
+              trendDays,
+              minimumValue,
+            ],
+          ),
+        ]);
+        const currentSeries = trend.rows.filter((row) => row.is_current);
+        const previousSeries = trend.rows.filter((row) => !row.is_current);
+        const summarize = (rows: typeof trend.rows) => {
+          const values = rows.flatMap((row) => (row.value == null ? [] : [Number(row.value)]));
+          if (!values.length) return null;
+          return metricKind === 'counter_delta'
+            ? values.reduce((total, value) => total + value, 0)
+            : values.reduce((total, value) => total + value, 0) / values.length;
+        };
+        const currentPeriodValue = summarize(currentSeries);
+        const previousPeriodValue = summarize(previousSeries);
+        const best = currentSeries
+          .filter((row) => row.value != null)
+          .sort((a, b) => Number(b.value) - Number(a.value))[0];
+        const changePercent =
+          currentPeriodValue != null && previousPeriodValue != null && previousPeriodValue !== 0
+            ? ((currentPeriodValue - previousPeriodValue) / Math.abs(previousPeriodValue)) * 100
+            : null;
         return {
           widget_id: widget.id,
           tag_id: widget.tag_id,
           period_minutes: periodMinutes,
           minimum_value: minimumValue,
+          metric_kind: metricKind,
+          trend_days: trendDays,
+          current_period_value: currentPeriodValue,
+          previous_period_value: previousPeriodValue,
+          change_percent: changePercent,
+          best_day: best?.date ?? null,
+          best_value: best?.value == null ? null : Number(best.value),
+          daily_series: currentSeries.map((row) => ({
+            date: row.date,
+            value: row.value == null ? null : Number(row.value),
+            samples: row.samples,
+          })),
           ...result.rows[0],
         };
       }),
