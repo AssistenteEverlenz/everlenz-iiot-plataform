@@ -1,7 +1,7 @@
 import { createApp } from './app.js';
 import { env } from '@iiot/shared';
 import { pool } from '@iiot/database';
-const app = createApp();
+const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
 let stopping = false;
 async function shutdown() {

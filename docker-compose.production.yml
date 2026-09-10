@@ -15,7 +15,11 @@ services:
       MQTT_DEVICE_A7_USERNAME: ${MQTT_DEVICE_A7_USERNAME:-a7-001}
       MQTT_DEVICE_A7_PASSWORD: ${MQTT_DEVICE_A7_PASSWORD:?Set MQTT_DEVICE_A7_PASSWORD}
     ports:
-      - '${MQTT_TCP_BIND_ADDRESS:-0.0.0.0}:${MQTT_PORT:-1883}:1883'
+      # 1883 carries credentials and payloads in clear text and defaults to loopback.
+      # Docker publishes ports through its own iptables DOCKER chain, which is evaluated
+      # BEFORE UFW: a `ufw deny 1883` rule does NOT protect a 0.0.0.0 published port.
+      # Only widen this after restricting the source at the cloud provider's firewall.
+      - '${MQTT_TCP_BIND_ADDRESS:-127.0.0.1}:${MQTT_PORT:-1883}:1883'
       - '${MQTT_TLS_BIND_ADDRESS:-0.0.0.0}:${MQTT_TLS_PORT:-8883}:8883'
     volumes:
       - mqtt-config:/mosquitto/config

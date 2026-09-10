@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { randomBytes } from 'node:crypto';
 import type { Database, SqlExecutor } from '@iiot/database';
 import {
   hashPassword,
@@ -8,6 +9,21 @@ import {
   temporaryPassword,
   verifyPassword,
 } from '@iiot/shared';
+
+// A login for an unknown account must cost the same scrypt work as a real one,
+// otherwise response time alone reveals which e-mails exist. Verifying against this
+// decoy always fails, because nobody is given the random password it derives from.
+let decoyHashPromise: Promise<string> | undefined;
+function decoyHash() {
+  decoyHashPromise ??= hashPassword(randomBytes(32).toString('base64url'));
+  return decoyHashPromise;
+}
+
+// Failed attempts are tracked in process memory, so they reset on restart and are not
+// shared between API replicas. SECURITY-DEBT: move to the database (see SECURITY.md
+// item 7) before running more than one API instance.
+const MAX_TRACKED_LOGINS = 20_000;
+const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
 export interface Principal {
   id: string;
@@ -139,24 +155,40 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
     return false;
   }
 
-  function isLoginBlocked(ip: string) {
+  function isLoginBlocked(key: string) {
     const now = Date.now();
-    const attempt = loginAttempts.get(ip);
+    const attempt = loginAttempts.get(key);
     if (!attempt) return false;
     if (attempt.blockedUntil > now) return true;
-    if (now - attempt.startedAt > 15 * 60 * 1000) loginAttempts.delete(ip);
+    if (now - attempt.startedAt > ATTEMPT_WINDOW_MS) loginAttempts.delete(key);
     return false;
   }
 
-  function failedLogin(ip: string) {
+  // Spraying unique e-mails would otherwise grow this map without bound, which is a
+  // memory-exhaustion path of its own. Drop expired entries first, then the oldest.
+  function pruneAttempts(now: number) {
+    if (loginAttempts.size < MAX_TRACKED_LOGINS) return;
+    for (const [key, attempt] of loginAttempts) {
+      if (attempt.blockedUntil <= now && now - attempt.startedAt > ATTEMPT_WINDOW_MS)
+        loginAttempts.delete(key);
+      if (loginAttempts.size < MAX_TRACKED_LOGINS) return;
+    }
+    for (const key of loginAttempts.keys()) {
+      if (loginAttempts.size < MAX_TRACKED_LOGINS) return;
+      loginAttempts.delete(key);
+    }
+  }
+
+  function failedLogin(key: string, limit = 8) {
     const now = Date.now();
-    const current = loginAttempts.get(ip);
+    pruneAttempts(now);
+    const current = loginAttempts.get(key);
     const attempt =
-      !current || now - current.startedAt > 15 * 60 * 1000
+      !current || now - current.startedAt > ATTEMPT_WINDOW_MS
         ? { count: 1, startedAt: now, blockedUntil: 0 }
         : { ...current, count: current.count + 1 };
-    if (attempt.count >= 8) attempt.blockedUntil = now + 15 * 60 * 1000;
-    loginAttempts.set(ip, attempt);
+    if (attempt.count >= limit) attempt.blockedUntil = now + ATTEMPT_WINDOW_MS;
+    loginAttempts.set(key, attempt);
   }
 
   async function createSession(userId: string, request: FastifyRequest) {
@@ -192,34 +224,52 @@ export function registerAuthRoutes(
   db: Database,
   access: ReturnType<typeof createAccessControl>,
 ) {
-  app.post('/api/auth/login', async (request, reply) => {
-    const body = z
-      .object({ email: z.email().max(254), password: z.string().min(1).max(128) })
-      .parse(request.body);
-    const loginKey = `${request.ip}:${body.email.trim().toLowerCase()}`;
-    if (access.isLoginBlocked(loginKey))
-      return reply.code(429).send({ error: 'Too many attempts. Try again later.' });
-    const result = await db.query<{
-      id: string;
-      tenant_id: string;
-      email: string;
-      full_name: string;
-      role: 'master' | 'user';
-      status: 'active' | 'inactive';
-      password_hash: string;
-      must_change_password: boolean;
-    }>('SELECT * FROM app_users WHERE lower(email)=lower($1)', [body.email.trim()]);
-    const user = result.rows[0];
-    if (!user || !(await verifyPassword(body.password, user.password_hash))) {
-      access.failedLogin(loginKey);
-      return reply.code(401).send({ error: 'Invalid email or password' });
-    }
-    if (user.status !== 'active') return reply.code(403).send({ error: 'User inactive' });
-    access.clearLoginAttempts(loginKey);
-    const token = await access.createSession(user.id, request);
-    await db.query('UPDATE app_users SET last_login_at=now() WHERE id=$1', [user.id]);
-    return { token, user: publicUser(user) };
-  });
+  // Each attempt costs a deliberate scrypt derivation (~100ms CPU, 64MB). Without a
+  // hard ceiling here, a handful of concurrent callers can exhaust the whole service.
+  app.post(
+    '/api/auth/login',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const body = z
+        .object({ email: z.email().max(254), password: z.string().min(1).max(128) })
+        .parse(request.body);
+      const email = body.email.trim().toLowerCase();
+      // Two independent budgets. The per-origin key alone is bypassed by spreading an
+      // attack across addresses, so the account itself also carries a (looser) limit.
+      const originKey = `origin:${request.ip}:${email}`;
+      const accountKey = `account:${email}`;
+      if (access.isLoginBlocked(originKey) || access.isLoginBlocked(accountKey))
+        return reply.code(429).send({ error: 'Too many attempts. Try again later.' });
+      const result = await db.query<{
+        id: string;
+        tenant_id: string;
+        email: string;
+        full_name: string;
+        role: 'master' | 'user';
+        status: 'active' | 'inactive';
+        password_hash: string;
+        must_change_password: boolean;
+      }>('SELECT * FROM app_users WHERE lower(email)=lower($1)', [body.email.trim()]);
+      const user = result.rows[0];
+      // Always pay the scrypt cost, and answer unknown / wrong password / inactive with
+      // one identical 401. Distinguishing them leaks the account list, which is the raw
+      // material for targeted phishing. A deactivated user is told by their operator.
+      const passwordValid = await verifyPassword(
+        body.password,
+        user ? user.password_hash : await decoyHash(),
+      );
+      if (!user || !passwordValid || user.status !== 'active') {
+        access.failedLogin(originKey, 8);
+        access.failedLogin(accountKey, 20);
+        return reply.code(401).send({ error: 'Invalid email or password' });
+      }
+      access.clearLoginAttempts(originKey);
+      access.clearLoginAttempts(accountKey);
+      const token = await access.createSession(user.id, request);
+      await db.query('UPDATE app_users SET last_login_at=now() WHERE id=$1', [user.id]);
+      return { token, user: publicUser(user) };
+    },
+  );
 
   app.get('/api/auth/session', async (request) => {
     const current = access.principal(request);

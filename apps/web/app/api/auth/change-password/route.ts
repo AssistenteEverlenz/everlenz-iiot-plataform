@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiUrl, sessionCookie, sessionCookieOptions } from '../../../../lib/session';
+import { originAllowed } from '../../../../lib/origin';
 
 export async function POST(request: NextRequest) {
+  // Highest-value CSRF target on the platform: a forced password change is account theft.
+  if (!originAllowed(request))
+    return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
   const token = request.cookies.get(sessionCookie)?.value;
   if (!token) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   const result = await fetch(apiUrl('auth/change-password'), {

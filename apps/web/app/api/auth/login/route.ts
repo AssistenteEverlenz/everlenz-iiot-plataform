@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { apiUrl, sessionCookie, sessionCookieOptions } from '../../../../lib/session';
+import { originAllowed } from '../../../../lib/origin';
 
 export async function POST(request: NextRequest) {
+  // Blocks login-CSRF: an attacker silently signing a victim into an account they own.
+  if (!originAllowed(request))
+    return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
   const result = await fetch(apiUrl('auth/login'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

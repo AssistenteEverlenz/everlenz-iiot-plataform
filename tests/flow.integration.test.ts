@@ -49,7 +49,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       }>('SELECT * FROM mqtt_messages_raw WHERE id=$1', [result.rawId]);
       expect(raw.rows[0].payload_hex).toBe(Buffer.from(m.payload).toString('hex'));
       expect(raw.rows[0].processed_at).not.toBeNull();
-      const api = createApp(db, { tenantId: TENANT, operatorRaw: false });
+      const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
       try {
         const response = await api.inject(
           `/api/devices/${mode === 'haiwell' ? HAIWELL : GENERIC}/latest`,
@@ -158,7 +158,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     expect(raw.rows[0].payload_hex).toBe(Buffer.from(payload).toString('hex'));
   });
   it('tenant scope cannot be bypassed with a header or query parameter', async () => {
-    const api = createApp(db, {
+    const api = await createApp(db, {
       tenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       operatorRaw: false,
     });
@@ -183,7 +183,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     }
   });
   it('operator can inspect unresolved raw without exposing another known tenant', async () => {
-    const api = createApp(db, {
+    const api = await createApp(db, {
       tenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       operatorRaw: true,
     });
@@ -198,7 +198,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     }
   });
   it('API validates pagination, UUIDs, ranges and processing status', async () => {
-    const api = createApp(db, { tenantId: TENANT, operatorRaw: false });
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
     try {
       for (const url of [
         '/api/devices/bad',
@@ -213,7 +213,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     }
   });
   it('API exact-topic filter, pagination and telemetry tag filter work', async () => {
-    const api = createApp(db, { tenantId: TENANT, operatorRaw: false });
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
     try {
       const response = await api.inject('/api/mqtt/raw?topic=data%2FPOC%2Fgroup1%2FA7-001&limit=1');
       expect(response.json()).toHaveLength(1);
@@ -239,7 +239,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
   it('discovers signals and supports dashboard, CSV and guided device APIs', async () => {
     const message = simulatedMessage('haiwell', 9);
     expect((await ingest(message.topic, message.payload)).status).toBe('processed');
-    const api = createApp(db, { tenantId: TENANT, operatorRaw: false });
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
     try {
       const signals = (await api.inject(`/api/devices/${HAIWELL}/signals`)).json() as {
         key: string;
@@ -348,7 +348,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
        VALUES($1,'master@integration.test','Master Test','master',$2,true)`,
       [TENANT, masterHash],
     );
-    const api = createApp(db, { tenantId: TENANT, operatorRaw: false, authRequired: true });
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false, authRequired: true });
     try {
       expect((await api.inject('/api/devices')).statusCode).toBe(401);
       const masterLogin = await api.inject({

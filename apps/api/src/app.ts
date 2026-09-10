@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { z, ZodError } from 'zod';
 import { env, temporaryPassword } from '@iiot/shared';
 import { database, type Database } from '@iiot/database';
@@ -54,7 +55,9 @@ function csv(value: unknown) {
   const text = value == null ? '' : String(value);
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
-export function createApp(
+// Async because the rate limiter must finish loading before any route is registered:
+// its global hook only reaches routes added to the context after it is in place.
+export async function createApp(
   db: Database = database,
   settings: { tenantId: string; operatorRaw: boolean; authRequired?: boolean } = {
     tenantId: env.DEV_TENANT_ID,
@@ -64,6 +67,11 @@ export function createApp(
 ) {
   const app = Fastify({
     bodyLimit: 2 * 1024 * 1024,
+    // Exactly one hop is trusted: the Coolify/Traefik proxy in front of this service.
+    // Without this, request.ip is the proxy for every caller and per-client throttling
+    // is meaningless. With `true`, any client could spoof X-Forwarded-For and forge an
+    // address; hop 0 is the immediate peer, which can only be the proxy itself.
+    trustProxy: (_address: string, hop: number) => hop === 0,
     logger: {
       base: { service: 'api' },
       timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
@@ -71,6 +79,19 @@ export function createApp(
       redact: ['req.headers.authorization'],
     },
   });
+  // Awaited before any route is added, so the global hook covers all of them. Measured
+  // saturation is ~15 req/s for the whole service, so these ceilings are generous
+  // per client but still bound what a single caller can consume.
+  if (process.env.NODE_ENV !== 'test')
+    await app.register(rateLimit, {
+      global: true,
+      max: 300,
+      timeWindow: '1 minute',
+      // Container healthchecks originate on loopback and must never be throttled.
+      allowList: ['127.0.0.1', '::1'],
+      continueExceeding: true,
+      addHeadersOnExceeding: { 'x-ratelimit-remaining': false },
+    });
   const access = createAccessControl(db, {
     tenantId: settings.tenantId,
     required: settings.authRequired ?? process.env.NODE_ENV !== 'test',
@@ -87,6 +108,13 @@ export function createApp(
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError)
       return reply.code(400).send({ error: 'Invalid parameters', issues: error.issues });
+    // Plugins signal client errors by throwing with a statusCode. The rate limiter's 429
+    // in particular must survive: collapsing it into 500 would silently disable the
+    // throttle's feedback and make the limit look like a server fault.
+    const signalled = (error as { statusCode?: unknown } | undefined)?.statusCode;
+    const status = typeof signalled === 'number' ? signalled : 500;
+    if (status === 429) return reply.code(429).send({ error: 'Too many requests. Slow down.' });
+    if (status >= 400 && status < 500) return reply.code(status).send({ error: 'Invalid request' });
     request.log.error({
       event: 'request_failed',
       error: error instanceof Error ? error.message : String(error),
@@ -226,6 +254,9 @@ export function createApp(
   });
   app.post('/api/devices/:id/tags', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
+    // Tag scaling rewrites how every future sample is interpreted: master only.
+    // A `user` is a viewer and must not be able to silently falsify telemetry.
+    if (!access.requireMaster(req, reply)) return;
     if (!(await access.requireDevice(req, reply, id))) return;
     const body = z
       .object({
@@ -459,57 +490,65 @@ export function createApp(
       )
     ).rows;
   });
-  app.get('/api/export/telemetry.csv', async (req, reply) => {
-    const q = z
-      .object({
-        deviceId: uuid,
-        tagId: uuid.optional(),
-        ...timeRange,
-        limit: z.coerce.number().int().min(1).max(50000).default(10000),
-      })
-      .parse(req.query);
-    checkRange(q);
-    if (!(await access.requireDevice(req, reply, q.deviceId))) return;
-    const rows = (
-      await db.query<Record<string, unknown>>(
-        `SELECT s.timestamp,s.received_at,d.device_code,d.name device,t.key,t.name variable,t.unit,
+  // A single export may scan 50k rows. Kept far below the global ceiling so one
+  // caller cannot hold the 5-connection pool open in a loop.
+  app.get(
+    '/api/export/telemetry.csv',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const q = z
+        .object({
+          deviceId: uuid,
+          tagId: uuid.optional(),
+          ...timeRange,
+          limit: z.coerce.number().int().min(1).max(50000).default(10000),
+        })
+        .parse(req.query);
+      checkRange(q);
+      if (!(await access.requireDevice(req, reply, q.deviceId))) return;
+      const rows = (
+        await db.query<Record<string, unknown>>(
+          `SELECT s.timestamp,s.received_at,d.device_code,d.name device,t.key,t.name variable,t.unit,
           s.value_number,s.value_text,s.value_boolean,s.quality
          FROM telemetry_samples s JOIN devices d ON d.id=s.device_id AND d.tenant_id=s.tenant_id
          JOIN tags t ON t.id=s.tag_id AND t.tenant_id=s.tenant_id
          WHERE s.tenant_id=$1 AND s.device_id=$2 AND ($3::uuid IS NULL OR s.tag_id=$3)
           AND ($4::timestamptz IS NULL OR s.timestamp >= $4) AND ($5::timestamptz IS NULL OR s.timestamp <= $5)
          ORDER BY s.timestamp DESC,s.id DESC LIMIT $6`,
-        [
-          access.principal(req).tenantId,
-          q.deviceId,
-          q.tagId ?? null,
-          q.from ?? null,
-          q.to ?? null,
-          q.limit,
-        ],
-      )
-    ).rows;
-    const columns = [
-      'timestamp',
-      'received_at',
-      'device_code',
-      'device',
-      'key',
-      'variable',
-      'unit',
-      'value',
-      'quality',
-    ];
-    const lines = [columns.join(',')];
-    for (const row of rows) {
-      const value = row.value_number ?? row.value_boolean ?? row.value_text;
-      lines.push(columns.map((column) => csv(column === 'value' ? value : row[column])).join(','));
-    }
-    return reply
-      .header('content-disposition', `attachment; filename="telemetria-${q.deviceId}.csv"`)
-      .type('text/csv; charset=utf-8')
-      .send(`\uFEFF${lines.join('\r\n')}`);
-  });
+          [
+            access.principal(req).tenantId,
+            q.deviceId,
+            q.tagId ?? null,
+            q.from ?? null,
+            q.to ?? null,
+            q.limit,
+          ],
+        )
+      ).rows;
+      const columns = [
+        'timestamp',
+        'received_at',
+        'device_code',
+        'device',
+        'key',
+        'variable',
+        'unit',
+        'value',
+        'quality',
+      ];
+      const lines = [columns.join(',')];
+      for (const row of rows) {
+        const value = row.value_number ?? row.value_boolean ?? row.value_text;
+        lines.push(
+          columns.map((column) => csv(column === 'value' ? value : row[column])).join(','),
+        );
+      }
+      return reply
+        .header('content-disposition', `attachment; filename="telemetria-${q.deviceId}.csv"`)
+        .type('text/csv; charset=utf-8')
+        .send(`\uFEFF${lines.join('\r\n')}`);
+    },
+  );
   app.get('/api/dashboards', async (req) => {
     const current = access.principal(req);
     const deviceIds = await access.accessibleDeviceIds(req);

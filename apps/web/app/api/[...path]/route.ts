@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sessionCookie } from '../../../lib/session';
+import { originAllowed } from '../../../lib/origin';
 
 const allowed =
   /^(?:health|overview|tenants|sites|devices(?:\/[0-9a-f-]+(?:\/(?:tags|latest|signals|statistics))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|widgets(?:\/[0-9a-f-]+)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?)$/;
@@ -38,40 +39,6 @@ async function forward(request: NextRequest, params: Promise<{ path: string[] }>
     return new NextResponse(await result.arrayBuffer(), { status: result.status, headers });
   } catch {
     return NextResponse.json({ error: 'API indisponível' }, { status: 502 });
-  }
-}
-
-function originAllowed(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-  let originHost: string;
-  try {
-    originHost = new URL(origin).host.toLowerCase();
-  } catch {
-    return false;
-  }
-  const candidates = [
-    request.headers.get('x-forwarded-host'),
-    request.headers.get('host'),
-    process.env.IIOT_WEB_DOMAIN,
-    process.env.SERVICE_FQDN_WEB,
-    process.env.SERVICE_URL_WEB,
-  ];
-  return candidates.some((candidate) =>
-    candidate
-      ?.split(',')
-      .map((value) => externalHost(value))
-      .includes(originHost),
-  );
-}
-
-function externalHost(value: string) {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return '';
-  try {
-    return new URL(normalized.includes('://') ? normalized : `https://${normalized}`).host;
-  } catch {
-    return '';
   }
 }
 

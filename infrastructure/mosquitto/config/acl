@@ -8,9 +8,15 @@ user simulator
 topic write iiot/poc/laboratorio/generic-001/telemetry
 topic write data/POC/group1/A7-001
 
-# Example individual identity. Add its password interactively before using.
+# TEMPORARY: static identity kept only for the first physical Haiwell A7 field test.
+# SECURITY-DEBT: remove this block, its password in init.sh and MQTT_DEVICE_A7_* from
+# the compose/.env once the A7 is provisioned through the runtime provisioner instead.
+# A static shared credential cannot be revoked per equipment. See SECURITY.md item 12.
 user a7-001
 topic write data/POC/group1/A7-001
+
+# Runtime-provisioned devices are appended below by provision-watcher.sh as
+# "# managed-device <user>" blocks. Do not add further static device credentials here.
 
 # Future devices: append explicit topic permissions for their own tenant/site/device.
 # Do not grant device users write access to iiot/# or other tenants' proprietary mappings.
