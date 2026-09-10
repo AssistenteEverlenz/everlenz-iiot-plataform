@@ -993,6 +993,18 @@
   :root[data-theme='dark'] .quick-kpi > small {
     color: #93a7ad;
   }
+  :root[data-theme='dark'] .donut-chips strong {
+    color: #d4dcdf;
+  }
+  :root[data-theme='dark'] .donut-chips span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .donut-label-name {
+    fill: #d4dcdf;
+  }
+  :root[data-theme='dark'] .donut-label-value {
+    fill: #8d9ea3;
+  }
   :root[data-theme='dark'] .quick-donut-center span {
     color: #8d9ea3;
   }

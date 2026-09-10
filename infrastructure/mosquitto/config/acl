@@ -15,6 +15,13 @@ topic write data/POC/group1/A7-001
 user a7-001
 topic write data/POC/group1/A7-001
 
+# Platform commands ("Zerar contador" on the PLC): the API may only publish on command topics.
+user commander
+topic write iiot/+/+/+/command
+
+# Each device may read only the command topic named after its own MQTT user.
+pattern read iiot/+/+/%u/command
+
 # Runtime-provisioned devices are appended below by provision-watcher.sh as
 # "# managed-device <user>" blocks. Do not add further static device credentials here.
 

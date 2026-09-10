@@ -8,8 +8,11 @@ import { access as accessFile, mkdir, rename, writeFile } from 'node:fs/promises
 import { join } from 'node:path';
 import { createAccessControl, registerAuthRoutes, type Principal } from './auth.js';
 import { recordAudit } from './audit.js';
+import { publishCommand, type CommandPublisher } from './commands.js';
 import { registerProductionRoutes } from './production.js';
 const uuid = z.uuid();
+/** How long a PLC reset bit stays at 1 before the platform writes it back to 0. */
+const COMMAND_PULSE_MS = 2000;
 const pagination = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
   offset: z.coerce.number().int().min(0).max(1000000).default(0),
@@ -61,7 +64,13 @@ function csv(value: unknown) {
 // its global hook only reaches routes added to the context after it is in place.
 export async function createApp(
   db: Database = database,
-  settings: { tenantId: string; operatorRaw: boolean; authRequired?: boolean } = {
+  settings: {
+    tenantId: string;
+    operatorRaw: boolean;
+    authRequired?: boolean;
+    /** Sends equipment commands; tests pass a fake. Defaults to the broker publisher. */
+    publishCommand?: CommandPublisher;
+  } = {
     tenantId: env.DEV_TENANT_ID,
     operatorRaw: env.OPERATOR_RAW_ACCESS,
     authRequired: process.env.NODE_ENV !== 'test',
@@ -1180,6 +1189,55 @@ export async function createApp(
     const widget = view.widgets[index];
     if (!widget.tag_id || (widget as { data_type?: string }).data_type !== 'number')
       return reply.code(400).send({ error: 'Only numeric widgets can be zeroed' });
+    // With a reset variable set, "Zerar contador" also zeroes the count in the PLC: the HMI
+    // receives { "<variable>": 1 } on its command topic and writes the bit, and the PLC
+    // program clears the count. The bit is pulsed back to 0 so it never stays set if the PLC
+    // does not clear it itself. The panel is zeroed only once the broker accepted the command.
+    const resetVariable = String(
+      (widget.config as { resetVariable?: unknown }).resetVariable ?? '',
+    ).trim();
+    let command: { topic: string; variable: string } | null = null;
+    if (resetVariable) {
+      if (!/^[A-Za-z_][A-Za-z0-9_.]{0,63}$/.test(resetVariable))
+        return reply.code(400).send({ error: 'Nome da variável de reset inválido.' });
+      const mapping = await db.query<{ topic: string }>(
+        `SELECT topic FROM device_topic_mappings
+         WHERE tenant_id=$1 AND device_id=$2 AND kind='exact' AND topic LIKE 'iiot/%/telemetry'
+         ORDER BY id LIMIT 1`,
+        [current.tenantId, widget.device_id],
+      );
+      const telemetry = mapping.rows[0]?.topic;
+      if (!telemetry || telemetry.split('/').length !== 5)
+        return reply
+          .code(409)
+          .send({
+            error: 'Este equipamento não tem um tópico da plataforma para receber comandos.',
+          });
+      const topic = telemetry.replace(/\/telemetry$/, '/command');
+      const send = settings.publishCommand ?? publishCommand;
+      try {
+        await send(topic, { [resetVariable]: 1 });
+      } catch (error) {
+        req.log.error({
+          event: 'counter_reset_command_failed',
+          topic,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return reply
+          .code(502)
+          .send({ error: 'Não foi possível enviar o comando ao equipamento. Nada foi zerado.' });
+      }
+      setTimeout(() => {
+        send(topic, { [resetVariable]: 0 }).catch((error: unknown) =>
+          req.log.error({
+            event: 'counter_reset_release_failed',
+            topic,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }, COMMAND_PULSE_MS).unref();
+      command = { topic, variable: resetVariable };
+    }
     const resetAt = new Date().toISOString();
     const config: Record<string, unknown> = { ...(widget.config as Record<string, unknown>) };
     delete config.counterBaseline;
@@ -1199,7 +1257,11 @@ export async function createApp(
       action: 'dashboard.widget.counter_reset',
       targetType: 'widget',
       targetId: widgetId,
-      summary: { dashboard_id: dashboardId, reset_at: resetAt },
+      summary: {
+        dashboard_id: dashboardId,
+        reset_at: resetAt,
+        ...(command ? { command_topic: command.topic, command_variable: command.variable } : {}),
+      },
     });
     return view.widgets[index];
   });

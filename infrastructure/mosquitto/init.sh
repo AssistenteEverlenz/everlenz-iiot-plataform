@@ -16,6 +16,12 @@ else
 fi
 mosquitto_passwd -b /mosquitto/auth/passwords "$MQTT_SIMULATOR_USERNAME" "$MQTT_SIMULATOR_PASSWORD"
 mosquitto_passwd -b /mosquitto/auth/passwords "$MQTT_DEVICE_A7_USERNAME" "$MQTT_DEVICE_A7_PASSWORD"
+# Optional: the API's command user exists only when its password is configured.
+if [ -n "${MQTT_COMMAND_PASSWORD:-}" ]; then
+  test "${MQTT_COMMAND_USERNAME:-commander}" = commander || { echo 'MQTT_COMMAND_USERNAME must be commander; update ACL before changing it'; exit 1; }
+  test "$MQTT_COMMAND_PASSWORD" != CHANGE_ME
+  mosquitto_passwd -b /mosquitto/auth/passwords commander "$MQTT_COMMAND_PASSWORD"
+fi
 chown -R 0:1883 /mosquitto/auth
 chmod 750 /mosquitto/auth
 chmod 640 /mosquitto/auth/passwords

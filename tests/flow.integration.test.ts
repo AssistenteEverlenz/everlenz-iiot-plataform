@@ -971,6 +971,73 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await db.query('DELETE FROM tags WHERE id=$1', [counterTag]);
     }
   });
+  it('zeroes the PLC count through the HMI only after the broker accepted the command', async () => {
+    const dashboardId = '55555555-5555-4555-8555-555555555555';
+    const counterTag = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type)
+         VALUES($1,$2,'contador_clp','Contador CLP','number') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    await db.query(
+      `INSERT INTO device_topic_mappings(tenant_id,device_id,kind,topic)
+       VALUES($1,$2,'exact','iiot/tenant-x/site-y/evl-hai-test/telemetry')`,
+      [TENANT, HAIWELL],
+    );
+    const sent: Array<[string, Record<string, unknown>]> = [];
+    const api = await createApp(db, {
+      tenantId: TENANT,
+      operatorRaw: false,
+      publishCommand: async (topic, payload) => {
+        sent.push([topic, payload]);
+      },
+    });
+    const failing = await createApp(db, {
+      tenantId: TENANT,
+      operatorRaw: false,
+      publishCommand: async () => {
+        throw new Error('broker offline');
+      },
+    });
+    try {
+      const added = await api.inject({
+        method: 'POST',
+        url: `/api/dashboards/${dashboardId}/widgets`,
+        payload: {
+          deviceId: HAIWELL,
+          tagId: counterTag,
+          widgetType: 'value',
+          title: 'Contador com reset no CLP',
+          width: 'small',
+          config: { counterMode: true, resetVariable: 'ResetPaletes' },
+        },
+      });
+      expect(added.statusCode).toBe(201);
+      const widgetId = added.json().id;
+      const url = `/api/dashboards/${dashboardId}/widgets/${widgetId}/reset-counter`;
+
+      // Broker down: nothing is zeroed, neither the machine nor the panel.
+      const refused = await failing.inject({ method: 'POST', url });
+      expect(refused.statusCode).toBe(502);
+      const untouched = (await api.inject(`/api/dashboards/${dashboardId}`))
+        .json()
+        .widgets.find((item: { id: string }) => item.id === widgetId);
+      expect(untouched.config).not.toHaveProperty('counterResetAt');
+
+      // Broker up: the bit goes to 1 on the device's own command topic, then the panel zeroes.
+      const reset = await api.inject({ method: 'POST', url });
+      expect(reset.statusCode).toBe(200);
+      expect(sent[0]).toEqual(['iiot/tenant-x/site-y/evl-hai-test/command', { ResetPaletes: 1 }]);
+      expect(reset.json().config.counterResetAt).toEqual(expect.any(String));
+    } finally {
+      await api.close();
+      await failing.close();
+      await db.query(`DELETE FROM device_topic_mappings WHERE topic LIKE 'iiot/tenant-x/%'`);
+      await db.query('DELETE FROM dashboard_widgets WHERE tag_id=$1', [counterTag]);
+      await db.query('DELETE FROM tags WHERE id=$1', [counterTag]);
+    }
+  });
   it('answers one production chart at a time with calendar periods', async () => {
     const dashboardId = '55555555-5555-4555-8555-555555555555';
     const tagId = (

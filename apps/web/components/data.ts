@@ -123,6 +123,8 @@ export interface DashboardWidget {
     counterBaseline?: number;
     /** Server time of the last "Zerar contador"; the display sums increments after it. */
     counterResetAt?: string;
+    /** PLC boolean that zeroes the machine count; "Zerar contador" pulses it via the HMI. */
+    resetVariable?: string;
   };
   key: string | null;
   tag_name: string | null;

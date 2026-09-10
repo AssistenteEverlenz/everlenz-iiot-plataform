@@ -953,6 +953,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [productKey, setProductKey] = useState('');
   const [fallbackProductCode, setFallbackProductCode] = useState('ITEM GERAL');
   const [counterMode, setCounterMode] = useState(false);
+  const [resetVariable, setResetVariable] = useState('');
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -1098,6 +1099,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMaxProducts(widget.config.maxProducts ?? 0);
     setProductColors(widget.config.productColors ?? {});
     setCounterMode(widget.config.counterMode ?? false);
+    setResetVariable(widget.config.resetVariable ?? '');
   }
   async function saveWidget(event: React.FormEvent) {
     event.preventDefault();
@@ -1145,6 +1147,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           maxProducts,
           productColors,
           counterMode,
+          resetVariable: counterMode ? resetVariable.trim() : '',
         },
       });
       setEditingWidget(null);
@@ -1723,9 +1726,21 @@ export function DashboardCanvas({ id }: { id: string }) {
                     />
                     Tratar esta variável como contador acumulativo
                   </label>
+                  {counterMode && (
+                    <label className="field full-field">
+                      Variável de reset no CLP (opcional)
+                      <input
+                        value={resetVariable}
+                        placeholder="Ex.: ResetPaletes"
+                        maxLength={64}
+                        onChange={(event) => setResetVariable(event.target.value)}
+                      />
+                    </label>
+                  )}
                   <small className="full-field alarm-range-help">
-                    O botão “Zerar contador” cria uma referência no painel e mantém o CLP intacto.
-                    Os próximos incrementos continuam aparecendo normalmente.
+                    Sem variável, o botão “Zerar contador” zera apenas a contagem do painel e mantém
+                    o CLP intacto. Com a variável, o botão envia o comando à IHM para zerar também a
+                    contagem no CLP.
                   </small>
                 </>
               )}
@@ -1903,8 +1918,15 @@ export function DashboardCanvas({ id }: { id: string }) {
       {resettingWidget && (
         <ActionModal
           title="Zerar contador"
-          description={`O valor exibido em “${resettingWidget.title}” começará novamente em zero e continuará acompanhando os próximos incrementos do equipamento. O valor original no CLP será preservado.`}
-          confirmLabel="Zerar agora"
+          description={
+            resettingWidget.config.resetVariable
+              ? `Será enviado ao equipamento o comando para zerar a contagem no CLP (variável ${resettingWidget.config.resetVariable}). A contagem da máquina e a de “${resettingWidget.title}” voltarão a zero. Confirme apenas se a contagem da linha pode ser reiniciada agora.`
+              : `O valor exibido em “${resettingWidget.title}” começará novamente em zero e continuará acompanhando os próximos incrementos do equipamento. O valor original no CLP será preservado.`
+          }
+          confirmLabel={
+            resettingWidget.config.resetVariable ? 'Zerar no equipamento' : 'Zerar agora'
+          }
+          danger={Boolean(resettingWidget.config.resetVariable)}
           onClose={() => setResettingWidget(null)}
           onConfirm={() => resetCounter(resettingWidget)}
         />

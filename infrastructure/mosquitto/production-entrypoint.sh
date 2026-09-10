@@ -12,6 +12,20 @@ if [ ! -f /mosquitto/config/.everlenz-managed-v1 ]; then
   cp /defaults/acl /mosquitto/config/acl
   touch /mosquitto/config/.everlenz-managed-v1
 fi
+# Existing volumes keep their ACL (devices are appended to it at runtime), so rules added to
+# the default ACL later are appended here once. The leading blank line keeps the
+# provisioner's delete step, which skips the line after a device block, off these rules.
+if ! grep -q '^user commander$' /mosquitto/config/acl; then
+  cat >> /mosquitto/config/acl <<'ACL'
+
+# Platform commands ("Zerar contador" on the PLC): the API may only publish on command topics.
+user commander
+topic write iiot/+/+/+/command
+
+# Each device may read only the command topic named after its own MQTT user.
+pattern read iiot/+/+/%u/command
+ACL
+fi
 /bin/sh /init/init.sh
 test -s /mosquitto/certs/fullchain.pem && test -s /mosquitto/certs/privkey.pem || {
   echo 'service=mosquitto event=tls_files_missing' >&2; exit 1;

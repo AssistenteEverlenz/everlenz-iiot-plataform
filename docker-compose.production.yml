@@ -14,6 +14,8 @@ services:
       MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:?Set MQTT_SIMULATOR_PASSWORD}
       MQTT_DEVICE_A7_USERNAME: ${MQTT_DEVICE_A7_USERNAME:-a7-001}
       MQTT_DEVICE_A7_PASSWORD: ${MQTT_DEVICE_A7_PASSWORD:?Set MQTT_DEVICE_A7_PASSWORD}
+      # Broker user the API sends equipment commands with. Empty = platform stays read-only.
+      MQTT_COMMAND_PASSWORD: ${MQTT_COMMAND_PASSWORD:-}
     ports:
       # 1883 carries credentials and payloads in clear text and defaults to loopback.
       # Docker publishes ports through its own iptables DOCKER chain, which is evaluated
@@ -91,6 +93,12 @@ services:
       OPERATOR_RAW_ACCESS: ${OPERATOR_RAW_ACCESS:-false}
       DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-30}
       MQTT_PROVISION_DIR: /mqtt-provision/requests
+      # Equipment commands ("Zerar contador" on the PLC). Empty password = read-only platform.
+      MQTT_INTERNAL_HOST: ${MQTT_INTERNAL_HOST:-mosquitto}
+      MQTT_PORT: 1883
+      MQTT_PROTOCOL: mqtt
+      MQTT_COMMAND_USERNAME: commander
+      MQTT_COMMAND_PASSWORD: ${MQTT_COMMAND_PASSWORD:-}
     volumes:
       - mqtt-provision:/mqtt-provision
     expose: ['3001']

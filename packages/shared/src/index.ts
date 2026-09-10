@@ -36,6 +36,10 @@ export const env = z
     MQTT_TOPIC_FILTER: z.string().default('iiot/+/+/+/telemetry,data/POC/group1/A7-001'),
     MQTT_CLIENT_ID: z.string().default('everlenz-ingestor'),
     MQTT_PROVISION_DIR: z.string().optional(),
+    // Broker user the API publishes equipment commands with ("Zerar contador" on the PLC).
+    // Without a password the platform only reads, as before.
+    MQTT_COMMAND_USERNAME: z.string().default('commander'),
+    MQTT_COMMAND_PASSWORD: z.string().default(''),
     SIMULATOR_INTERVAL_MS: z.coerce.number().int().min(100).default(2000),
     API_PORT: z.coerce.number().int().positive().default(3001),
     INGESTOR_HEALTH_PORT: z.coerce.number().int().positive().default(3002),
@@ -71,6 +75,7 @@ export function logger(service: string) {
       'POSTGRES_PASSWORD',
       'MQTT_PASSWORD',
       'MQTT_SIMULATOR_PASSWORD',
+      'MQTT_COMMAND_PASSWORD',
       'req.headers.authorization',
     ],
   });
