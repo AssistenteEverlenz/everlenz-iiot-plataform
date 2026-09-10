@@ -7,6 +7,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -37,6 +40,25 @@ const periodOptions: Array<[ProductionPeriod, string]> = [
   ['month', 'Mês'],
   ['year', 'Ano'],
   ['custom', 'Personalizado'],
+];
+
+// Types that read the production statistics: the full production card and the quick
+// analytic charts, which are lighter views of the same metric and filters.
+const analyticTypes = new Set<DashboardWidget['widget_type']>([
+  'production',
+  'donut',
+  'bar_vertical',
+  'bar_horizontal',
+]);
+const productPalette = [
+  '#12b8a6',
+  '#2f6fed',
+  '#f2a93b',
+  '#e4572e',
+  '#7b5ea7',
+  '#2bb3e6',
+  '#8aa29e',
+  '#d65db1',
 ];
 
 interface CounterValue {
@@ -151,6 +173,9 @@ const visualizationHelp: Record<DashboardWidget['widget_type'], string> = {
     'Usa uma taxa numérica, como ton/h. Calcula média, mínimo e pico no período configurado.',
   oee: 'O OEE não usa uma única variável. Precisa de tempo planejado, tempo operando, produção total, produção boa e ciclo ideal.',
   pareto: 'Precisa de eventos de parada com motivo e duração para ordenar as maiores perdas.',
+  donut: 'Pizza com a participação (%) de cada produto no período. Use um contador, como paletes.',
+  bar_vertical: 'Barras verticais da produção no período, uma por produto ou uma por dia.',
+  bar_horizontal: 'Barras horizontais ordenadas, ideais para ranking de produtos com nomes longos.',
 };
 
 function EyeOff() {
@@ -217,7 +242,7 @@ function Widget({
   );
   const customRange = period === 'custom' ? `&from=${customFrom}&to=${customTo}` : '';
   const productionPath =
-    widget.widget_type === 'production' &&
+    analyticTypes.has(widget.widget_type) &&
     widget.tag_id &&
     (period !== 'custom' || (customFrom && customTo))
       ? `/dashboards/${dashboardId}/statistics?widgetId=${widget.id}&period=${period}${customRange}&v=${fingerprint}`
@@ -277,6 +302,63 @@ function Widget({
         .map((range) => [range.end, range]),
     ).values(),
   );
+  const periodChips = (
+    <div className="widget-period" role="group" aria-label="Período do gráfico">
+      {periodOptions.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          className={period === value ? 'active' : ''}
+          onClick={() => setPeriod(value)}
+        >
+          {label}
+        </button>
+      ))}
+      {period === 'custom' && (
+        <span className="widget-period-custom">
+          <input
+            type="date"
+            aria-label="De"
+            value={customFrom}
+            max={customTo}
+            onChange={(event) => setCustomFrom(event.target.value)}
+          />
+          <span>até</span>
+          <input
+            type="date"
+            aria-label="Até"
+            value={customTo}
+            min={customFrom}
+            max={localToday}
+            onChange={(event) => setCustomTo(event.target.value)}
+          />
+        </span>
+      )}
+      {productionStats.loading && <span className="widget-period-loading">atualizando…</span>}
+    </div>
+  );
+  const horizontalBars = widget.widget_type === 'bar_horizontal';
+  const quickBars =
+    widget.config.chartDimension === 'day'
+      ? (statistics?.daily_series ?? []).map((day) => ({
+          label: new Date(
+            `${day.date}${day.date.length === 7 ? '-01' : ''}T12:00:00`,
+          ).toLocaleDateString(
+            'pt-BR',
+            statistics?.bucket_granularity === 'month'
+              ? { month: 'short', year: '2-digit' }
+              : { day: '2-digit', month: 'short' },
+          ),
+          value: day.value ?? 0,
+        }))
+      : (statistics?.product_breakdown ?? []).map((product) => ({
+          label: product.product_code,
+          value: product.value,
+        }));
+  const quickEmpty =
+    widget.widget_type === 'donut'
+      ? !statistics?.product_breakdown?.length
+      : !quickBars.some((bar) => bar.value > 0);
   return (
     <article
       draggable
@@ -452,39 +534,7 @@ function Widget({
       )}
       {widget.widget_type === 'production' && (
         <div className="production-insight">
-          <div className="widget-period" role="group" aria-label="Período do gráfico">
-            {periodOptions.map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={period === value ? 'active' : ''}
-                onClick={() => setPeriod(value)}
-              >
-                {label}
-              </button>
-            ))}
-            {period === 'custom' && (
-              <span className="widget-period-custom">
-                <input
-                  type="date"
-                  aria-label="De"
-                  value={customFrom}
-                  max={customTo}
-                  onChange={(event) => setCustomFrom(event.target.value)}
-                />
-                <span>até</span>
-                <input
-                  type="date"
-                  aria-label="Até"
-                  value={customTo}
-                  min={customFrom}
-                  max={localToday}
-                  onChange={(event) => setCustomTo(event.target.value)}
-                />
-              </span>
-            )}
-            {productionStats.loading && <span className="widget-period-loading">atualizando…</span>}
-          </div>
+          {periodChips}
           <div className="production-kpis">
             <div>
               <span className="metric-label">
@@ -656,21 +706,174 @@ function Widget({
               </div>
             )}
           </div>
-          <div className="three-metrics">
-            <span>
-              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>mínimo operacional
-            </span>
-            <span>
-              <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>pico
-            </span>
-            <span>
-              <b>{statistics?.samples ?? 0}</b>amostras válidas
-            </span>
+          {/* A counter answers management questions; raw counter extremes and sample
+              counts meant nothing to a plant owner. A rate keeps its operating range. */}
+          {statistics?.metric_kind === 'counter_delta' ? (
+            <div className="three-metrics">
+              <span>
+                <b>
+                  {number(
+                    statistics.current_period_value == null
+                      ? null
+                      : statistics.current_period_value / Math.max(1, statistics.trend_days),
+                    widget.config.decimals ?? 1,
+                  )}
+                </b>
+                média por dia
+              </span>
+              <span>
+                <b>{number(statistics.best_value, widget.config.decimals ?? 1)}</b>
+                melhor {statistics.bucket_granularity === 'month' ? 'mês' : 'dia'}
+              </span>
+              <span>
+                <b>{statistics.product_breakdown.length}</b>
+                receitas produzidas
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="three-metrics">
+                <span>
+                  <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>
+                  mínimo operacional
+                </span>
+                <span>
+                  <b>{number(statistics?.average, widget.config.decimals ?? 1)}</b>
+                  média
+                </span>
+                <span>
+                  <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>
+                  pico
+                </span>
+              </div>
+              <small className="production-note">
+                Leitura: {periodLabel(period, statistics?.trend_days ?? 7)} · valores abaixo de{' '}
+                {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorados
+              </small>
+            </>
+          )}
+        </div>
+      )}
+      {(widget.widget_type === 'donut' ||
+        widget.widget_type === 'bar_vertical' ||
+        widget.widget_type === 'bar_horizontal') && (
+        <div className="quick-chart">
+          {periodChips}
+          <div className="quick-chart-total">
+            <b>
+              {number(
+                statistics?.current_period_value ?? statistics?.average,
+                widget.config.decimals ?? 1,
+              )}
+            </b>
+            {widget.unit} · {periodLabel(period, statistics?.trend_days ?? 7)}
           </div>
-          <small className="production-note">
-            Leitura: {periodLabel(period, statistics?.trend_days ?? 7)} · valores abaixo de{' '}
-            {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorados
-          </small>
+          {quickEmpty ? (
+            <div className="quick-empty">Sem produção no período.</div>
+          ) : widget.widget_type === 'donut' ? (
+            <div className="quick-donut">
+              <div className="quick-donut-chart">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statistics?.product_breakdown ?? []}
+                      dataKey="value"
+                      nameKey="product_code"
+                      innerRadius="58%"
+                      outerRadius="95%"
+                      stroke="none"
+                      isAnimationActive={false}
+                    >
+                      {(statistics?.product_breakdown ?? []).map((product, index) => (
+                        <Cell
+                          key={product.product_code}
+                          fill={productPalette[index % productPalette.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(item) =>
+                        `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`
+                      }
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <span>
+                  <b>{statistics?.product_breakdown?.length ?? 0}</b>
+                  produtos
+                </span>
+              </div>
+              <ScrollHint>
+                <ul className="quick-legend">
+                  {(statistics?.product_breakdown ?? []).map((product, index) => (
+                    <li key={product.product_code}>
+                      <i style={{ background: productPalette[index % productPalette.length] }} />
+                      <span title={product.product_code}>{product.product_code}</span>
+                      <b>
+                        {number(product.share_percent, 1)}%
+                        <small>{number(product.value, widget.config.decimals ?? 1)}</small>
+                      </b>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollHint>
+            </div>
+          ) : (
+            <div className="quick-chart-body">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={quickBars}
+                  layout={horizontalBars ? 'vertical' : 'horizontal'}
+                  margin={{ top: 4, right: 12, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid
+                    stroke="#dfe8ea"
+                    strokeDasharray="3 5"
+                    vertical={horizontalBars}
+                    horizontal={!horizontalBars}
+                  />
+                  <XAxis
+                    type={horizontalBars ? 'number' : 'category'}
+                    dataKey={horizontalBars ? undefined : 'label'}
+                    tick={{ fontSize: 10, fill: '#71868d' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    type={horizontalBars ? 'category' : 'number'}
+                    dataKey={horizontalBars ? 'label' : undefined}
+                    width={horizontalBars ? 96 : 42}
+                    tick={{ fontSize: 10, fill: '#71868d' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    formatter={(item) => [
+                      `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
+                      widget.title,
+                    ]}
+                  />
+                  <Bar
+                    dataKey="value"
+                    radius={horizontalBars ? [0, 5, 5, 0] : [5, 5, 0, 0]}
+                    maxBarSize={40}
+                    isAnimationActive={false}
+                  >
+                    {quickBars.map((bar, index) => (
+                      <Cell
+                        key={bar.label}
+                        fill={
+                          widget.config.chartDimension === 'day'
+                            ? color
+                            : productPalette[index % productPalette.length]
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       )}
       {widget.widget_type === 'oee' && (
@@ -747,6 +950,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     'rate_average' | 'counter_delta'
   >('rate_average');
   const [productionDefaultPeriod, setProductionDefaultPeriod] = useState<ProductionPeriod>('7d');
+  const [chartDimension, setChartDimension] = useState<'product' | 'day'>('product');
   const [productKey, setProductKey] = useState('');
   const [fallbackProductCode, setFallbackProductCode] = useState('ITEM GERAL');
   const [counterMode, setCounterMode] = useState(false);
@@ -821,7 +1025,13 @@ export function DashboardCanvas({ id }: { id: string }) {
           gaugeNeedle: true,
           productionPeriodMinutes: 60,
           productionMinimumValue: 0.1,
-          productionMetricKind: 'rate_average',
+          // Counters (pallets, blocks, totals) are summed; rates such as t/h are averaged.
+          productionMetricKind: /palete|pallet|bloco|block|quant|contad|count|total|pe[cç]a/i.test(
+            selectedSignal?.key ?? '',
+          )
+            ? 'counter_delta'
+            : 'rate_average',
+          chartDimension: 'product',
           productionDefaultPeriod: '7d',
           productionTrendDays: 7,
         },
@@ -866,6 +1076,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setProductionMinimumValue(widget.config.productionMinimumValue ?? 0.1);
     setProductionMetricKind(widget.config.productionMetricKind ?? 'rate_average');
     setProductionDefaultPeriod(widget.config.productionDefaultPeriod ?? '7d');
+    setChartDimension(widget.config.chartDimension ?? 'product');
     setCounterMode(widget.config.counterMode ?? false);
   }
   async function saveWidget(event: React.FormEvent) {
@@ -885,7 +1096,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setSavingModal(true);
     setError('');
     try {
-      if (editingWidget.widget_type === 'production') {
+      if (analyticTypes.has(editingWidget.widget_type)) {
         await mutate(`/devices/${deviceId}/production-context`, 'PATCH', {
           productKey: productKey || null,
           fallbackProductCode: fallbackProductCode.trim() || 'ITEM GERAL',
@@ -906,6 +1117,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           productionMinimumValue,
           productionMetricKind,
           productionDefaultPeriod,
+          chartDimension,
           counterMode,
         },
       });
@@ -1109,6 +1321,9 @@ export function DashboardCanvas({ id }: { id: string }) {
                       ['gauge', '◒', 'Medidor'],
                       ['status', '●', 'Estado'],
                       ['production', '▥', 'Produção'],
+                      ['donut', '◔', 'Pizza'],
+                      ['bar_vertical', '▮', 'Barras'],
+                      ['bar_horizontal', '▬', 'Barras horiz.'],
                       ['oee', '%', 'OEE'],
                       ['pareto', '▥', 'Pareto'],
                     ] as const
@@ -1257,7 +1472,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </label>
                 </>
               )}
-              {editingWidget.widget_type === 'production' && (
+              {analyticTypes.has(editingWidget.widget_type) && (
                 <>
                   <label className="field">
                     Tipo de medição
@@ -1273,6 +1488,21 @@ export function DashboardCanvas({ id }: { id: string }) {
                       <option value="counter_delta">Contador acumulativo (ex.: paletes)</option>
                     </select>
                   </label>
+                  {(editingWidget.widget_type === 'bar_vertical' ||
+                    editingWidget.widget_type === 'bar_horizontal') && (
+                    <label className="field">
+                      Uma barra por
+                      <select
+                        value={chartDimension}
+                        onChange={(event) =>
+                          setChartDimension(event.target.value as 'product' | 'day')
+                        }
+                      >
+                        <option value="product">Produto</option>
+                        <option value="day">Dia</option>
+                      </select>
+                    </label>
+                  )}
                   <label className="field">
                     Período ao abrir o painel
                     <select

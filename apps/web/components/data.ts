@@ -69,7 +69,17 @@ export interface DashboardWidget {
   id: string;
   device_id: string;
   tag_id: string | null;
-  widget_type: 'value' | 'line' | 'gauge' | 'status' | 'production' | 'oee' | 'pareto';
+  widget_type:
+    | 'value'
+    | 'line'
+    | 'gauge'
+    | 'status'
+    | 'production'
+    | 'oee'
+    | 'pareto'
+    | 'donut'
+    | 'bar_vertical'
+    | 'bar_horizontal';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';
@@ -97,6 +107,8 @@ export interface DashboardWidget {
     productionTrendDays?: 7 | 30;
     /** Period a production chart opens with; each chart can then change it on its own. */
     productionDefaultPeriod?: 'today' | '7d' | 'week' | 'month' | 'year' | '30d' | 'custom';
+    /** Quick bar charts: one bar per product in the period, or one bar per day. */
+    chartDimension?: 'product' | 'day';
     counterMode?: boolean;
     /** Legacy raw-value offset; ignored since zeroing moved to counterResetAt. */
     counterBaseline?: number;

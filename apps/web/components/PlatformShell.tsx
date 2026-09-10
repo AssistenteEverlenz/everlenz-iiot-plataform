@@ -294,13 +294,18 @@ function FirstAccessModal({ onComplete }: { onComplete: () => Promise<void> }) {
   );
 }
 
+// The logo stays still and only a ring turns around it, as in the DR Fin loader: a spinning
+// logo reads as a broken image, while a spinning ring reads as progress.
 export function BrandSpinner({ branding }: { branding: Branding }) {
-  return branding.logo_url ? (
-    <span className="brand-spinner">
-      <img src={branding.logo_url} alt="" />
+  return (
+    <span className="brand-spinner" role="status" aria-label="Carregando">
+      <span className="brand-spinner-ring" />
+      {branding.logo_url ? (
+        <img src={branding.logo_url} alt="" aria-hidden="true" />
+      ) : (
+        <span className="brand-spinner-letter">e</span>
+      )}
     </span>
-  ) : (
-    <span className="brand-spinner brand-spinner-fallback">e</span>
   );
 }
 

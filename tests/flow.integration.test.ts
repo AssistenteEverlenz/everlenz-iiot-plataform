@@ -1112,4 +1112,58 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await db.query('DELETE FROM tags WHERE id=$1', [tagId]);
     }
   });
+  it('offers quick donut and bar charts over a production metric', async () => {
+    const dashboardId = '55555555-5555-4555-8555-555555555555';
+    const tagId = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type)
+         VALUES($1,$2,'paletes_rapidos','Paletes rápidos','number') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    const sample = (seconds: number, value: number, product: string) =>
+      db.query(
+        `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality,product_code)
+         VALUES($1,'22222222-2222-4222-8222-222222222222',$2,$3,now()-($4::int*interval '1 second'),now(),$5,'good',$6)`,
+        [TENANT, HAIWELL, tagId, seconds, value, product],
+      );
+    // 0 -> 4 on A (+4), then 4 -> 7 on B (+3).
+    await sample(50, 0, 'BLOCO A');
+    await sample(40, 4, 'BLOCO A');
+    await sample(30, 7, 'BLOCO B');
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      for (const widgetType of ['donut', 'bar_vertical', 'bar_horizontal']) {
+        const added = await api.inject({
+          method: 'POST',
+          url: `/api/dashboards/${dashboardId}/widgets`,
+          payload: {
+            deviceId: HAIWELL,
+            tagId,
+            widgetType,
+            title: `Rápido ${widgetType}`,
+            width: 'medium',
+            config: { productionMetricKind: 'counter_delta', chartDimension: 'product' },
+          },
+        });
+        expect(added.statusCode).toBe(201);
+        const stats = (
+          await api.inject(
+            `/api/dashboards/${dashboardId}/statistics?widgetId=${added.json().id}&period=today`,
+          )
+        ).json();
+        expect(stats).toHaveLength(1);
+        expect(stats[0].current_period_value).toBe(7);
+        expect(
+          stats[0].product_breakdown.map(
+            (product: { product_code: string }) => product.product_code,
+          ),
+        ).toEqual(['BLOCO A', 'BLOCO B']);
+      }
+    } finally {
+      await api.close();
+      await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [tagId]);
+      await db.query('DELETE FROM tags WHERE id=$1', [tagId]);
+    }
+  });
 });

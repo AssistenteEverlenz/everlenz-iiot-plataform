@@ -793,7 +793,8 @@ export async function createApp(
     }
     const productionWidgets = view.widgets.filter(
       (widget) =>
-        widget.widget_type === 'production' &&
+        // Quick charts are views of the same production metric and share its answer.
+        ['production', 'donut', 'bar_vertical', 'bar_horizontal'].includes(widget.widget_type) &&
         widget.tag_id &&
         (!query.widgetId || widget.id === query.widgetId),
     );
@@ -1036,7 +1037,18 @@ export async function createApp(
       .object({
         deviceId: uuid,
         tagId: uuid.nullable().optional(),
-        widgetType: z.enum(['value', 'line', 'gauge', 'status', 'production', 'oee', 'pareto']),
+        widgetType: z.enum([
+          'value',
+          'line',
+          'gauge',
+          'status',
+          'production',
+          'oee',
+          'pareto',
+          'donut',
+          'bar_vertical',
+          'bar_horizontal',
+        ]),
         title: z.string().min(1).max(120),
         width: z.enum(['small', 'medium', 'large', 'full']).default('medium'),
         config: z.record(z.string(), z.unknown()).default({}),
@@ -1348,7 +1360,17 @@ interface DashboardWidgetRecord {
   id: string;
   device_id: string;
   tag_id: string | null;
-  widget_type: 'value' | 'line' | 'gauge' | 'status' | 'production' | 'oee' | 'pareto';
+  widget_type:
+    | 'value'
+    | 'line'
+    | 'gauge'
+    | 'status'
+    | 'production'
+    | 'oee'
+    | 'pareto'
+    | 'donut'
+    | 'bar_vertical'
+    | 'bar_horizontal';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';
