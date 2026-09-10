@@ -111,7 +111,9 @@ export function sessionTokenHash(token: string) {
 }
 
 export function temporaryPassword(length = 18) {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  // No "%": HMI software reads it as a placeholder marker (EasyBuilder Pro: %0, %2, %%), so a
+  // generated MQTT password containing it can reach the broker altered and be refused.
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
   const bytes = randomBytes(length);
   const body = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
   return `A9!${body.slice(3)}`;
