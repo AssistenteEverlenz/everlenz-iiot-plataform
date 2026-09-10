@@ -802,4 +802,104 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await api.close();
     }
   });
+  it('builds the managerial overview by product, integrating t/h into tons', async () => {
+    const site = '22222222-2222-4222-8222-222222222222';
+    const tag = async (key: string, dataType: 'number' | 'boolean') =>
+      (
+        await db.query<{ id: string }>(
+          `INSERT INTO tags(tenant_id,device_id,key,name,data_type) VALUES($1,$2,$3,$3,$4) RETURNING id`,
+          [TENANT, HAIWELL, key, dataType],
+        )
+      ).rows[0].id;
+    const pallets = await tag('QuantidadePaletes', 'number');
+    const rate = await tag('TonHora', 'number');
+    const running = await tag('StatusLinha', 'boolean');
+    // 01:00 local today, so every sample lands on the same local day as "today".
+    const base = `(date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') + interval '1 hour')
+      AT TIME ZONE 'America/Sao_Paulo'`;
+    const sample = (
+      tagId: string,
+      minutes: number,
+      column: string,
+      value: unknown,
+      product: string,
+    ) =>
+      db.query(
+        `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,${column},quality,product_code)
+         VALUES($1,$2,$3,$4,${base} + ($5::int * interval '1 minute'),now(),$6,'good',$7)`,
+        [TENANT, site, HAIWELL, tagId, minutes, value, product],
+      );
+    // Counter 0 -> 3 on A, then 5 and a reset to 1 and 2 on B: A=3, B=2+1+1=4.
+    await sample(pallets, 0, 'value_number', 0, 'BLOCO A');
+    await sample(pallets, 1, 'value_number', 3, 'BLOCO A');
+    await sample(pallets, 2, 'value_number', 5, 'BLOCO B');
+    await sample(pallets, 3, 'value_number', 1, 'BLOCO B');
+    await sample(pallets, 4, 'value_number', 2, 'BLOCO B');
+    // 10 t/h held for 30 minutes = 5 t.
+    await sample(rate, 0, 'value_number', 10, 'BLOCO A');
+    await sample(rate, 30, 'value_number', 10, 'BLOCO A');
+    // Running for 8 minutes, then stopped.
+    await sample(running, 0, 'value_boolean', true, 'BLOCO A');
+    await sample(running, 4, 'value_boolean', true, 'BLOCO A');
+    await sample(running, 8, 'value_boolean', false, 'BLOCO A');
+
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      const overview = (await api.inject(`/api/devices/${HAIWELL}/production-overview`)).json();
+      expect(overview.roles).toMatchObject({
+        inferred: true,
+        pallets: 'QuantidadePaletes',
+        rate: 'TonHora',
+        run_status: 'StatusLinha',
+        tons_source: 'rate_integral',
+      });
+      expect(overview.pallets.today.total).toBe(7);
+      expect(
+        overview.pallets.today.products.map((p: { product_code: string }) => p.product_code),
+      ).toEqual(['BLOCO B', 'BLOCO A']);
+      expect(overview.tons.today.total).toBeCloseTo(5, 5);
+      expect(overview.blocks.configured).toBe(false);
+      expect(overview.oee.running_hours_today).toBeCloseTo(480 / 3600, 5);
+
+      // Roles must belong to the device; a tag from another device is refused.
+      const foreign = (
+        await db.query<{ id: string }>('SELECT id FROM tags WHERE device_id=$1 LIMIT 1', [GENERIC])
+      ).rows[0].id;
+      const settings = {
+        palletsTagId: pallets,
+        blocksTagId: null,
+        tonsTotalTagId: null,
+        rateTagId: rate,
+        runStatusTagId: running,
+        plannedMinutesPerDay: 1440,
+        nominalTonsPerHour: 20,
+      };
+      expect(
+        (
+          await api.inject({
+            method: 'PATCH',
+            url: `/api/devices/${HAIWELL}/production-settings`,
+            payload: { ...settings, blocksTagId: foreign },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const saved = await api.inject({
+        method: 'PATCH',
+        url: `/api/devices/${HAIWELL}/production-settings`,
+        payload: settings,
+      });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().inferred).toBe(false);
+      const after = (await api.inject(`/api/devices/${HAIWELL}/production-overview`)).json();
+      expect(after.roles.inferred).toBe(false);
+      expect(after.oee.performance).toBeCloseTo(10 / 20, 5);
+    } finally {
+      await api.close();
+      await db.query('DELETE FROM production_settings WHERE device_id=$1', [HAIWELL]);
+      await db.query('DELETE FROM telemetry_samples WHERE tag_id=ANY($1::uuid[])', [
+        [pallets, rate, running],
+      ]);
+      await db.query('DELETE FROM tags WHERE id=ANY($1::uuid[])', [[pallets, rate, running]]);
+    }
+  });
 });

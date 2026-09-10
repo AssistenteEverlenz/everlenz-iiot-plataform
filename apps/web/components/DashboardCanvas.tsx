@@ -844,7 +844,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           >
             Exportar CSV
           </a>
-          <button onClick={() => setTv(!tv)}>{tv ? 'Sair da TV' : 'Modo TV'}</button>
+          {/* Opens the managerial wall board; the widget grid stays the operator's view. */}
+          <button onClick={() => window.location.assign(`/dashboards/${id}/tv`)}>Modo TV</button>
           <button className="primary-button" onClick={() => setAdding(true)}>
             + Adicionar indicador
           </button>

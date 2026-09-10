@@ -8,6 +8,7 @@ import { access as accessFile, mkdir, rename, writeFile } from 'node:fs/promises
 import { join } from 'node:path';
 import { createAccessControl, registerAuthRoutes, type Principal } from './auth.js';
 import { recordAudit } from './audit.js';
+import { registerProductionRoutes } from './production.js';
 const uuid = z.uuid();
 const pagination = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
@@ -271,6 +272,7 @@ export async function createApp(
       )
     ).rows;
   });
+  registerProductionRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;

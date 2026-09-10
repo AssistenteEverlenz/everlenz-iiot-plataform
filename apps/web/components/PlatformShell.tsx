@@ -103,6 +103,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
 
   if (pathname === '/login') return <div style={style}>{children}</div>;
   if (!session) return <LoadingScreen branding={branding} />;
+  // The TV board fills the screen with no navigation: it runs unattended on a wall display.
+  // It still sits after the session check, so it is never reachable without a login.
+  if (pathname.endsWith('/tv')) return <div style={style}>{children}</div>;
 
   const masterNavigation =
     session.user.role === 'master'
