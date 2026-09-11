@@ -49,6 +49,9 @@ FROM runtime AS web
 ENV SERVICE_NAME=web HOSTNAME=0.0.0.0 PORT=3000 NEXT_TELEMETRY_DISABLED=1
 COPY --from=web-build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=web-build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+# The standalone server serves public/ from next to server.js but does not copy it itself
+# (the Everlenz fallback tab icon lives there).
+COPY --from=web-build --chown=node:node /app/apps/web/public ./apps/web/public
 COPY --chown=node:node apps/web/production.mjs ./production.mjs
 EXPOSE 3000
 CMD ["node","production.mjs"]
