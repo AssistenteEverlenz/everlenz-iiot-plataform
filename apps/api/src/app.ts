@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z, ZodError } from 'zod';
-import { env, temporaryPassword } from '@iiot/shared';
+import { deviceSecret, env } from '@iiot/shared';
 import { database, type Database } from '@iiot/database';
 import { randomUUID } from 'node:crypto';
 import { access as accessFile, mkdir, rename, writeFile } from 'node:fs/promises';
@@ -500,7 +500,7 @@ export async function createApp(
     const topic = `iiot/${current.tenantId}/${site.rows[0].slug}/${code.toLowerCase()}/telemetry`;
     const adapterType = adapterFor(body.manufacturer);
     const mqttUsername = code.toLowerCase();
-    const mqttPassword = temporaryPassword(20);
+    const mqttPassword = deviceSecret();
     const dashboardId = randomUUID();
     const row = await db.transaction(async (sql) => {
       // The generated password is never stored: it is returned once, here, and can only
@@ -592,7 +592,7 @@ export async function createApp(
     const { device_code, mqtt_username, topic, site_reference } = device.rows[0];
     if (!topic) return reply.code(409).send({ error: 'Device has no MQTT topic mapping' });
     const username = mqtt_username ?? device_code.toLowerCase();
-    const password = temporaryPassword(20);
+    const password = deviceSecret();
     await db.transaction(async (sql) => {
       await sql.query(
         'UPDATE devices SET mqtt_username=$3,mqtt_credential_rotated_at=now(),updated_at=now() WHERE tenant_id=$1 AND id=$2',

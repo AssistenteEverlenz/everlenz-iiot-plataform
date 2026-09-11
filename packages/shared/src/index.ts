@@ -119,6 +119,23 @@ export function temporaryPassword(length = 18) {
   return `A9!${body.slice(3)}`;
 }
 
+/**
+ * MQTT password for a device: letters and digits only. HMI software mangles symbols in its
+ * password fields (EasyBuilder read "%" as a placeholder; DIAScreen is suspected with "!" and
+ * "$"), and the credential is typed or pasted into those fields. 24 characters from 57
+ * unambiguous ones give about 140 bits, more than the 20-character password with symbols.
+ */
+export function deviceSecret(length = 24) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  // Rejection sampling keeps every character equally likely (256 is not a multiple of 57).
+  const limit = 256 - (256 % alphabet.length);
+  let secret = '';
+  while (secret.length < length)
+    for (const byte of randomBytes(length))
+      if (byte < limit && secret.length < length) secret += alphabet[byte % alphabet.length];
+  return secret;
+}
+
 function derivePassword(
   password: string,
   salt: string,
