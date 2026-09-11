@@ -10,6 +10,10 @@ services:
   mqtt-legacy:
     build: { context: ., dockerfile: infrastructure/mqtt-legacy/Dockerfile }
     network_mode: host
+    environment:
+      # Optional dedicated certificate for 8884 (base64 PEM, set as Coolify secrets).
+      MQTT_LEGACY_CERT_B64: ${MQTT_LEGACY_CERT_B64:-}
+      MQTT_LEGACY_KEY_B64: ${MQTT_LEGACY_KEY_B64:-}
     volumes:
       - type: bind
         source: /data/coolify/certificates/mqtt.everlenz.com.br
