@@ -40,11 +40,21 @@
   :root[data-theme='dark'] .platform-main .recharts-pie-sector path {
     stroke: #122025;
   }
-  /* Donut disc and its sector lines: fills are drawn in SVG, out of the generator's reach. */
+  /* Donut disc, its inner shadow, sector lines, shares and ring ticks: SVG colours out of the
+     generator's reach. */
   :root[data-theme='dark'] .platform-main .donut-disc {
-    fill: #22343a;
+    fill: #1d2b30;
+  }
+  :root[data-theme='dark'] .platform-main .donut-disc-shadow {
+    stroke: #000;
   }
   :root[data-theme='dark'] .platform-main .donut-sector-line {
+    stroke: #2e4148;
+  }
+  :root[data-theme='dark'] .platform-main .donut-sector-share {
+    fill: #52696f;
+  }
+  :root[data-theme='dark'] .platform-main .donut-ring-tick {
     stroke: #122025;
   }
 

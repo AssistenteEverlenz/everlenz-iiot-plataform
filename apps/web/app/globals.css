@@ -3293,105 +3293,90 @@ footer {
   height: 250px;
   min-height: 0;
 }
-/* Donut, infographic layout after the reference the user picked: the total, a numbered key in
-   two columns ("01 YOUR TEXT HERE"), then the ring with its grey disc and labels around it. */
+/* Donut as the user drew it: coloured bars with a large number on the left, a thin ring around a
+   pale disc with an inner shadow on the right. The ring follows the card height; the bars keep
+   their natural height and scroll when they do not fit. Narrow cards and phones stack them. */
 .quick-donut-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
   min-height: 0;
 }
-.donut-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
+/* Narrow: the ring on top, the bars below it, scrolling past a few rows. */
+.quick-donut-chart .donut-ring {
+  order: -1;
 }
-.donut-summary span {
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #71868d;
+.donut-key-scroll {
+  min-height: 0;
+  max-height: 240px;
+  overflow: auto;
 }
-.donut-summary b {
-  font-size: 22px;
-  line-height: 1;
-  color: #182e38;
+.dashboard-widget.sized .quick-donut-chart {
+  grid-template-rows: minmax(180px, 1fr) auto;
 }
-.donut-summary em {
-  font-style: normal;
-  font-size: 11px;
-  font-weight: 700;
-}
-.donut-summary em.up {
-  color: #19a66f;
-}
-.donut-summary em.down {
-  color: #dc3f45;
+/* Wide: bars on the left at their own height, centred; the ring on the right fills the card. */
+@container (min-width: 600px) {
+  .quick-donut-chart,
+  .dashboard-widget.sized .quick-donut-chart {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: center;
+  }
+  .quick-donut-chart .donut-ring {
+    order: 0;
+    align-self: stretch;
+  }
+  .donut-key-scroll {
+    max-height: 100%;
+  }
 }
 .donut-key {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .donut-key > li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  min-width: 0;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 3px 14px 3px 10px;
+  border-radius: 10px;
 }
 .donut-key b {
-  font-size: 30px;
-  line-height: 0.95;
-  font-weight: 700;
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 800;
   letter-spacing: -0.03em;
-  color: #1d4b63;
   font-variant-numeric: tabular-nums;
 }
-.donut-key strong {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.donut-key-lines {
+  display: grid;
   min-width: 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #182e38;
+}
+.donut-key-lines span {
+  padding: 4px 0;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.donut-key strong i {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-.donut-key small {
-  display: block;
-  margin: 2px 0 0;
-  font-size: 11px;
-  line-height: 1.35;
-  color: #71868d;
-}
-/* The products folded into "Outros". */
-.donut-key small.donut-key-members {
-  color: #93a7ad;
+/* The products under "Outros", one per line. */
+.donut-key-lines span + span {
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
 }
 .donut-ring {
   position: relative;
-  flex: 1;
   height: 300px;
   min-height: 220px;
 }
-/* The ring lifts off the card, as in the reference. */
-.donut-ring .recharts-pie {
-  filter: drop-shadow(0 6px 10px rgba(11, 32, 40, 0.16));
+/* In a card sized on the grid the ring takes the card's height. */
+.dashboard-widget.sized .donut-ring {
+  height: 100%;
 }
 .donut-labels {
   position: absolute;
@@ -3400,66 +3385,27 @@ footer {
   pointer-events: none;
 }
 .donut-disc {
-  fill: #ccd5d9;
-  filter: drop-shadow(0 3px 6px rgba(11, 32, 40, 0.18));
+  fill: #f6f7f7;
+}
+.donut-disc-shadow {
+  stroke: #8f999d;
 }
 .donut-sector-line {
-  stroke: #fff;
-  stroke-width: 1.4;
+  stroke: #d3d8da;
+  stroke-width: 1;
 }
 .donut-sector-share {
-  fill: #fff;
-  font-weight: 700;
+  fill: #c3c8cb;
+  font-weight: 800;
   letter-spacing: -0.02em;
 }
 .donut-ring-number {
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
-.donut-outer-title {
-  fill: #182e38;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-.donut-outer-value {
-  fill: #71868d;
-  font-size: 11px;
-}
-/* A dashboard card is wide rather than tall: there the ring takes the left side at full height
-   and the total and the key sit beside it, one column. Narrow cards and phones keep the key
-   above the ring, as in the reference. */
-@container (min-width: 640px) {
-  .quick-donut-chart {
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(220px, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas:
-      'ring summary'
-      'ring key';
-    column-gap: 22px;
-    row-gap: 12px;
-    align-items: start;
-  }
-  .quick-donut-chart .donut-ring {
-    grid-area: ring;
-    height: 100%;
-    min-height: 260px;
-  }
-  .quick-donut-chart .donut-summary {
-    grid-area: summary;
-  }
-  .quick-donut-chart .donut-key {
-    grid-area: key;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
-    max-height: 100%;
-    overflow: auto;
-  }
-}
-/* In a card sized on the grid the ring takes the height that is left. */
-.dashboard-widget.sized .donut-ring {
-  height: auto;
-  min-height: 200px;
+.donut-ring-tick {
+  stroke: #fff;
+  stroke-width: 1.5;
 }
 .quick-donut-center {
   position: absolute;
@@ -3782,7 +3728,8 @@ footer {
     grid-template-columns: minmax(0, 1fr);
   }
   .dashboard-widget.sized .quick-donut-chart {
-    height: 300px;
+    height: auto;
+    grid-template-rows: 260px auto;
   }
   .dashboard-widget.sized .quick-legend-scroll {
     height: auto;
@@ -3978,6 +3925,10 @@ body.print-layout .dashboard-widget.sized .gauge-v2 {
   .dashboard-widget.sized .donut-ring {
     flex: none;
     height: 250px;
+  }
+  /* On the phone the page scrolls; the bars show in full. */
+  .donut-key-scroll {
+    max-height: none;
   }
   .dashboard-widget.sized .quick-legend-scroll {
     height: auto;

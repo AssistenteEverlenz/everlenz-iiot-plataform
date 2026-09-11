@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import {
   Bar,
   BarChart,
@@ -188,11 +188,11 @@ export function valueLabel(
 }
 
 // ---------- Donut ----------
-// Infographic layout, after the stock "pie chart graphic template" the user picked: a thick ring
-// with each item's number written on its segment, a grey disc in the middle split into sectors
-// that carry the shares in large type, short labels around the ring and a numbered key on top.
-// The largest item closes the circle on the left half and the others run clockwise from twelve
-// o'clock. "Outros", always last, gathers the thin slices and lists them in the key.
+// Layout drawn by the user: coloured bars on the left, one per item, with a large number, the
+// product, the amount and the share; "Outros" (the thin slices) grows to list its products. On
+// the right a thin ring with the numbers on its segments around a pale disc with an inner shadow,
+// split into sectors that carry the shares in large light grey type. The ring follows the card
+// height; the bars keep their natural height and scroll when they do not fit.
 
 interface DonutMember {
   name: string;
@@ -209,53 +209,29 @@ interface DonutSlice {
   members?: DonutMember[];
 }
 
-const LABEL_PITCH = 30; // vertical room for a label: name line and amount line
-const LABEL_ROOM = 130; // horizontal room kept for the labels on each side of the ring
-// Below this width there is no room for labels around the ring; the numbered key carries them.
-const COMPACT_WIDTH = 520;
+const DONUT_START = 120; // item 01 starts just before twelve o'clock, then clockwise
 
-function layoutDonut(slices: DonutSlice[], width: number, height: number, compact: boolean) {
+function layoutDonut(slices: DonutSlice[], width: number, height: number) {
   const cx = width / 2;
   const cy = height / 2;
-  const outer = compact
-    ? Math.max(60, Math.min(width, height) / 2 - 6)
-    : Math.max(60, Math.min(height / 2 - 8, width / 2 - LABEL_ROOM));
-  const ringInner = outer * 0.76;
-  const disc = ringInner - 3;
-  // Drawing order: items 02… clockwise from the top, then 01, which fills the left half.
-  const order = slices.length > 1 ? [...slices.keys()].slice(1).concat(0) : [...slices.keys()];
+  const outer = Math.max(50, Math.min(width, height) / 2 - 4);
+  const ringWidth = Math.max(10, outer * 0.1);
+  const ringInner = outer - ringWidth;
+  const disc = ringInner - Math.max(3, outer * 0.035);
   const total = slices.reduce((sum, slice) => sum + slice.value, 0) || 1;
   let before = 0;
-  const segments = order.map((index) => {
-    const start = 90 - (before / total) * 360;
-    before += slices[index].value;
-    const end = 90 - (before / total) * 360;
+  const segments = slices.map((slice, index) => {
+    const start = DONUT_START - (before / total) * 360;
+    before += slice.value;
+    const end = DONUT_START - (before / total) * 360;
     const mid = ((start + end) / 2) * RADIAN;
     return { index, start, cos: Math.cos(mid), sin: -Math.sin(mid) };
   });
-  const labels = segments.map((segment) => ({
-    index: segment.index,
-    side: segment.cos >= 0 ? 1 : -1,
-    y: cy + (outer + 12) * segment.sin,
-  }));
-  // Per side, top to bottom: push each label below its neighbour, then pull the column back up
-  // if it ran past the bottom of the ring area.
-  for (const side of [1, -1]) {
-    const column = labels.filter((label) => label.side === side).sort((a, b) => a.y - b.y);
-    column.forEach((label, i) => {
-      label.y = Math.max(label.y, i ? column[i - 1].y + LABEL_PITCH : 14);
-    });
-    for (let i = column.length - 1; i >= 0; i -= 1)
-      column[i].y = Math.min(
-        column[i].y,
-        i === column.length - 1 ? height - 16 : column[i + 1].y - LABEL_PITCH,
-      );
-  }
-  return { cx, cy, outer, ringInner, disc, order, segments, labels };
+  return { cx, cy, outer, ringWidth, ringInner, disc, segments };
 }
 
 const shareText = (share: number) =>
-  `${share.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+  `${share.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const badgeNumber = (index: number) => String(index + 1).padStart(2, '0');
 const point = (cx: number, cy: number, radius: number, degrees: number) => ({
   x: cx + radius * Math.cos(degrees * RADIAN),
@@ -266,13 +242,13 @@ function DonutChart({
   slices,
   formatValue,
   tooltip,
-  center,
 }: {
   slices: DonutSlice[];
   formatValue: (value: number) => string;
   tooltip: (value: unknown) => string;
-  center: ReactNode;
 }) {
+  // SVG ids for the disc's clip and blur; useId can contain characters url(#…) rejects.
+  const svgId = `donut${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
@@ -287,39 +263,30 @@ function DonutChart({
     observer.observe(box);
     return () => observer.disconnect();
   }, [box]);
-  const compact = size.width > 0 && size.width < COMPACT_WIDTH;
   const geometry =
-    size.width > 0 && size.height > 0
-      ? layoutDonut(slices, size.width, size.height, compact)
-      : null;
+    size.width > 0 && size.height > 0 ? layoutDonut(slices, size.width, size.height) : null;
+  const keyLine = (name: string, value: number, share: number) =>
+    `${name.toUpperCase()} - ${formatValue(value).toUpperCase()} | ${shareText(share)}`;
 
   return (
     <div className="quick-donut-chart">
-      <div className="donut-summary">{center}</div>
-      {/* Numbered key, two columns, as in the reference ("01 YOUR TEXT HERE"). */}
-      <ol className="donut-key">
-        {slices.map((slice, index) => (
-          <li key={slice.name}>
-            <b>{badgeNumber(index)}</b>
-            <div>
-              <strong title={slice.name}>
-                <i style={{ background: slice.color }} />
-                {slice.name}
-              </strong>
-              <small>
-                {formatValue(slice.value)} · {shareText(slice.share)}
-              </small>
-              {slice.members?.length ? (
-                <small className="donut-key-members">
-                  {slice.members
-                    .map((member) => `${member.name} (${formatValue(member.value)})`)
-                    .join(' · ')}
-                </small>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ol>
+      <div className="donut-key-scroll">
+        <ol className="donut-key">
+          {slices.map((slice, index) => (
+            <li key={slice.name} style={{ background: slice.color, color: textOn(slice.color) }}>
+              <b>{badgeNumber(index)}</b>
+              <div className="donut-key-lines">
+                {/* "Outros" lists the products it gathers, one per line. */}
+                {(slice.members?.length ? slice.members : [slice]).map((item) => (
+                  <span key={item.name} title={item.name}>
+                    {keyLine(item.name, item.value, item.share)}
+                  </span>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
       <div className="donut-ring" ref={setBox}>
         {geometry && (
           <>
@@ -329,20 +296,20 @@ function DonutChart({
               margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
             >
               <Pie
-                data={geometry.order.map((index) => slices[index])}
+                data={slices}
                 dataKey="value"
                 nameKey="name"
                 cx={geometry.cx}
                 cy={geometry.cy}
                 innerRadius={geometry.ringInner}
                 outerRadius={geometry.outer}
-                startAngle={90}
-                endAngle={-270}
+                startAngle={DONUT_START}
+                endAngle={DONUT_START - 360}
                 stroke="none"
                 isAnimationActive={false}
               >
-                {geometry.order.map((index) => (
-                  <Cell key={slices[index].name} fill={slices[index].color} />
+                {slices.map((slice) => (
+                  <Cell key={slice.name} fill={slice.color} />
                 ))}
               </Pie>
               <Tooltip formatter={tooltip} />
@@ -353,32 +320,55 @@ function DonutChart({
               height={size.height}
               aria-hidden="true"
             >
-              {/* The grey disc, split into sectors that follow the ring. */}
+              <defs>
+                <clipPath id={`${svgId}-disc`}>
+                  <circle cx={geometry.cx} cy={geometry.cy} r={geometry.disc} />
+                </clipPath>
+                <filter id={`${svgId}-blur`} x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation={Math.max(2, geometry.disc * 0.035)} />
+                </filter>
+              </defs>
+              {/* The pale disc and its inner shadow, clipped so the shadow falls inside. */}
               <circle className="donut-disc" cx={geometry.cx} cy={geometry.cy} r={geometry.disc} />
+              <circle
+                className="donut-disc-shadow"
+                cx={geometry.cx}
+                cy={geometry.cy}
+                r={geometry.disc}
+                fill="none"
+                strokeWidth={Math.max(4, geometry.disc * 0.09)}
+                clipPath={`url(#${svgId}-disc)`}
+                filter={`url(#${svgId}-blur)`}
+              />
               {slices.length > 1 &&
                 geometry.segments.map((segment) => {
-                  const edge = point(geometry.cx, geometry.cy, geometry.disc, segment.start);
+                  const { cx, cy, disc, ringInner, outer } = geometry;
+                  const edge = point(cx, cy, disc, segment.start);
+                  const tickIn = point(cx, cy, ringInner, segment.start);
+                  const tickOut = point(cx, cy, outer, segment.start);
                   return (
-                    <line
-                      key={`line-${segment.index}`}
-                      className="donut-sector-line"
-                      x1={geometry.cx}
-                      y1={geometry.cy}
-                      x2={edge.x}
-                      y2={edge.y}
-                    />
+                    <g key={`boundary-${segment.index}`}>
+                      <line className="donut-sector-line" x1={cx} y1={cy} x2={edge.x} y2={edge.y} />
+                      <line
+                        className="donut-ring-tick"
+                        x1={tickIn.x}
+                        y1={tickIn.y}
+                        x2={tickOut.x}
+                        y2={tickOut.y}
+                      />
+                    </g>
                   );
                 })}
               {geometry.segments.map((segment) => {
                 const slice = slices[segment.index];
-                const { cx, cy, outer, ringInner, disc } = geometry;
-                // Larger items get larger type, as the 50% / 25% / 20% / 5% of the reference.
+                const { cx, cy, outer, ringInner, ringWidth, disc } = geometry;
+                // Larger items get larger type, as in the drawing (40% big, 15% smaller).
                 const shareSize = Math.max(
-                  11,
-                  Math.min(disc * 0.34, disc * (0.1 + (slice.share / 100) * 0.5)),
+                  12,
+                  Math.min(disc * 0.3, disc * (0.12 + (slice.share / 100) * 0.45)),
                 );
                 const ringMiddle = (ringInner + outer) / 2;
-                const shareRadius = slices.length > 1 ? disc * 0.56 : 0;
+                const shareRadius = slices.length > 1 ? disc * 0.55 : 0;
                 return (
                   <g key={slice.name}>
                     {slice.share >= 3 && (
@@ -393,7 +383,7 @@ function DonutChart({
                         {Math.round(slice.share)}%
                       </text>
                     )}
-                    {slice.share >= 4 && (
+                    {slice.share >= 3 && (
                       <text
                         className="donut-ring-number"
                         x={cx + ringMiddle * segment.cos}
@@ -401,7 +391,7 @@ function DonutChart({
                         textAnchor="middle"
                         dominantBaseline="central"
                         fill={textOn(slice.color)}
-                        style={{ fontSize: Math.min(16, Math.max(10, (outer - ringInner) * 0.5)) }}
+                        style={{ fontSize: Math.max(9, Math.min(15, ringWidth * 0.85)) }}
                       >
                         {badgeNumber(segment.index)}
                       </text>
@@ -409,38 +399,6 @@ function DonutChart({
                   </g>
                 );
               })}
-              {!compact &&
-                geometry.labels.map((label) => {
-                  const slice = slices[label.index];
-                  const x = geometry.cx + label.side * (geometry.outer + 18);
-                  const anchor = label.side > 0 ? 'start' : 'end';
-                  return (
-                    <g key={`label-${slice.name}`}>
-                      <text
-                        className="donut-outer-title"
-                        x={x}
-                        y={label.y - 7}
-                        textAnchor={anchor}
-                        dominantBaseline="central"
-                      >
-                        {(slice.name.length > 16
-                          ? `${slice.name.slice(0, 15)}…`
-                          : slice.name
-                        ).toUpperCase()}
-                        <title>{slice.name}</title>
-                      </text>
-                      <text
-                        className="donut-outer-value"
-                        x={x}
-                        y={label.y + 8}
-                        textAnchor={anchor}
-                        dominantBaseline="central"
-                      >
-                        {formatValue(slice.value)}
-                      </text>
-                    </g>
-                  );
-                })}
             </svg>
           </>
         )}
@@ -552,17 +510,6 @@ export function QuickChart({
           }))}
           formatValue={(value) => `${amount(value)} ${unit}`.trim()}
           tooltip={tooltip}
-          center={
-            <>
-              {/* The period is already on the chips above; the hole keeps the total short. */}
-              <span>{counter ? 'Total' : 'Média'}</span>
-              <b>{amount(total)}</b>
-              {unit && <span>{unit}</span>}
-              {change != null && (
-                <em className={change < 0 ? 'down' : 'up'}>{changeText} vs. anterior</em>
-              )}
-            </>
-          }
         />
       ) : (
         <div className="quick-layout">
