@@ -122,10 +122,11 @@ export function temporaryPassword(length = 18) {
 /**
  * MQTT password for a device: letters and digits only. HMI software mangles symbols in its
  * password fields (EasyBuilder read "%" as a placeholder; DIAScreen is suspected with "!" and
- * "$"), and the credential is typed or pasted into those fields. 24 characters from 57
- * unambiguous ones give about 140 bits, more than the 20-character password with symbols.
+ * "$"), and the credential is typed or pasted into those fields. 12 characters: the Delta
+ * DOP-100 password field holds at most 16, and 12 from 57 unambiguous ones give about 70
+ * bits, far beyond what guessing over the network can reach against the broker.
  */
-export function deviceSecret(length = 24) {
+export function deviceSecret(length = 12) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
   // Rejection sampling keeps every character equally likely (256 is not a multiple of 57).
   const limit = 256 - (256 % alphabet.length);
