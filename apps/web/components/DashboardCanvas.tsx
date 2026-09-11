@@ -943,12 +943,16 @@ const HISTORY_REFRESH_MS = 30000;
 
 export function DashboardCanvas({ id }: { id: string }) {
   const { branding, slots } = usePlatform();
-  const dashboard = usePoll<Dashboard>(`/dashboards/${id}`, 2000);
+  // The board's definition (every card and its config) only changes when someone edits it, and
+  // each edit here refreshes it at once. Re-reading it every 2 s was most of the database
+  // transfer; once a minute still brings in edits made from another screen.
+  const dashboard = usePoll<Dashboard>(`/dashboards/${id}`, 60000);
   const refreshMs = dashboard.data?.refresh_ms ?? 2000;
   const deviceId = dashboard.data?.device_id ?? '';
   const device = usePoll<Device>(deviceId ? `/devices/${deviceId}` : null, refreshMs);
   const latest = usePoll<Sample[]>(deviceId ? `/devices/${deviceId}/latest` : null, refreshMs);
-  const signals = usePoll<Signal[]>(deviceId ? `/devices/${deviceId}/signals` : null, 5000);
+  // The catalogue of published variables changes when the HMI program changes, not by the second.
+  const signals = usePoll<Signal[]>(deviceId ? `/devices/${deviceId}/signals` : null, 30000);
   const productionContext = usePoll<ProductionContext>(
     deviceId ? `/devices/${deviceId}/production-context` : null,
     10000,

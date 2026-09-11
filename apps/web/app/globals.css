@@ -4175,3 +4175,24 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     order: var(--stack-order, 0);
   }
 }
+/* Menu items read as one list: left-aligned, one size; "Adicionar" keeps its colour even in
+   the phone sheet, whose item rule would otherwise paint it grey. */
+.actions-popover > a,
+.actions-popover > button:not(.theme-toggle),
+.actions-sheet > a,
+.actions-sheet > button:not(.theme-toggle) {
+  display: block;
+  font-size: 13px;
+  text-align: left;
+}
+.actions-sheet > a,
+.actions-sheet > button,
+.actions-sheet .actions-refresh {
+  font-size: 15px;
+}
+.actions-popover > button.primary-button,
+.actions-sheet > button.primary-button {
+  background: var(--brand-accent, #12b8a6);
+  color: #fff;
+  text-align: center;
+}

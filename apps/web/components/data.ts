@@ -183,16 +183,30 @@ export function usePoll<T>(path: string | null, intervalMs = 5000) {
     let disposed = false;
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // A tab nobody is looking at stops polling and catches up the moment it is shown again:
+    // forgotten tabs each counted as a full client against the database transfer allowance.
+    let paused = false;
     const tick = async () => {
+      if (document.hidden) {
+        paused = true;
+        return;
+      }
       const started = Date.now();
       controller = new AbortController();
       await refresh(controller.signal);
       if (!disposed)
         timer = setTimeout(() => void tick(), Math.max(0, intervalMs - (Date.now() - started)));
     };
+    const wake = () => {
+      if (disposed || document.hidden || !paused) return;
+      paused = false;
+      void tick();
+    };
+    document.addEventListener('visibilitychange', wake);
     void tick();
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange', wake);
       controller?.abort();
       if (timer) clearTimeout(timer);
     };

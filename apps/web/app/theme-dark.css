@@ -1133,4 +1133,9 @@
       box-shadow: 0 8px 20px #0a8f8066;
     }
   }
+  :root[data-theme='dark'] .actions-popover > button.primary-button,
+  :root[data-theme='dark'] .actions-sheet > button.primary-button {
+    background: var(--brand-accent, #12b8a6);
+    color: #fff;
+  }
 }
