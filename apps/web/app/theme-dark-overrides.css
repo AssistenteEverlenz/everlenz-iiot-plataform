@@ -40,6 +40,13 @@
   :root[data-theme='dark'] .platform-main .recharts-pie-sector path {
     stroke: #122025;
   }
+  /* Donut disc and its sector lines: fills are drawn in SVG, out of the generator's reach. */
+  :root[data-theme='dark'] .platform-main .donut-disc {
+    fill: #22343a;
+  }
+  :root[data-theme='dark'] .platform-main .donut-sector-line {
+    stroke: #122025;
+  }
 
   /* Theme switch */
   .theme-toggle {
