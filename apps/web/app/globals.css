@@ -3348,9 +3348,9 @@ footer {
   border-radius: 10px;
 }
 .donut-key b {
-  font-size: 38px;
+  font-size: 42px;
   line-height: 1;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
@@ -3358,12 +3358,27 @@ footer {
   display: grid;
   min-width: 0;
 }
+/* Product on the left, amount and share aligned to the right on every line. */
 .donut-key-lines span {
-  padding: 4px 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 4px 12px;
   font-size: 13px;
   white-space: nowrap;
+}
+.donut-key-lines em {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-style: normal;
+}
+.donut-key-lines small {
+  flex: none;
+  font-size: 13px;
+  color: inherit;
+  font-variant-numeric: tabular-nums;
 }
 /* The products under "Outros", one per line. */
 .donut-key-lines span + span {
@@ -3388,7 +3403,7 @@ footer {
   fill: #f6f7f7;
 }
 .donut-disc-shadow {
-  stroke: #8f999d;
+  stroke: #5f6a6e;
 }
 .donut-sector-line {
   stroke: #d3d8da;

@@ -1010,7 +1010,7 @@
     fill: #f6f7f7;
   }
   :root[data-theme='dark'] .donut-disc-shadow {
-    stroke: #50717c;
+    stroke: #5f6a6e;
   }
   :root[data-theme='dark'] .donut-sector-line {
     stroke: #2b3d43;

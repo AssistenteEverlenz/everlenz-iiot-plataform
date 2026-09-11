@@ -215,9 +215,10 @@ function layoutDonut(slices: DonutSlice[], width: number, height: number) {
   const cx = width / 2;
   const cy = height / 2;
   const outer = Math.max(50, Math.min(width, height) / 2 - 4);
-  const ringWidth = Math.max(10, outer * 0.1);
+  // A thick ring so the numbers on it have room; the disc sits right against it.
+  const ringWidth = Math.max(20, outer * 0.17);
   const ringInner = outer - ringWidth;
-  const disc = ringInner - Math.max(3, outer * 0.035);
+  const disc = ringInner;
   const total = slices.reduce((sum, slice) => sum + slice.value, 0) || 1;
   let before = 0;
   const segments = slices.map((slice, index) => {
@@ -265,8 +266,6 @@ function DonutChart({
   }, [box]);
   const geometry =
     size.width > 0 && size.height > 0 ? layoutDonut(slices, size.width, size.height) : null;
-  const keyLine = (name: string, value: number, share: number) =>
-    `${name.toUpperCase()} - ${formatValue(value).toUpperCase()} | ${shareText(share)}`;
 
   return (
     <div className="quick-donut-chart">
@@ -278,8 +277,11 @@ function DonutChart({
               <div className="donut-key-lines">
                 {/* "Outros" lists the products it gathers, one per line. */}
                 {(slice.members?.length ? slice.members : [slice]).map((item) => (
-                  <span key={item.name} title={item.name}>
-                    {keyLine(item.name, item.value, item.share)}
+                  <span key={item.name}>
+                    <em title={item.name}>{item.name.toUpperCase()}</em>
+                    <small>
+                      {formatValue(item.value)} | {shareText(item.share)}
+                    </small>
                   </span>
                 ))}
               </div>
@@ -325,7 +327,7 @@ function DonutChart({
                   <circle cx={geometry.cx} cy={geometry.cy} r={geometry.disc} />
                 </clipPath>
                 <filter id={`${svgId}-blur`} x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation={Math.max(2, geometry.disc * 0.035)} />
+                  <feGaussianBlur stdDeviation={Math.max(3, geometry.disc * 0.045)} />
                 </filter>
               </defs>
               {/* The pale disc and its inner shadow, clipped so the shadow falls inside. */}
@@ -336,7 +338,7 @@ function DonutChart({
                 cy={geometry.cy}
                 r={geometry.disc}
                 fill="none"
-                strokeWidth={Math.max(4, geometry.disc * 0.09)}
+                strokeWidth={Math.max(6, geometry.disc * 0.12)}
                 clipPath={`url(#${svgId}-disc)`}
                 filter={`url(#${svgId}-blur)`}
               />
@@ -391,7 +393,7 @@ function DonutChart({
                         textAnchor="middle"
                         dominantBaseline="central"
                         fill={textOn(slice.color)}
-                        style={{ fontSize: Math.max(9, Math.min(15, ringWidth * 0.85)) }}
+                        style={{ fontSize: Math.max(11, Math.min(18, ringWidth * 0.5)) }}
                       >
                         {badgeNumber(segment.index)}
                       </text>
