@@ -144,6 +144,19 @@ function csv(value: unknown) {
 }
 // Async because the rate limiter must finish loading before any route is registered:
 // its global hook only reaches routes added to the context after it is in place.
+const ipv4 = z
+  .string()
+  .regex(
+    /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/,
+    'IPv4 inválido',
+  );
+/** Broker address shown on the device sheet: TLS by default, the plain port for legacy HMIs. */
+function brokerPort(legacyPlainMqtt: boolean) {
+  return legacyPlainMqtt
+    ? { port: env.MQTT_LEGACY_PUBLIC_PORT, tls: false }
+    : { port: env.MQTT_TLS_PORT, tls: true };
+}
+
 export async function createApp(
   db: Database = database,
   settings: {
@@ -479,6 +492,9 @@ export async function createApp(
         manufacturer: z.enum(['Haiwell', 'Weintek', 'Delta']),
         model: z.string().min(1).max(80),
         serialNumber: z.string().max(120).nullable().optional(),
+        // Legacy HMI whose TLS client cannot reach the broker: plain MQTT on the compatibility
+        // port, from addresses released on the device page (apps/api/src/legacy-mqtt.ts).
+        legacyPlainMqtt: z.boolean().optional(),
       })
       .parse(req.body);
     if (!hmiModels[body.manufacturer]?.includes(body.model))
@@ -506,8 +522,8 @@ export async function createApp(
       // The generated password is never stored: it is returned once, here, and can only
       // be replaced afterwards through POST /api/devices/:id/mqtt-credential.
       const created = await sql.query(
-        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_credential_rotated_at)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,now()) RETURNING *`,
+        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_credential_rotated_at,legacy_plain_mqtt)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,now(),$13) RETURNING *`,
         [
           id,
           current.tenantId,
@@ -521,6 +537,7 @@ export async function createApp(
           `device-${id}`,
           adapterType,
           mqttUsername,
+          body.legacyPlainMqtt ?? false,
         ],
       );
       await sql.query(
@@ -558,8 +575,7 @@ export async function createApp(
       dashboardId,
       connection: {
         host: env.MQTT_PUBLIC_HOST ?? env.MQTT_HOST,
-        port: env.MQTT_TLS_PORT,
-        tls: true,
+        ...brokerPort(body.legacyPlainMqtt ?? false),
         topic,
         username: mqttUsername,
         password: mqttPassword,
@@ -579,9 +595,10 @@ export async function createApp(
       mqtt_username: string | null;
       topic: string | null;
       site_reference: string;
+      legacy_plain_mqtt: boolean;
     }>(
       `SELECT d.device_code,COALESCE(d.mqtt_username,lower(d.device_code)) mqtt_username,
-        s.reference site_reference,
+        s.reference site_reference,d.legacy_plain_mqtt,
         (SELECT CASE WHEN dm.kind='haiwell' AND dm.topic NOT LIKE 'data/%' THEN 'data/'||dm.topic ELSE dm.topic END
          FROM device_topic_mappings dm WHERE dm.device_id=d.id AND dm.tenant_id=d.tenant_id ORDER BY dm.id LIMIT 1) topic
        FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
@@ -589,7 +606,7 @@ export async function createApp(
       [current.tenantId, id],
     );
     if (!device.rows.length) return reply.code(404).send({ error: 'Device not found' });
-    const { device_code, mqtt_username, topic, site_reference } = device.rows[0];
+    const { device_code, mqtt_username, topic, site_reference, legacy_plain_mqtt } = device.rows[0];
     if (!topic) return reply.code(409).send({ error: 'Device has no MQTT topic mapping' });
     const username = mqtt_username ?? device_code.toLowerCase();
     const password = deviceSecret();
@@ -609,8 +626,7 @@ export async function createApp(
     return {
       connection: {
         host: env.MQTT_PUBLIC_HOST ?? env.MQTT_HOST,
-        port: env.MQTT_TLS_PORT,
-        tls: true,
+        ...brokerPort(legacy_plain_mqtt),
         topic,
         username,
         password,
@@ -630,6 +646,8 @@ export async function createApp(
         manufacturer: z.enum(['Haiwell', 'Weintek', 'Delta']).optional(),
         model: z.string().min(1).max(80).optional(),
         serialNumber: z.string().max(120).nullable().optional(),
+        legacyPlainMqtt: z.boolean().optional(),
+        legacyAllowedIps: z.array(ipv4).max(20).optional(),
       })
       .parse(req.body);
     const existing = await db.query<{ manufacturer: string; model: string }>(
@@ -645,7 +663,8 @@ export async function createApp(
     const updated = await db.query(
       `UPDATE devices SET site_id=COALESCE($3,site_id),name=COALESCE($4,name),
        manufacturer=$5,model=$6,serial_number=CASE WHEN $7::boolean THEN $8 ELSE serial_number END,
-       adapter_type=$9,updated_at=now()
+       adapter_type=$9,legacy_plain_mqtt=COALESCE($10,legacy_plain_mqtt),
+       legacy_allowed_ips=COALESCE($11::text[],legacy_allowed_ips),updated_at=now()
        WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING *`,
       [
         current.tenantId,
@@ -657,6 +676,8 @@ export async function createApp(
         body.serialNumber !== undefined,
         body.serialNumber ?? null,
         adapterType,
+        body.legacyPlainMqtt ?? null,
+        body.legacyAllowedIps ? [...new Set(body.legacyAllowedIps)] : null,
       ],
     );
     if (!updated.rows.length) return reply.code(404).send({ error: 'Device not found' });
@@ -667,6 +688,51 @@ export async function createApp(
       summary: { changed: Object.keys(body), manufacturer, model },
     });
     return updated.rows[0];
+  });
+  // Addresses a legacy HMI tried the compatibility port from and was refused (migration 016).
+  // The device page lists them so a person can release the right one.
+  app.get('/api/devices/:id/legacy-attempts', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    return (
+      await db.query(
+        `SELECT source_ip,first_seen_at,last_seen_at,attempts FROM device_legacy_attempts
+         WHERE tenant_id=$1 AND device_id=$2 ORDER BY last_seen_at DESC LIMIT 20`,
+        [access.principal(req).tenantId, id],
+      )
+    ).rows;
+  });
+  // Releases one address: the device switches to legacy mode, the address joins its list and
+  // its refused attempts are cleared. The compatibility port picks it up within seconds.
+  app.post('/api/devices/:id/legacy-allow', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const { ip } = z.object({ ip: ipv4 }).parse(req.body);
+    const released = await db.transaction(async (sql) => {
+      const updated = await sql.query<{ legacy_allowed_ips: string[] }>(
+        `UPDATE devices SET legacy_plain_mqtt=true,
+         legacy_allowed_ips=(SELECT array_agg(DISTINCT address ORDER BY address)
+           FROM unnest(legacy_allowed_ips || ARRAY[$3::text]) address),
+         updated_at=now()
+         WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING legacy_allowed_ips`,
+        [current.tenantId, id, ip],
+      );
+      if (!updated.rows.length) return null;
+      await sql.query(
+        'DELETE FROM device_legacy_attempts WHERE tenant_id=$1 AND device_id=$2 AND source_ip=$3',
+        [current.tenantId, id, ip],
+      );
+      await recordAudit(sql, req, current, {
+        action: 'device.legacy_ip.allow',
+        targetType: 'device',
+        targetId: id,
+        summary: { ip },
+      });
+      return updated.rows[0].legacy_allowed_ips;
+    });
+    if (!released) return reply.code(404).send({ error: 'Device not found' });
+    return { legacyPlainMqtt: true, legacyAllowedIps: released };
   });
   // Deleting a device removes it and everything recorded for it (purge_device, migration 015):
   // samples, raw messages, variables, topic, status and dashboard. Only the audit log keeps

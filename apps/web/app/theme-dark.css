@@ -1138,4 +1138,31 @@
     background: var(--brand-accent, #12b8a6);
     color: #fff;
   }
+  :root[data-theme='dark'] .legacy-section {
+    border: 1px solid #4d452e;
+    background: #2a2516;
+  }
+  :root[data-theme='dark'] .legacy-toggle span {
+    color: #cebe97;
+  }
+  :root[data-theme='dark'] .legacy-toggle b {
+    color: #d2dbde;
+  }
+  :root[data-theme='dark'] .legacy-list > small {
+    color: #a7b8be;
+  }
+  :root[data-theme='dark'] .legacy-list p {
+    color: #a7b8be;
+  }
+  :root[data-theme='dark'] .legacy-ips button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+  }
+  :root[data-theme='dark'] .legacy-attempt {
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .legacy-attempt span {
+    color: #92a2a7;
+  }
 }

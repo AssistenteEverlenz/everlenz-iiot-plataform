@@ -25,6 +25,10 @@ export const env = z
     MQTT_INTERNAL_HOST: z.string().optional(),
     MQTT_PUBLIC_HOST: z.string().optional(),
     MQTT_TLS_PORT: z.coerce.number().int().positive().default(8883),
+    // Plain-MQTT compatibility port served by the API for legacy HMIs (apps/api/src/legacy-mqtt).
+    // 0 keeps it closed; production opens 1884. The public port is what the device sheet shows.
+    MQTT_LEGACY_PORT: z.coerce.number().int().min(0).default(0),
+    MQTT_LEGACY_PUBLIC_PORT: z.coerce.number().int().positive().default(1884),
     MQTT_PORT: z.coerce.number().int().positive().default(1883),
     MQTT_PROTOCOL: z.enum(['mqtt', 'mqtts']).default('mqtt'),
     MQTT_USERNAME: z.string().default('ingestor'),

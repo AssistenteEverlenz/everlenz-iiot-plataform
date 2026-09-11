@@ -582,7 +582,9 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(created.json().connection.username).toBe(
         created.json().device.device_code.toLowerCase(),
       );
-      expect(created.json().connection.password).toHaveLength(20);
+      // Device passwords: 12 letters and digits (HMI password fields mangle symbols and cap
+      // the length at 16).
+      expect(created.json().connection.password).toMatch(/^[A-HJ-NP-Za-km-z2-9]{12}$/);
       expect(created.json().connection.topic).toMatch(/^iiot\//);
       const dashboardsAfterCreate = (await api.inject('/api/dashboards')).json() as {
         id: string;
@@ -806,7 +808,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
         payload: { siteId, name: 'Prensa Segura', manufacturer: 'Haiwell', model: 'A7' },
       });
       expect(createdDevice.statusCode).toBe(201);
-      expect(createdDevice.json().connection.password).toMatch(/^.{20}$/);
+      expect(createdDevice.json().connection.password).toMatch(/^[A-HJ-NP-Za-km-z2-9]{12}$/);
       const deviceId = createdDevice.json().device.id as string;
       expect(createdDevice.json().device).not.toHaveProperty('mqtt_password');
       const listed = (await api.inject({ url: '/api/devices', headers: auth })).json();

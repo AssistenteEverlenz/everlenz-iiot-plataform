@@ -18,6 +18,10 @@ export interface Device {
   site_reference?: string;
   mqtt_topic?: string;
   mqtt_username?: string;
+  /** Legacy HMI on the plain compatibility port instead of TLS (migration 016). */
+  legacy_plain_mqtt?: boolean;
+  /** Public addresses released for the compatibility port. */
+  legacy_allowed_ips?: string[];
   /** The broker password is never stored or returned: it exists only in the response of
    *  device creation and of POST /devices/:id/mqtt-credential. */
   mqtt_credential_rotated_at?: string | null;

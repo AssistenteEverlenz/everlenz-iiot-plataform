@@ -99,9 +99,15 @@ services:
       MQTT_PROTOCOL: mqtt
       MQTT_COMMAND_USERNAME: commander
       MQTT_COMMAND_PASSWORD: ${MQTT_COMMAND_PASSWORD:-}
+      # Plain-MQTT compatibility port for legacy HMIs (apps/api/src/legacy-mqtt.ts): only
+      # devices switched to legacy mode, from addresses released on their page, reach the broker.
+      MQTT_LEGACY_PORT: 1884
+      MQTT_LEGACY_PUBLIC_PORT: ${MQTT_LEGACY_PUBLIC_PORT:-1884}
     volumes:
       - mqtt-provision:/mqtt-provision
     expose: ['3001']
+    ports:
+      - '${MQTT_LEGACY_BIND_ADDRESS:-0.0.0.0}:${MQTT_LEGACY_PUBLIC_PORT:-1884}:1884'
     healthcheck:
       test:
         [

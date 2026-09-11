@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { usePlatform } from '../../components/PlatformShell';
-import { mutate, usePoll, type Device } from '../../components/data';
+import { mutate, time, usePoll, type Device } from '../../components/data';
 import { DevicesTable } from '../../components/DevicesTable';
 import { ActionModal } from '../../components/ActionModal';
 
@@ -25,6 +25,13 @@ interface Connection {
 interface CreatedDevice {
   device: Device;
   connection: Connection;
+}
+/** A refused attempt on the plain compatibility port (legacy HMIs, migration 016). */
+interface LegacyAttempt {
+  source_ip: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  attempts: number;
 }
 // Only HMIs that can publish MQTT over Ethernet; keep in step with hmiModels in apps/api.
 // Weintek: EasyBuilder Pro "Comparison of HMI Software Features" (MQTT row) — the iP line has
@@ -144,7 +151,16 @@ export default function Devices() {
     manufacturer: 'Haiwell' as Manufacturer,
     model: 'A7',
     serialNumber: '',
+    legacyPlainMqtt: false,
+    legacyAllowedIps: [] as string[],
   });
+  // Addresses a legacy HMI was refused from; refreshed while its sheet is open so the first
+  // attempt after the download shows up with its "Liberar" button.
+  const legacyAttempts = usePoll<LegacyAttempt[]>(
+    selected ? `/devices/${selected.id}/legacy-attempts` : null,
+    5000,
+  );
+  const [releasing, setReleasing] = useState('');
   const filteredSites = useMemo(
     () =>
       (sites.data ?? []).filter((site) =>
@@ -210,8 +226,32 @@ export default function Devices() {
       manufacturer: device.manufacturer as Manufacturer,
       model: device.model,
       serialNumber: device.serial_number ?? '',
+      legacyPlainMqtt: device.legacy_plain_mqtt ?? false,
+      legacyAllowedIps: device.legacy_allowed_ips ?? [],
     });
     setOpen(true);
+  }
+  async function releaseAddress(ip: string) {
+    if (!selected) return;
+    setReleasing(ip);
+    setError('');
+    try {
+      const result = await mutate<{ legacyPlainMqtt: boolean; legacyAllowedIps: string[] }>(
+        `/devices/${selected.id}/legacy-allow`,
+        'POST',
+        { ip },
+      );
+      setForm((current) => ({
+        ...current,
+        legacyPlainMqtt: result.legacyPlainMqtt,
+        legacyAllowedIps: result.legacyAllowedIps,
+      }));
+      await Promise.all([legacyAttempts.refresh(), devices.refresh()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao liberar o endereço.');
+    } finally {
+      setReleasing('');
+    }
   }
   async function saveDevice(event: React.FormEvent) {
     event.preventDefault();
@@ -262,8 +302,8 @@ export default function Devices() {
     (selected
       ? {
           host: 'mqtt.everlenz.com.br',
-          port: 8883,
-          tls: true,
+          port: selected.legacy_plain_mqtt ? 1884 : 8883,
+          tls: !selected.legacy_plain_mqtt,
           topic: selected.mqtt_topic ?? '—',
           username: selected.mqtt_username ?? selected.device_code.toLowerCase(),
           clientReference: selected.site_reference ?? '—',
@@ -289,6 +329,8 @@ export default function Devices() {
                   manufacturer: 'Haiwell',
                   model: 'A7',
                   serialNumber: '',
+                  legacyPlainMqtt: false,
+                  legacyAllowedIps: [],
                 });
                 setOpen(true);
               }}
@@ -466,6 +508,82 @@ export default function Devices() {
                     />
                   </label>
                 </div>
+                <div className="legacy-section">
+                  <label className="legacy-toggle">
+                    <input
+                      type="checkbox"
+                      checked={form.legacyPlainMqtt}
+                      onChange={(event) =>
+                        setForm({ ...form, legacyPlainMqtt: event.target.checked })
+                      }
+                    />
+                    <span>
+                      <b>IHM legada — conexão sem TLS (porta 1884)</b>
+                      Só para IHMs que não conectam com TLS, como a Delta DOP-100. Os dados passam
+                      sem criptografia e só são aceitos dos endereços liberados abaixo.
+                    </span>
+                  </label>
+                  {selected && (form.legacyPlainMqtt || !!legacyAttempts.data?.length) && (
+                    <>
+                      <div className="legacy-list">
+                        <small>Endereços liberados</small>
+                        {form.legacyAllowedIps.length ? (
+                          <div className="legacy-ips">
+                            {form.legacyAllowedIps.map((ip) => (
+                              <span key={ip} className="code-chip">
+                                {ip}
+                                <button
+                                  type="button"
+                                  title={`Remover ${ip}`}
+                                  aria-label={`Remover ${ip}`}
+                                  onClick={() =>
+                                    setForm({
+                                      ...form,
+                                      legacyAllowedIps: form.legacyAllowedIps.filter(
+                                        (item) => item !== ip,
+                                      ),
+                                    })
+                                  }
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p>
+                            Nenhum. Configure a IHM na porta 1884 e grave o projeto: a primeira
+                            tentativa aparece aqui para liberar.
+                          </p>
+                        )}
+                      </div>
+                      <div className="legacy-list">
+                        <small>Tentativas recusadas</small>
+                        {legacyAttempts.data?.length ? (
+                          legacyAttempts.data.map((attempt) => (
+                            <div key={attempt.source_ip} className="legacy-attempt">
+                              <code>{attempt.source_ip}</code>
+                              <span>
+                                {attempt.attempts} tentativa{attempt.attempts > 1 ? 's' : ''} ·
+                                última {time(attempt.last_seen_at)}
+                              </span>
+                              <button
+                                type="button"
+                                className="primary-button"
+                                disabled={releasing === attempt.source_ip}
+                                onClick={() => void releaseAddress(attempt.source_ip)}
+                              >
+                                {releasing === attempt.source_ip ? 'Liberando…' : 'Liberar'}
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <p>Nenhuma tentativa recusada.</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
                 <div className="notice">
                   <b>Tópico gerado automaticamente</b>O sistema cria um tópico MQTT exclusivo usando
                   o cliente, o equipamento e o código Everlenz.
@@ -524,7 +642,10 @@ function ConnectionCard({
     <div className="commissioning-card compact-credentials">
       <CredentialRow label="Referência do cliente" value={connection.clientReference} plain />
       <CredentialRow label="Código Everlenz" value={deviceCode} plain />
-      <CredentialRow label="Broker TLS" value={`${connection.host}:${connection.port}`} />
+      <CredentialRow
+        label={connection.tls ? 'Broker TLS' : 'Broker sem TLS (IHM legada)'}
+        value={`${connection.host}:${connection.port}`}
+      />
       <CredentialRow label="Tópico" value={connection.topic} />
       <CredentialRow label="User name" value={connection.username} />
       {connection.password ? (

@@ -4196,3 +4196,81 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   color: #fff;
   text-align: center;
 }
+
+/* Device sheet: legacy HMI (plain MQTT on 1884) — released addresses and refused attempts. */
+.legacy-section {
+  display: grid;
+  gap: 12px;
+  margin: 4px 0 14px;
+  padding: 14px;
+  border: 1px solid #e7d9b4;
+  border-radius: 12px;
+  background: #fbf7ec;
+}
+.legacy-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  cursor: pointer;
+}
+.legacy-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+.legacy-toggle span {
+  display: grid;
+  gap: 3px;
+  color: #6c5a2c;
+  font-size: 12px;
+}
+.legacy-toggle b {
+  color: #3f3314;
+  font-size: 13px;
+}
+.legacy-list {
+  display: grid;
+  gap: 6px;
+}
+.legacy-list > small {
+  color: #7b6a3c;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.legacy-list p {
+  margin: 0;
+  color: #7b6a3c;
+  font-size: 12px;
+}
+.legacy-ips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.legacy-ips .code-chip {
+  gap: 6px;
+  align-items: center;
+}
+.legacy-ips button {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.legacy-attempt {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 12px;
+}
+.legacy-attempt span {
+  color: #6c7f86;
+}
