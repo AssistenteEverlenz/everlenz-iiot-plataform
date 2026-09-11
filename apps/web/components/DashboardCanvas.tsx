@@ -28,6 +28,7 @@ import {
 } from './data';
 
 import { ScrollHint } from './ScrollHint';
+import { DashboardChrome } from './DashboardChrome';
 import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
@@ -76,6 +77,37 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   bar_vertical: 6,
   bar_horizontal: 6,
 };
+/**
+ * Where each card lands on the 12-column desktop grid, which packs densely: a later small
+ * card moves up into a gap left by a larger one. Phones stack the cards in this visual order,
+ * so they read top to bottom the way the desktop shows them rather than in saved order.
+ */
+function visualOrder(widgets: DashboardWidget[]) {
+  const taken: boolean[][] = [];
+  const free = (row: number, col: number, cols: number, rows: number) => {
+    for (let r = row; r < row + rows; r += 1)
+      for (let c = col; c < col + cols; c += 1) if (taken[r]?.[c]) return false;
+    return true;
+  };
+  const placed = widgets.map((widget, index) => {
+    const { cols, rows } = spansOf(widget);
+    for (let row = 0; ; row += 1)
+      for (let col = 0; col + cols <= 12; col += 1)
+        if (free(row, col, cols, rows)) {
+          for (let r = row; r < row + rows; r += 1) {
+            taken[r] ??= [];
+            for (let c = col; c < col + cols; c += 1) taken[r][c] = true;
+          }
+          return { id: widget.id, row, col, index };
+        }
+  });
+  const order = new Map<string, number>();
+  [...placed]
+    .sort((a, b) => a.row - b.row || a.col - b.col || a.index - b.index)
+    .forEach((item, position) => order.set(item.id, position));
+  return order;
+}
+
 function spansOf(widget: DashboardWidget) {
   return {
     cols: Math.max(2, Math.min(12, widget.config.colSpan ?? widthColumns[widget.width])),
@@ -241,8 +273,11 @@ function Widget({
   dragEnter,
   dragEnd,
   missing = false,
+  order = 0,
 }: {
   widget: DashboardWidget;
+  /** Position on phones: the order the desktop grid shows (see visualOrder). */
+  order?: number;
   latest?: Sample;
   /** The widget's variable is no longer in the device's publications. */
   missing?: boolean;
@@ -445,6 +480,7 @@ function Widget({
           '--accent': activeColor,
           '--cols': shownSpan.cols,
           '--rows': shownSpan.rows,
+          '--stack-order': order,
         } as React.CSSProperties
       }
     >
@@ -906,7 +942,7 @@ function Widget({
 const HISTORY_REFRESH_MS = 30000;
 
 export function DashboardCanvas({ id }: { id: string }) {
-  const { branding } = usePlatform();
+  const { branding, slots } = usePlatform();
   const dashboard = usePoll<Dashboard>(`/dashboards/${id}`, 2000);
   const refreshMs = dashboard.data?.refresh_ms ?? 2000;
   const deviceId = dashboard.data?.device_id ?? '';
@@ -993,6 +1029,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     if (pendingEdits.current > 0 || Date.now() < holdServerUntil.current) return;
     setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
   }, [dashboard.data?.widgets]);
+  const stackOrder = useMemo(() => visualOrder(widgets), [widgets]);
   async function persistLocalEdit(action: () => Promise<unknown>) {
     pendingEdits.current += 1;
     try {
@@ -1259,52 +1296,30 @@ export function DashboardCanvas({ id }: { id: string }) {
   }
   return (
     <div className={tv ? 'tv-shell' : ''}>
+      {/* The equipment, its heartbeat and the actions live in the shell's bars, so the first
+          thing on screen is the first card. */}
+      <DashboardChrome
+        slots={slots}
+        deviceName={device.data?.name ?? ''}
+        deviceCode={device.data?.device_code ?? ''}
+        online={Boolean(device.data?.online)}
+        beat={device.data?.last_message_at}
+        refreshMs={refreshMs}
+        savingRefresh={savingRefresh}
+        onRefresh={(refresh) => void updateRefresh(refresh)}
+        onAdd={() => setAdding(true)}
+        onPdf={() => void printDashboard()}
+        csvHref={`/api/export/telemetry.csv?deviceId=${deviceId}&limit=10000`}
+        tvHref={`/dashboards/${id}/tv`}
+      />
+      {/* Only on paper and on the in-page TV view: the title of the board. */}
       <div className="dashboard-toolbar">
         <div>
-          <div className="eyebrow">SALA DE CONTROLE · TEMPO REAL</div>
           <h1>{dashboard.data?.name ?? 'Painel industrial'}</h1>
           <p>
             {device.data?.name} <span className="code-chip">{device.data?.device_code}</span>
           </p>
         </div>
-        <div className="toolbar-actions">
-          <span className={`connection-state ${device.data?.online ? 'online' : ''}`}>
-            <span />
-            {device.data?.online ? 'Online' : 'Offline'}
-          </span>
-          <button onClick={() => void printDashboard()}>Exportar PDF</button>
-          <a
-            className="secondary-button"
-            href={`/api/export/telemetry.csv?deviceId=${deviceId}&limit=10000`}
-          >
-            Exportar CSV
-          </a>
-          {/* Opens the managerial wall board; the widget grid stays the operator's view. */}
-          <button onClick={() => window.location.assign(`/dashboards/${id}/tv`)}>Modo TV</button>
-          <button className="primary-button" onClick={() => setAdding(true)}>
-            + Adicionar indicador
-          </button>
-        </div>
-      </div>
-      <div className="editor-bar">
-        <span>
-          Arraste os seis pontos para organizar. A configuração fica salva neste equipamento.
-        </span>
-        <label>
-          Atualização {savingRefresh && <span className="button-spinner dark" />}
-          <select
-            value={refreshMs}
-            onChange={(event) => void updateRefresh(Number(event.target.value))}
-          >
-            <option value={1000}>1 segundo</option>
-            <option value={2000}>2 segundos</option>
-            <option value={5000}>5 segundos</option>
-            <option value={10000}>10 segundos</option>
-          </select>
-        </label>
-        <small>
-          A IHM também precisa publicar neste intervalo para chegar um valor novo a cada ciclo.
-        </small>
       </div>
       {(error || dashboard.error || latest.error) && (
         <div className="error-banner">{error || dashboard.error || latest.error}</div>
@@ -1328,6 +1343,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             widget={widget}
             latest={widget.tag_id ? byTag.get(widget.tag_id) : undefined}
             missing={Boolean(widget.tag_id && signals.data && !publishedTagIds.has(widget.tag_id))}
+            order={stackOrder.get(widget.id)}
             history={history.data ?? []}
             dashboardId={id}
             counter={counters.data?.find((item) => item.widget_id === widget.id)}

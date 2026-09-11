@@ -3293,62 +3293,65 @@ footer {
   height: 250px;
   min-height: 0;
 }
-/* Donut as the user drew it: coloured bars with a large number on the left, a thin ring around a
-   pale disc with an inner shadow on the right. The ring follows the card height; the bars keep
-   their natural height and scroll when they do not fit. Narrow cards and phones stack them. */
+/* Donut as the user drew it: coloured bars with a large number on the left, a thick ring around
+   a pale disc with an inner shadow on the right. The ring follows the card height; the bars fit
+   the room left to them by scaling (--key-scale, set by the component) instead of scrolling.
+   Narrow cards and phones stack the ring above the bars. */
 .quick-donut-chart {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+  gap: 16px;
   min-height: 0;
 }
-/* Narrow: the ring on top, the bars below it, scrolling past a few rows. */
+/* Narrow: the ring on top, the bars below it. */
 .quick-donut-chart .donut-ring {
   order: -1;
 }
 .donut-key-scroll {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
   min-height: 0;
-  max-height: 240px;
-  overflow: auto;
+  overflow: hidden;
 }
+/* In a narrow card sized on the grid, ring and bars share its height. */
 .dashboard-widget.sized .quick-donut-chart {
-  grid-template-rows: minmax(180px, 1fr) auto;
+  grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
 }
-/* Wide: bars on the left at their own height, centred; the ring on the right fills the card. */
+/* Wide: bars on the left, centred; the ring on the right fills the card. */
 @container (min-width: 600px) {
   .quick-donut-chart,
   .dashboard-widget.sized .quick-donut-chart {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
-    align-items: center;
   }
   .quick-donut-chart .donut-ring {
     order: 0;
-    align-self: stretch;
   }
   .donut-key-scroll {
-    max-height: 100%;
+    align-self: stretch;
   }
 }
 .donut-key {
+  --key-scale: 1;
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--key-scale));
 }
 .donut-key > li {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 16px;
-  min-height: 44px;
-  padding: 3px 14px 3px 10px;
+  gap: calc(16px * var(--key-scale));
+  min-height: calc(44px * var(--key-scale));
+  padding: calc(3px * var(--key-scale)) 14px calc(3px * var(--key-scale)) 10px;
   border-radius: 10px;
 }
 .donut-key b {
-  font-size: 42px;
+  font-size: calc(42px * var(--key-scale));
   line-height: 1;
   font-weight: 900;
   letter-spacing: -0.03em;
@@ -3364,8 +3367,8 @@ footer {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 4px 0 4px 12px;
-  font-size: 13px;
+  padding: calc(4px * var(--key-scale)) 0 calc(4px * var(--key-scale)) 12px;
+  font-size: max(10px, calc(13px * var(--key-scale)));
   white-space: nowrap;
 }
 .donut-key-lines em {
@@ -3376,7 +3379,7 @@ footer {
 }
 .donut-key-lines small {
   flex: none;
-  font-size: 13px;
+  font-size: inherit;
   color: inherit;
   font-variant-numeric: tabular-nums;
 }
@@ -3396,8 +3399,13 @@ footer {
 .donut-labels {
   position: absolute;
   inset: 0;
+  z-index: 1;
   overflow: visible;
   pointer-events: none;
+}
+/* The hover value sits above the disc and the numbers drawn over the ring. */
+.donut-ring .recharts-tooltip-wrapper {
+  z-index: 5 !important;
 }
 .donut-disc {
   fill: #f6f7f7;
@@ -3973,5 +3981,197 @@ body.print-layout .dashboard-widget.sized .gauge-v2 {
   .dashboard-widget.sized > .widget-chart {
     flex: none;
     height: 200px;
+  }
+}
+
+/* ---------- Dashboard chrome ----------
+   On a dashboard the top bar shows the equipment, its code and a heartbeat, and one "Ações"
+   button gathers add / exports / TV / refresh rate / theme. On phones that button is the
+   highlighted one in the middle of the bottom bar. The board title only appears on paper and
+   on the TV view, so the first card is the first thing on screen. */
+.topbar-page:empty,
+.topbar-actions:empty {
+  display: none;
+}
+.platform-topbar:has(.topbar-page:not(:empty)) .topbar-default {
+  display: none;
+}
+body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
+  display: none;
+}
+.equipment-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.equipment-head > div {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  min-width: 0;
+}
+.equipment-head strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #182e38;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+.equipment-head .code-chip {
+  border: 1px solid #9fd8cf;
+}
+.heartbeat {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+}
+.heartbeat svg {
+  width: 26px;
+  height: 26px;
+  fill: #a3b1b5;
+}
+.heartbeat.online svg {
+  fill: #1fbf7a;
+  filter: drop-shadow(0 0 6px rgba(31, 191, 122, 0.45));
+  animation: heartbeat 0.9s ease-out;
+}
+@keyframes heartbeat {
+  0%,
+  30%,
+  70%,
+  100% {
+    transform: scale(1);
+  }
+  15% {
+    transform: scale(1.25);
+  }
+  45% {
+    transform: scale(1.14);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heartbeat.online svg {
+    animation: none;
+  }
+}
+.actions-menu {
+  position: relative;
+}
+.actions-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.actions-trigger.active {
+  border-color: var(--brand-accent, #12b8a6);
+}
+.actions-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  display: grid;
+  gap: 8px;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid #dce6e8;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 40px #18343d2e;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.actions-popover > button,
+.actions-popover > a {
+  width: 100%;
+  text-align: left;
+}
+.actions-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #547078;
+  font-size: 12px;
+}
+.actions-sheet .actions-refresh {
+  padding: 6px 4px;
+  font-size: 15px;
+}
+.bottom-fab-slot {
+  display: contents;
+}
+/* A narrow card keeps its buttons inside and its round status light round. */
+.dashboard-widget.sized {
+  container-type: inline-size;
+}
+.widget-head > div:nth-child(2) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.widget-actions {
+  flex-shrink: 0;
+}
+.status-orb {
+  flex-shrink: 0;
+}
+.dashboard-widget.sized .hero-value {
+  font-size: clamp(24px, 15cqi, 42px);
+  overflow-wrap: anywhere;
+}
+@container (max-width: 250px) {
+  .widget-actions {
+    gap: 4px;
+  }
+  .widget-actions .icon-button {
+    width: 28px;
+    height: 28px;
+  }
+}
+@media (max-width: 700px) {
+  .topbar-actions {
+    display: none;
+  }
+  .equipment-head strong {
+    font-size: 15px;
+  }
+  .bottom-navigation:has(.bottom-fab) {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .bottom-fab {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding: 0 2px 5px;
+    border: 0;
+    background: transparent;
+    color: var(--brand-accent, #0a8f80);
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+  .bottom-navigation .bottom-fab > span {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    margin-top: -24px;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    background: var(--brand-accent, #12b8a6);
+    color: #fff;
+    box-shadow: 0 8px 20px #0a8f8066;
+  }
+  /* Phones stack the cards in the order the desktop grid shows them. */
+  .dashboard-widget.sized {
+    order: var(--stack-order, 0);
   }
 }

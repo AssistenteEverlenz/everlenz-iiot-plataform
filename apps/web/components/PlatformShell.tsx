@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { NavIcon, type NavIconName } from './NavIcon';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -30,6 +30,19 @@ interface PlatformContextValue {
   branding: Branding;
   refreshSession: () => Promise<void>;
   refreshBranding: () => Promise<void>;
+  /** Places in the shell a page can fill through a portal (see PageSlots). */
+  slots: PageSlots;
+}
+
+/**
+ * The dashboard puts its equipment in the top bar and its actions in a button there (desktop)
+ * or a highlighted button in the bottom bar (phones). Other pages leave them empty and the
+ * shell shows its default top bar.
+ */
+export interface PageSlots {
+  header: HTMLElement | null;
+  actions: HTMLElement | null;
+  fab: HTMLElement | null;
 }
 
 const defaultBranding: Branding = {
@@ -58,6 +71,13 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
+  const [fabSlot, setFabSlot] = useState<HTMLElement | null>(null);
+  const slots = useMemo(
+    () => ({ header: headerSlot, actions: actionsSlot, fab: fabSlot }),
+    [headerSlot, actionsSlot, fabSlot],
+  );
 
   async function refreshSession() {
     const response = await fetch('/api/auth/session', { cache: 'no-store' });
@@ -153,7 +173,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
 
   const sidebarIsCollapsed = collapsed && !sidebarHovered;
   return (
-    <PlatformContext.Provider value={{ ...session, branding, refreshSession, refreshBranding }}>
+    <PlatformContext.Provider
+      value={{ ...session, branding, refreshSession, refreshBranding, slots }}
+    >
       <div
         className={`platform-shell ${sidebarIsCollapsed ? 'sidebar-collapsed' : ''}`}
         style={style}
@@ -200,26 +222,33 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
         </aside>
         <main className="platform-main">
           <header className="platform-topbar">
-            <span>PLATAFORMA IIoT</span>
+            <div className="topbar-page" ref={setHeaderSlot} />
+            <span className="topbar-default">PLATAFORMA IIoT</span>
             <div className="topbar-user">
-              <span className="live-dot" /> Dados em tempo real <b>{session.user.fullName}</b>
-              <ThemeToggle />
+              <span className="topbar-default">
+                <span className="live-dot" /> Dados em tempo real
+              </span>
+              <b>{session.user.fullName}</b>
+              <span className="topbar-actions" ref={setActionsSlot} />
+              <span className="topbar-default">
+                <ThemeToggle />
+              </span>
             </div>
           </header>
           {children}
         </main>
         <nav className="bottom-navigation">
-          {navigation.map((item) => (
-            <Link
-              key={item.href}
-              className={active(pathname, item.href) ? 'active' : ''}
-              href={item.href}
-            >
-              <span>
-                <NavIcon name={item.icon} />
-              </span>
-              {item.short}
-            </Link>
+          {navigation.map((item, index) => (
+            <Fragment key={item.href}>
+              {/* Between Painéis and Ativos: the page's highlighted action button, if any. */}
+              {index === 2 && <span className="bottom-fab-slot" ref={setFabSlot} />}
+              <Link className={active(pathname, item.href) ? 'active' : ''} href={item.href}>
+                <span>
+                  <NavIcon name={item.icon} />
+                </span>
+                {item.short}
+              </Link>
+            </Fragment>
           ))}
           <button className={mobileMenu ? 'active' : ''} onClick={() => setMobileMenu(!mobileMenu)}>
             <span>•••</span>Mais

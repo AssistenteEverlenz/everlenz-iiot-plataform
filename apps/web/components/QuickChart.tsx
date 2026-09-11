@@ -190,9 +190,9 @@ export function valueLabel(
 // ---------- Donut ----------
 // Layout drawn by the user: coloured bars on the left, one per item, with a large number, the
 // product, the amount and the share; "Outros" (the thin slices) grows to list its products. On
-// the right a thin ring with the numbers on its segments around a pale disc with an inner shadow,
-// split into sectors that carry the shares in large light grey type. The ring follows the card
-// height; the bars keep their natural height and scroll when they do not fit.
+// the right a thick ring with the numbers on its segments around a pale disc with an inner
+// shadow, split into sectors that carry the shares in large light grey type. The ring follows
+// the card height; the bars scale down to fit the room left to them instead of scrolling.
 
 interface DonutMember {
   name: string;
@@ -267,10 +267,32 @@ function DonutChart({
   const geometry =
     size.width > 0 && size.height > 0 ? layoutDonut(slices, size.width, size.height) : null;
 
+  // The bars fit the card instead of scrolling: numbers, text and spacing shrink together
+  // (down to a floor that stays legible) and grow back when the card has room again.
+  const [keyBox, setKeyBox] = useState<HTMLDivElement | null>(null);
+  const [keyScale, setKeyScale] = useState(1);
+  useEffect(() => {
+    const list = keyBox?.firstElementChild;
+    if (!keyBox || !(list instanceof HTMLElement)) return;
+    const fit = () => {
+      const room = keyBox.clientHeight;
+      const needed = list.offsetHeight;
+      if (!room || !needed) return;
+      setKeyScale((current) => {
+        const next = Math.round(Math.max(0.5, Math.min(1, (current * room) / needed)) * 100) / 100;
+        return Math.abs(next - current) < 0.02 ? current : next;
+      });
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(keyBox);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [keyBox]);
+
   return (
     <div className="quick-donut-chart">
-      <div className="donut-key-scroll">
-        <ol className="donut-key">
+      <div className="donut-key-scroll" ref={setKeyBox}>
+        <ol className="donut-key" style={{ '--key-scale': keyScale } as React.CSSProperties}>
           {slices.map((slice, index) => (
             <li key={slice.name} style={{ background: slice.color, color: textOn(slice.color) }}>
               <b>{badgeNumber(index)}</b>
@@ -481,6 +503,8 @@ export function QuickChart({
       }))
     : products.map((product) => ({ label: product.product_code, value: product.value }));
   const barColors = byDay ? bars.map(() => accent) : colors;
+  const angledTicks =
+    !horizontal && (bars.length > 4 || bars.some((bar) => String(bar.label).length > 9));
   const empty = donut ? !products.length : !bars.some((bar) => bar.value > 0);
   const changeText =
     change == null ? '—' : `${change >= 0 ? '▲' : '▼'} ${format(Math.abs(change), 1)}%`;
@@ -510,7 +534,8 @@ export function QuickChart({
                   }))
                 : undefined,
           }))}
-          formatValue={(value) => `${amount(value)} ${unit}`.trim()}
+          // A count with no unit on its variable still reads as units: "50 uni".
+          formatValue={(value) => `${amount(value)} ${unit || 'uni'}`}
           tooltip={tooltip}
         />
       ) : (
@@ -572,7 +597,14 @@ export function QuickChart({
                   type={horizontal ? 'number' : 'category'}
                   dataKey={horizontal ? undefined : 'label'}
                   hide={horizontal}
-                  tick={{ fontSize: 10, fill: '#71868d' }}
+                  // Many columns leave each name less room than it needs: the names then lean
+                  // at an angle instead of running into each other.
+                  tick={
+                    angledTicks
+                      ? { fontSize: 10, fill: '#71868d', angle: -35, textAnchor: 'end' }
+                      : { fontSize: 10, fill: '#71868d' }
+                  }
+                  height={angledTicks ? 58 : 30}
                   axisLine={false}
                   tickLine={false}
                   interval={0}
