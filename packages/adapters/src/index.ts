@@ -123,6 +123,10 @@ export const adapters: Record<string, MqttAdapter> = {
   generic: new GenericJsonAdapter(),
   haiwell: new HaiwellAdapter(),
   weintek: new WeintekAdapter(),
+  // Delta DIAScreen "JSON (General)" is the same layout (DIAScreen manual V1.6.0, MQTT
+  // Settings: { "d": { "A1": [0] }, "ts": "2024-06-13 15:20:47" }), only with a space
+  // before the time; the Weintek reader already covers it.
+  delta: new WeintekAdapter(),
 };
 
 export function matchesTopic(pattern: string, topic: string): boolean {

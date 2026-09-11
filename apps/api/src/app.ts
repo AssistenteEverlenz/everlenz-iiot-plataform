@@ -118,10 +118,11 @@ const hmiModels: Record<string, string[]> = {
     'DOP-3S10S3E2',
   ],
 };
-/** Payload reader per manufacturer; Delta stays generic until a real capture defines it. */
+/** Payload reader per manufacturer. */
 function adapterFor(manufacturer: string) {
   if (manufacturer === 'Haiwell') return 'haiwell';
   if (manufacturer === 'Weintek') return 'weintek';
+  if (manufacturer === 'Delta') return 'delta';
   return 'generic';
 }
 function checkRange(q: { from?: string; to?: string }) {

@@ -6,6 +6,7 @@ import {
   matchesTopic,
   UnknownAdapter,
   WeintekAdapter,
+  adapters,
 } from '../packages/adapters/src/index.js';
 import {
   convertTag,
@@ -70,6 +71,29 @@ describe('WeintekAdapter', () => {
     expect(samples[0].quality).toBe('timestamp_fallback');
     expect(adapter.canHandle(message({ values: { n: 1 } }))).toBe(false);
     expect(adapter.canHandle(message({ _terminalTime: 'x', _groupName: 'g', n: '1' }))).toBe(false);
+  });
+});
+describe('Delta DIAScreen JSON (General)', () => {
+  it('reads the layout of the DIAScreen manual, with a space before the time', () => {
+    // DIAScreen V1.6.0 manual, MQTT Settings: "d" top level, array values, "ts" with a space.
+    const payload = { d: { QuantidadePaletes: [5], B1: [1] }, ts: '2026-01-01 11:59:58' };
+    const delta = adapters.delta;
+    expect(delta.canHandle(message(payload))).toBe(true);
+    const samples = delta.parse(message(payload));
+    expect(samples.map((s) => [s.key, s.value])).toEqual([
+      ['QuantidadePaletes', 5],
+      ['B1', 1],
+    ]);
+    expect(samples[0].timestamp.toISOString()).toBe('2026-01-01T11:59:58.000Z');
+    expect(samples[0].quality).toBe('good');
+  });
+  it('takes the arrival time when the HMI sends its local time', () => {
+    // A DOP HMI in Brazil stamps local time (UTC-3): three hours off the arrival time.
+    const samples = adapters.delta.parse(
+      message({ d: { QuantidadePaletes: [5] }, ts: '2026-01-01 09:00:00' }),
+    );
+    expect(samples[0].timestamp.toISOString()).toBe('2026-01-01T12:00:00.000Z');
+    expect(samples[0].quality).toBe('timestamp_fallback');
   });
 });
 describe('GenericJsonAdapter', () => {
