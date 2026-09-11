@@ -31,10 +31,19 @@ export class GenericJsonAdapter implements MqttAdapter {
     }));
   }
 }
-// HAIWELL_FORMAT_HYPOTHESIS: not a verified A7 protocol. Replace only after a real RAW capture.
+// Haiwell publishes flat JSON with every value as a scalar, in one of two layouts depending on
+// the project's MQTT settings (both captured from a real A7):
+//   - cloud layout: { "_terminalTime": "...", "_groupName": "group1", "<var>": "12.1", ... }
+//   - plain layout: { "<var>": "12.1", ..., "TimeStamp": "2026-09-11T10:20:43-03:00" }
+// Changing the settings on the HMI switches the layout, so both are read.
+const HAIWELL_METADATA = new Set(['TimeStamp']);
 const haiwellSchema = z
   .record(z.string(), scalar)
-  .refine((v) => typeof v._terminalTime === 'string' && typeof v._groupName === 'string');
+  .refine(
+    (v) =>
+      (typeof v._terminalTime === 'string' && typeof v._groupName === 'string') ||
+      typeof v.TimeStamp === 'string',
+  );
 export class HaiwellAdapter implements MqttAdapter {
   name = 'HaiwellAdapter';
   canHandle(message: MqttMessage) {
@@ -42,11 +51,13 @@ export class HaiwellAdapter implements MqttAdapter {
   }
   parse(message: MqttMessage) {
     const data = haiwellSchema.parse(decodePayload(message.payload).json);
-    // Until device timezone/format is verified, only accept timestamps with an explicit timezone.
-    const validTime = z.iso.datetime({ offset: true }).safeParse(data._terminalTime);
+    // Only timestamps with an explicit timezone are trusted; anything else takes arrival time.
+    const validTime = z.iso
+      .datetime({ offset: true })
+      .safeParse(data._terminalTime ?? data.TimeStamp);
     const timestamp = validTime.success ? new Date(validTime.data) : message.receivedAt;
     return Object.entries(data)
-      .filter(([key]) => !key.startsWith('_'))
+      .filter(([key]) => !key.startsWith('_') && !HAIWELL_METADATA.has(key))
       .map(([key, value]) => ({
         key,
         value,

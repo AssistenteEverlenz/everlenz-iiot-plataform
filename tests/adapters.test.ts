@@ -146,6 +146,27 @@ describe('HaiwellAdapter / HAIWELL_FORMAT_HYPOTHESIS', () => {
       quality: 'timestamp_fallback',
     });
   });
+  it('reads the plain layout with TimeStamp, as captured from a real A7', () => {
+    const payload = {
+      QuantidadeBlocos: '0',
+      TimeStamp: '2026-09-11T10:20:43-03:00',
+      StatusLinha: '0',
+      TonHora: '12.100000',
+      QuantidadePaletes: '0',
+      NomeReceita: '9x19x19',
+    };
+    expect(adapter.canHandle(message(payload))).toBe(true);
+    const samples = adapter.parse(message(payload));
+    expect(samples.map((s) => s.key)).toEqual([
+      'QuantidadeBlocos',
+      'StatusLinha',
+      'TonHora',
+      'QuantidadePaletes',
+      'NomeReceita',
+    ]);
+    expect(samples[0].timestamp.toISOString()).toBe('2026-09-11T13:20:43.000Z');
+    expect(samples[0].quality).toBe('good');
+  });
   it('does not guess arbitrary JSON', () =>
     expect(adapter.canHandle(message({ foo: 'bar' }))).toBe(false));
   it('unknown fallback returns no telemetry', () =>
