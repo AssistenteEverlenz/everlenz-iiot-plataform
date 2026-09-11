@@ -48,27 +48,6 @@ services:
       start_period: 15s
     restart: unless-stopped
     stop_grace_period: 30s
-  # Compatibility port 8884 for HMIs limited to TLS 1.0/1.1 (see infrastructure/mqtt-legacy).
-  # The broker still authenticates every client and applies the ACL; 8883 stays TLS 1.2+.
-  mqtt-legacy:
-    build: { context: ., dockerfile: infrastructure/mqtt-legacy/Dockerfile }
-    ports:
-      - '${MQTT_LEGACY_TLS_BIND_ADDRESS:-0.0.0.0}:${MQTT_LEGACY_TLS_PORT:-8884}:8884'
-    volumes:
-      - type: bind
-        source: /data/coolify/certificates/mqtt.everlenz.com.br
-        target: /certs
-        read_only: true
-        bind: { create_host_path: false }
-    depends_on:
-      mosquitto: { condition: service_healthy }
-    healthcheck:
-      test: ['CMD-SHELL', 'nc -z 127.0.0.1 8884']
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    restart: unless-stopped
   ingestor:
     build: { context: ., target: ingestor }
     init: true
