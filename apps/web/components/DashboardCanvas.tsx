@@ -1062,7 +1062,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           (widgetType === 'oee' ? 'OEE' : 'Pareto de perdas'),
         width,
         config: {
-          color: '#12b8a6',
+          // New cards start in the White label primary colour; existing cards keep their own.
+          color: branding.primary_color,
           min: 0,
           max: 100,
           decimals: 1,

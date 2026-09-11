@@ -3293,51 +3293,29 @@ footer {
   height: 250px;
   min-height: 0;
 }
-/* The donut names its products on the ring itself, so it takes the whole card. */
+/* Donut report (infographic layout): a ring with a numbered badge on each slice beside a
+   numbered table; the two share numbers and colours. One column on narrow cards and phones. */
 .quick-donut-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 320px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
   min-height: 0;
+}
+@container (min-width: 560px) {
+  .quick-donut-chart {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    align-items: center;
+  }
 }
 .donut-ring {
   position: relative;
-  flex: 1;
+  height: 280px;
   min-height: 180px;
 }
-/* Narrow cards and phones: the names sit under the ring as a compact list of chips. */
-.donut-chips {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px 16px;
+.quick-donut-chart .quick-legend-scroll {
+  height: auto;
+  max-height: 300px;
   overflow: auto;
-}
-.donut-chips li {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  column-gap: 8px;
-  align-items: center;
-}
-.donut-chips i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-}
-.donut-chips strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12.5px;
-  color: #182e38;
-}
-.donut-chips span {
-  grid-column: 2;
-  font-size: 11.5px;
-  color: #71868d;
 }
 .donut-labels {
   position: absolute;
@@ -3345,21 +3323,49 @@ footer {
   overflow: visible;
   pointer-events: none;
 }
-.donut-leader {
-  stroke-width: 1.2;
-}
-.donut-label-name {
-  fill: #182e38;
-  font-size: 12.5px;
-  font-weight: 700;
-}
-.donut-label-value {
-  fill: #71868d;
-  font-size: 11.5px;
-}
 .donut-label-share {
   font-size: 12px;
   font-weight: 700;
+}
+/* The ring on the card ground, so neighbouring badges stay apart. */
+.donut-badge {
+  stroke: #fff;
+  stroke-width: 2.5;
+}
+.donut-badge-number {
+  font-size: 10px;
+  font-weight: 700;
+}
+.quick-legend > li.has-members {
+  align-items: start;
+}
+/* The products folded into "Outros", listed under it. */
+.quick-legend-members {
+  grid-column: 2 / -1;
+  list-style: none;
+  margin: -4px 0 0;
+  padding: 6px 0 0 10px;
+  border-left: 2px solid #e1e9eb;
+  display: grid;
+  gap: 3px;
+}
+.quick-legend-members li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  font-size: 11.5px;
+  color: #4d6770;
+}
+.quick-legend-members li em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+}
+.quick-legend-members li span {
+  color: #93a7ad;
+  white-space: nowrap;
 }
 .quick-donut-center {
   position: absolute;
@@ -3388,7 +3394,7 @@ footer {
   font-size: 11px;
   font-weight: 700;
 }
-.quick-donut-center.tight span,
+/* A small ring keeps only the label, the total and the unit in its hole. */
 .quick-donut-center.tight em {
   display: none;
 }
@@ -3408,7 +3414,8 @@ footer {
   display: grid;
   gap: 12px;
 }
-.quick-legend li {
+/* Direct rows only: the product list under "Outros" has its own layout. */
+.quick-legend > li {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;

@@ -738,7 +738,9 @@
     background: linear-gradient(145deg, var(--brand-primary, #0b2028), #16414b);
   }
   :root[data-theme='dark'] .login-grid {
-    background-image: linear-gradient(#12191c 1px, transparent 1px), linear-gradient(90deg, #12191c 1px, transparent 1px);
+    background-image:
+      linear-gradient(#12191c 1px, transparent 1px),
+      linear-gradient(90deg, #12191c 1px, transparent 1px);
   }
   :root[data-theme='dark'] .login-message .eyebrow {
     color: #7ad2c6;
@@ -1001,17 +1003,17 @@
   :root[data-theme='dark'] .quick-kpi > small {
     color: #93a7ad;
   }
-  :root[data-theme='dark'] .donut-chips strong {
-    color: #d4dcdf;
+  :root[data-theme='dark'] .donut-badge {
+    stroke: #12191c;
   }
-  :root[data-theme='dark'] .donut-chips span {
-    color: #8d9ea3;
+  :root[data-theme='dark'] .quick-legend-members {
+    border-left: 2px solid #212f34;
   }
-  :root[data-theme='dark'] .donut-label-name {
-    fill: #d4dcdf;
+  :root[data-theme='dark'] .quick-legend-members li {
+    color: #a5b6bc;
   }
-  :root[data-theme='dark'] .donut-label-value {
-    fill: #8d9ea3;
+  :root[data-theme='dark'] .quick-legend-members li span {
+    color: #93a7ad;
   }
   :root[data-theme='dark'] .quick-donut-center span {
     color: #8d9ea3;
@@ -1027,8 +1029,9 @@
   }
   :root[data-theme='dark'] .quick-badge {
     color: #fff;
-    box-shadow: 0 0 0 3px #12191c,
-    0 4px 10px rgba(11, 32, 40, 0.14);
+    box-shadow:
+      0 0 0 3px #12191c,
+      0 4px 10px rgba(11, 32, 40, 0.14);
   }
   :root[data-theme='dark'] .quick-legend-name strong {
     color: #d4dcdf;
@@ -1063,16 +1066,16 @@
   }
   :root[data-theme='dark'] .resize-handle {
     background: linear-gradient(
-    135deg,
-    transparent 48%,
-    #45626b 48%,
-    #45626b 56%,
-    transparent 56%,
-    transparent 68%,
-    #45626b 68%,
-    #45626b 76%,
-    transparent 76%
-  );
+      135deg,
+      transparent 48%,
+      #45626b 48%,
+      #45626b 56%,
+      transparent 56%,
+      transparent 68%,
+      #45626b 68%,
+      #45626b 76%,
+      transparent 76%
+    );
   }
   :root[data-theme='dark'] .dashboard-widget.resizing {
     outline: 2px dashed #12b8a6;
