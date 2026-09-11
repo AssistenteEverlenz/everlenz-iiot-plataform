@@ -16,5 +16,7 @@ export function proxy(request: NextRequest) {
 // The tab and touch icons load before any login, including on the login page itself: without
 // these exclusions they were redirected to /login and the tab showed no logo.
 export const config = {
-  matcher: ['/((?!api|health|_next/static|_next/image|favicon.ico|icon.png|apple-icon.png).*)'],
+  matcher: [
+    '/((?!api|health|_next/static|_next/image|favicon.ico|brand-icon|everlenz-icon.png|everlenz-apple-icon.png).*)',
+  ],
 };

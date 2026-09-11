@@ -6,6 +6,8 @@ import { PlatformShell } from '../components/PlatformShell';
 export const metadata = {
   title: 'Everlenz • IIoT',
   description: 'Monitoramento industrial MQTT',
+  // The white-label logo (app/brand-icon/route.ts), falling back to the Everlenz icon.
+  icons: { icon: '/brand-icon', apple: '/brand-icon' },
 };
 
 // Applies the saved theme before the first paint, so a dark-theme user never sees a flash of
