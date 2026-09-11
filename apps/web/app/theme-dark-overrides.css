@@ -10,6 +10,16 @@
     background: #091317;
   }
 
+  /* Credential rows and the missing-variable warning. */
+  :root[data-theme='dark'] .credential-row .copy-cell {
+    border-bottom: 1px solid #1d292e;
+  }
+  :root[data-theme='dark'] .widget-missing {
+    background: #302710;
+    border-color: #6d5a26;
+    color: #dec587;
+  }
+
   /* Charts on the platform pages. The TV board has its own dark palette and is left alone. */
   :root[data-theme='dark'] .platform-main .recharts-cartesian-grid line {
     stroke: #22363d;

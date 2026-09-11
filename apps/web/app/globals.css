@@ -570,6 +570,36 @@ footer {
 .commissioning-card code {
   overflow-wrap: anywhere;
 }
+/* One row per credential: label, value and a copy button revealed by hovering the row. */
+.credential-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+}
+.credential-row .copy-cell {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-bottom: 1px solid #e9eef0;
+}
+.copy-button {
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.credential-row:hover .copy-button,
+.credential-row:focus-within .copy-button,
+.copy-button.copied {
+  opacity: 1;
+}
+@media (hover: none) {
+  .copy-button {
+    opacity: 1;
+  }
+}
 .dashboard-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -839,6 +869,35 @@ footer {
 }
 .model-placeholder strong {
   color: #31515a;
+}
+/* A card whose variable the HMI stopped publishing shows only the warning, not stale data. */
+.dashboard-widget.variable-missing
+  > :not(.widget-head):not(.widget-missing):not(.resize-handle):not(.resize-badge) {
+  display: none;
+}
+.widget-missing {
+  min-height: 125px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px dashed #e0b24a;
+  border-radius: 10px;
+  background: #fff8e7;
+  color: #725817;
+}
+.widget-missing > span {
+  font-size: 22px;
+  line-height: 1;
+}
+.widget-missing small {
+  max-width: 320px;
+  font-size: 11px;
+  line-height: 1.5;
 }
 .model-placeholder span {
   max-width: 330px;
@@ -1168,6 +1227,12 @@ footer {
   .commissioning-card {
     grid-template-columns: 1fr;
   }
+  .credential-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .credential-row > span {
+    grid-column: 1 / -1;
+  }
   .device-code-list div {
     grid-template-columns: 1fr;
   }
@@ -1176,6 +1241,9 @@ footer {
   }
 }
 @media print {
+  .copy-button {
+    display: none;
+  }
   aside,
   body > main > header,
   .dashboard-toolbar .toolbar-actions,

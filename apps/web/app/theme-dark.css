@@ -209,6 +209,9 @@
     background: #172024;
     color: #8d9ea3;
   }
+  :root[data-theme='dark'] .credential-row .copy-cell {
+    border-bottom: 1px solid #1d292e;
+  }
   :root[data-theme='dark'] .dashboard-list-card {
     background: #12191c;
     border: 1px solid #233237;
@@ -311,6 +314,11 @@
   }
   :root[data-theme='dark'] .model-placeholder strong {
     color: #bac8cc;
+  }
+  :root[data-theme='dark'] .widget-missing {
+    border: 1px dashed #e0b24a;
+    background: #302710;
+    color: #dec587;
   }
   :root[data-theme='dark'] .gauge::after {
     background: #12191c;

@@ -354,7 +354,10 @@ export async function createApp(
         `SELECT COALESCE(c.id,t.id) id,COALESCE(c.key,t.key) key,
           COALESCE(t.data_type,c.inferred_type) data_type,t.name,t.unit,t.id tag_id,
           c.sample_value,c.first_seen_at,c.last_seen_at,COALESCE(c.occurrences,0)::int occurrences,
-          (t.id IS NOT NULL) configured
+          (t.id IS NOT NULL) configured,
+          -- The catalog keeps every key ever published. A key is still published when it was
+          -- seen close to the device's newest publication; keys the HMI stopped sending fall out.
+          COALESCE(c.last_seen_at >= max(c.last_seen_at) OVER () - interval '10 minutes',false) present
          FROM device_signal_catalog c FULL OUTER JOIN tags t
           ON t.tenant_id=c.tenant_id AND t.device_id=c.device_id AND t.key=c.key
          WHERE COALESCE(c.tenant_id,t.tenant_id)=$1 AND COALESCE(c.device_id,t.device_id)=$2

@@ -240,9 +240,12 @@ function Widget({
   dropTarget,
   dragEnter,
   dragEnd,
+  missing = false,
 }: {
   widget: DashboardWidget;
   latest?: Sample;
+  /** The widget's variable is no longer in the device's publications. */
+  missing?: boolean;
   history: Sample[];
   dashboardId: string;
   counter?: CounterValue;
@@ -436,7 +439,7 @@ function Widget({
       onDragEnter={dragEnter}
       onDragEnd={dragEnd}
       onDrop={drop}
-      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${dropTarget ? 'drop-target' : ''} ${currentRange ? 'alarm-active' : ''}`}
+      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${dropTarget ? 'drop-target' : ''} ${currentRange && !missing ? 'alarm-active' : ''} ${missing ? 'variable-missing' : ''}`}
       style={
         {
           '--accent': activeColor,
@@ -462,6 +465,16 @@ function Widget({
           </button>
         </div>
       </div>
+      {missing && (
+        <div className="widget-missing" role="alert">
+          <span aria-hidden="true">⚠</span>
+          <strong>Variável não encontrada</strong>
+          <small>
+            “{widget.key ?? widget.tag_name ?? widget.title}” não está nas publicações mais recentes
+            do equipamento. Confira a IHM ou edite este indicador.
+          </small>
+        </div>
+      )}
       {currentRange && currentRange.priority > 0 && (
         <div
           className="widget-alarm-label"
@@ -1011,6 +1024,15 @@ export function DashboardCanvas({ id }: { id: string }) {
     () => new Map((latest.data ?? []).map((sample) => [sample.tag_id, sample])),
     [latest.data],
   );
+  const publishedTagIds = useMemo(
+    () =>
+      new Set(
+        (signals.data ?? [])
+          .filter((signal) => signal.present && signal.tag_id)
+          .map((signal) => signal.tag_id),
+      ),
+    [signals.data],
+  );
   async function addWidget(event: React.FormEvent) {
     event.preventDefault();
     if (!dashboard.data || !deviceId) return;
@@ -1304,6 +1326,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             key={widget.id}
             widget={widget}
             latest={widget.tag_id ? byTag.get(widget.tag_id) : undefined}
+            missing={Boolean(widget.tag_id && signals.data && !publishedTagIds.has(widget.tag_id))}
             history={history.data ?? []}
             dashboardId={id}
             counter={counters.data?.find((item) => item.widget_id === widget.id)}
@@ -1371,12 +1394,20 @@ export function DashboardCanvas({ id }: { id: string }) {
                   }}
                 >
                   <option value="">Indicador calculado ou selecione uma variável…</option>
-                  {signals.data?.map((signal) => (
-                    <option key={signal.id} value={signal.id}>
-                      {signal.key} · {signal.data_type}
-                      {signal.configured ? ' · configurada' : ' · descoberta agora'}
-                    </option>
-                  ))}
+                  {/* Keys the HMI no longer publishes are left out; configured ones stay listed
+                      but cannot be picked, so no new card is built on a dead variable. */}
+                  {signals.data
+                    ?.filter((signal) => signal.present || signal.configured)
+                    .map((signal) => (
+                      <option key={signal.id} value={signal.id} disabled={!signal.present}>
+                        {signal.key} · {signal.data_type}
+                        {!signal.present
+                          ? ' · não publicada'
+                          : signal.configured
+                            ? ' · configurada'
+                            : ' · descoberta agora'}
+                      </option>
+                    ))}
                 </select>
               </label>
               <div className="field full-field">

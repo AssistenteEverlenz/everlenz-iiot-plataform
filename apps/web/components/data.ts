@@ -64,6 +64,8 @@ export interface Signal {
   last_seen_at: string | null;
   occurrences: number;
   configured: boolean;
+  /** Seen in the device's latest publications; false once the HMI stops sending the key. */
+  present: boolean;
 }
 export interface DashboardWidget {
   id: string;

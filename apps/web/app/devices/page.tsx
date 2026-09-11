@@ -522,20 +522,62 @@ function ConnectionCard({
 }) {
   return (
     <div className="commissioning-card compact-credentials">
-      <span>Referência do cliente</span>
-      <strong>{connection.clientReference}</strong>
-      <span>Código Everlenz</span>
-      <strong>{deviceCode}</strong>
-      <span>Broker TLS</span>
-      <code>
-        {connection.host}:{connection.port}
-      </code>
-      <span>Tópico</span>
-      <code>{connection.topic}</code>
-      <span>User name</span>
-      <code>{connection.username}</code>
-      <span>Password</span>
-      <code>{connection.password ?? 'Não armazenada — gere uma nova senha'}</code>
+      <CredentialRow label="Referência do cliente" value={connection.clientReference} plain />
+      <CredentialRow label="Código Everlenz" value={deviceCode} plain />
+      <CredentialRow label="Broker TLS" value={`${connection.host}:${connection.port}`} />
+      <CredentialRow label="Tópico" value={connection.topic} />
+      <CredentialRow label="User name" value={connection.username} />
+      {connection.password ? (
+        <CredentialRow label="Password" value={connection.password} />
+      ) : (
+        <CredentialRow
+          label="Password"
+          value="Não armazenada — gere uma nova senha"
+          copyable={false}
+        />
+      )}
+    </div>
+  );
+}
+// Hovering anywhere on the row reveals its copy button; touch screens always show it.
+function CredentialRow({
+  label,
+  value,
+  plain = false,
+  copyable = true,
+}: {
+  label: string;
+  value: string;
+  plain?: boolean;
+  copyable?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return (
+    <div className="credential-row">
+      <span>{label}</span>
+      {plain ? <strong>{value}</strong> : <code>{value}</code>}
+      <div className="copy-cell">
+        {copyable && (
+          <button
+            type="button"
+            className={`copy-button ${copied ? 'copied' : ''}`}
+            onClick={() => void copy()}
+            aria-label={`Copiar ${label}`}
+            title={`Copiar ${label}`}
+          >
+            {copied ? '✓ Copiado' : '⧉ Copiar'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

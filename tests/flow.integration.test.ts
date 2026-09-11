@@ -481,6 +481,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       const signals = (await api.inject(`/api/devices/${HAIWELL}/signals`)).json() as {
         key: string;
         configured: boolean;
+        present: boolean;
         tag_id: string;
       }[];
       expect(signals.map((signal) => signal.key)).toEqual(
@@ -491,8 +492,28 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
           .filter((signal) =>
             ['temperatura', 'corrente_motor', 'velocidade', 'status'].includes(signal.key),
           )
-          .every((signal) => signal.configured),
+          .every((signal) => signal.configured && signal.present),
       ).toBe(true);
+      // A key the HMI stopped publishing stays in the catalog but is reported as not present.
+      await db.query(
+        `UPDATE device_signal_catalog SET last_seen_at=last_seen_at-interval '1 day'
+         WHERE device_id=$1 AND key='status'`,
+        [HAIWELL],
+      );
+      try {
+        const stale = (await api.inject(`/api/devices/${HAIWELL}/signals`)).json() as {
+          key: string;
+          present: boolean;
+        }[];
+        expect(stale.find((signal) => signal.key === 'status')?.present).toBe(false);
+        expect(stale.find((signal) => signal.key === 'temperatura')?.present).toBe(true);
+      } finally {
+        await db.query(
+          `UPDATE device_signal_catalog SET last_seen_at=last_seen_at+interval '1 day'
+           WHERE device_id=$1 AND key='status'`,
+          [HAIWELL],
+        );
+      }
 
       const dashboards = (await api.inject('/api/dashboards')).json() as { id: string }[];
       expect(dashboards).toHaveLength(1);
