@@ -1717,11 +1717,16 @@ export function DashboardCanvas({ id }: { id: string }) {
                       onChange={(event) => setProductKey(event.target.value)}
                     >
                       <option value="">A IHM não envia (usar produto padrão)</option>
-                      {signals.data?.map((signal) => (
-                        <option value={signal.key} key={signal.id}>
-                          {signal.key}
-                        </option>
-                      ))}
+                      {/* Only keys the HMI still publishes; the saved one stays visible, marked,
+                          so a stale choice is not silently dropped from the form. */}
+                      {signals.data
+                        ?.filter((signal) => signal.present || signal.key === productKey)
+                        .map((signal) => (
+                          <option value={signal.key} key={signal.id}>
+                            {signal.key}
+                            {signal.present ? '' : ' · não publicada'}
+                          </option>
+                        ))}
                     </select>
                   </label>
                   <label className="field">
