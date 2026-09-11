@@ -1,0 +1,20 @@
+# Separate Coolify resource: compatibility MQTT TLS port 8884 for HMIs limited to TLS 1.0/1.1
+# (see infrastructure/mqtt-legacy). Kept out of docker-compose.production.yml on purpose: when a
+# service there restarts in a loop, Coolify stops the whole application, broker included. A
+# failure here stops only this proxy.
+#
+# Host network: nginx listens on the host's 8884 and reaches the broker on 127.0.0.1:1883,
+# which the main application publishes on the host loopback only. The broker still
+# authenticates every client and applies the ACL; 8883 stays TLS 1.2+.
+services:
+  mqtt-legacy:
+    build: { context: ., dockerfile: infrastructure/mqtt-legacy/Dockerfile }
+    network_mode: host
+    volumes:
+      - type: bind
+        source: /data/coolify/certificates/mqtt.everlenz.com.br
+        target: /certs
+        read_only: true
+        bind: { create_host_path: false }
+    # A broken start is not retried forever.
+    restart: on-failure:3
