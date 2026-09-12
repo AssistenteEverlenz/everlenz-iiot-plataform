@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { ActionModal } from '../../components/ActionModal';
 import { ProductionConfigModal } from '../../components/ProductionConfigModal';
+import { HmiCheckModal } from '../../components/HmiCheckModal';
 import { ShiftBoardView, type ShiftBoardResponse } from '../../components/ShiftBoard';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, usePoll, type Device } from '../../components/data';
@@ -363,6 +364,7 @@ function ProductionPage() {
   const [choosingColumns, setChoosingColumns] = useState(false);
   const [editingShifts, setEditingShifts] = useState(false);
   const [editingConfig, setEditingConfig] = useState(false);
+  const [checkingHmi, setCheckingHmi] = useState(false);
   // Row maintenance (master): partial snapshot, rebuild of automatic rows, removal.
   const [selected, setSelected] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<'delete' | 'recalculate' | null>(null);
@@ -503,6 +505,7 @@ function ProductionPage() {
           <div className="toolbar-actions">
             <button onClick={() => setEditingShifts(true)}>Turnos da fábrica</button>
             <button onClick={() => setEditingConfig(true)}>Configurar equipamento</button>
+            <button onClick={() => setCheckingHmi(true)}>Conferir com a IHM</button>
           </div>
         )}
       </div>
@@ -849,6 +852,15 @@ function ProductionPage() {
           confirmLabel="Recalcular"
           onConfirm={recalculate}
           onClose={() => setConfirming(null)}
+        />
+      )}
+      {checkingHmi && device && (
+        <HmiCheckModal
+          deviceId={device.id}
+          onClose={() => {
+            setCheckingHmi(false);
+            void reports.refresh();
+          }}
         />
       )}
       {detail && deviceId && (

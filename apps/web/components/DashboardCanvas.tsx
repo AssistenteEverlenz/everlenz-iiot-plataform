@@ -31,6 +31,7 @@ import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
 import { ShiftBoard } from './ShiftBoard';
 import { ProductionConfigModal } from './ProductionConfigModal';
+import { HmiCheckModal } from './HmiCheckModal';
 import { ClearHistoryModal } from './ClearHistoryModal';
 import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
@@ -1000,6 +1001,10 @@ export function DashboardCanvas({ id }: { id: string }) {
     deviceId: string;
     name: string;
   } | null>(null);
+  // "Conferir com a IHM" for the variable of the card being edited.
+  const [checkingHmi, setCheckingHmi] = useState<{ deviceId: string; tagId: string } | null>(
+    null,
+  );
   // Products of the widget being edited, so each one can get its own colour.
   const editingProducts = usePoll<Statistic[]>(
     editingWidget && quickTypes.has(editingWidget.widget_type)
@@ -1531,6 +1536,14 @@ export function DashboardCanvas({ id }: { id: string }) {
           </form>
         </div>
       )}
+      {checkingHmi && (
+        <HmiCheckModal
+          deviceId={checkingHmi.deviceId}
+          tagId={checkingHmi.tagId}
+          stacked
+          onClose={() => setCheckingHmi(null)}
+        />
+      )}
       {productionConfigFor && (
         <ProductionConfigModal
           deviceId={productionConfigFor.deviceId}
@@ -2043,6 +2056,21 @@ export function DashboardCanvas({ id }: { id: string }) {
               >
                 Excluir item
               </button>
+              {editingWidget.tag_id && editingWidget.data_type === 'number' && (
+                <button
+                  type="button"
+                  disabled={savingModal}
+                  title="Compara o que a IHM contou desde o último zeramento com o que a plataforma somou"
+                  onClick={() =>
+                    setCheckingHmi({
+                      deviceId: editingWidget.device_id,
+                      tagId: editingWidget.tag_id as string,
+                    })
+                  }
+                >
+                  Conferir com a IHM
+                </button>
+              )}
               {editingWidget.tag_id && (
                 <button
                   type="button"
