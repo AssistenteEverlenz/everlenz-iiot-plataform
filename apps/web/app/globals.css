@@ -6100,14 +6100,23 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tv3-pages {
+  align-items: center;
+  padding-right: 0.7vw;
+}
 .tv3-pages .tv3-dot {
+  flex: none;
+  align-self: center;
   width: 0.6vw;
   height: 0.6vw;
   min-width: 8px;
   min-height: 8px;
+  margin: 0;
   padding: 0;
+  border: 0;
   border-radius: 50%;
   background: #3a4b50;
+  line-height: 0;
 }
 .tv3-pages .tv3-dot.active {
   background: #12b8a6;

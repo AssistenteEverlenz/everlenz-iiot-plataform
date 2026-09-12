@@ -1781,6 +1781,7 @@
     color: #d6dfe2;
   }
   :root[data-theme='dark'] .tv3-pages .tv3-dot {
+    border: 0;
     background: #3a4b50;
   }
   :root[data-theme='dark'] .tv3-pages .tv3-dot.active {
