@@ -3,7 +3,7 @@ import { clientAddressHeaders, sessionCookie } from '../../../lib/session';
 import { originAllowed } from '../../../lib/origin';
 
 const allowed =
-  /^(?:health|overview|tenants|sites|devices(?:\/[0-9a-f-]+(?:\/(?:tags|latest|signals|statistics|mqtt-credential|production-context|production-settings|production-overview|hidden-products))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|counters|widgets(?:\/[0-9a-f-]+(?:\/reset-counter)?)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?)$/;
+  /^(?:health|overview|tenants|sites(?:\/[0-9a-f-]+\/shifts)?|devices(?:\/[0-9a-f-]+(?:\/(?:tags|latest|signals|statistics|mqtt-credential|production-context|production-settings|production-overview|hidden-products|legacy-attempts|legacy-allow|production-config|shift-board|shift-reports))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|counters|widgets(?:\/[0-9a-f-]+(?:\/reset-counter)?)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?)$/;
 
 async function forward(request: NextRequest, params: Promise<{ path: string[] }>) {
   const path = (await params).path.join('/');
@@ -48,6 +48,9 @@ export const GET = (request: NextRequest, context: { params: Promise<{ path: str
 export const POST = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
   forward(request, context.params);
 export const PATCH = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
+  forward(request, context.params);
+// Replacing a plant's whole shift calendar (sites/:id/shifts).
+export const PUT = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
   forward(request, context.params);
 export const DELETE = (request: NextRequest, context: { params: Promise<{ path: string[] }> }) =>
   forward(request, context.params);
