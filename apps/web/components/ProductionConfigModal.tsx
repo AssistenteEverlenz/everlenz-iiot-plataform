@@ -28,6 +28,7 @@ interface ProductionConfig {
   closing_minutes: number | null;
   target_metric: ProductionMetric | null;
   target_per_shift: number | null;
+  target_tag_id: string | null;
 }
 
 export function ProductionConfigModal({
@@ -54,6 +55,8 @@ export function ProductionConfigModal({
     weightKey: string;
     metric: ProductionMetric | '';
     target: string;
+    targetFromHmi: boolean;
+    targetKey: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -71,6 +74,8 @@ export function ProductionConfigModal({
       weightKey: signalFor(config.data.weight_tag_id),
       metric: config.data.target_metric ?? '',
       target: config.data.target_per_shift ? String(config.data.target_per_shift) : '',
+      targetFromHmi: Boolean(signalFor(config.data.target_tag_id)),
+      targetKey: signalFor(config.data.target_tag_id),
     });
   }, [config.data, signals.data, form]);
   const numeric =
@@ -101,14 +106,19 @@ export function ProductionConfigModal({
   }
   async function save() {
     if (!form) return;
+    if (form.metric && form.targetFromHmi && !form.targetKey) {
+      setError('Escolha a variável da meta na IHM.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      const [piecesTagId, palletsTagId, autoTagId, weightTagId] = await Promise.all([
+      const [piecesTagId, palletsTagId, autoTagId, weightTagId, targetTagId] = await Promise.all([
         tagIdFor(form.pieces),
         tagIdFor(form.pallets),
         tagIdFor(form.auto),
         tagIdFor(form.weightKey),
+        tagIdFor(form.metric && form.targetFromHmi ? form.targetKey : ''),
       ]);
       await mutate(`/devices/${deviceId}/production-config`, 'PATCH', {
         piecesTagId,
@@ -122,6 +132,7 @@ export function ProductionConfigModal({
         weightTagId,
         targetMetric: form.metric || null,
         targetPerShift: form.metric && form.target ? Number(form.target.replace(',', '.')) : null,
+        targetTagId,
       });
       onClose();
     } catch (reason) {
@@ -254,14 +265,42 @@ export function ProductionConfigModal({
               </select>
             </label>
             {form.metric && (
-              <label className="field">
-                Valor da meta por turno ({metricInfo[form.metric].unit})
-                <input
-                  inputMode="decimal"
-                  value={form.target}
-                  onChange={(event) => setForm({ ...form, target: event.target.value })}
-                />
-              </label>
+              <>
+                <label className="check-field full-field">
+                  <input
+                    type="checkbox"
+                    checked={form.targetFromHmi}
+                    onChange={(event) => setForm({ ...form, targetFromHmi: event.target.checked })}
+                  />
+                  A meta vem de uma variável da IHM (muda com o produto)
+                </label>
+                {form.targetFromHmi && (
+                  <label className="field">
+                    Variável da meta na IHM
+                    <select
+                      value={form.targetKey}
+                      onChange={(event) => setForm({ ...form, targetKey: event.target.value })}
+                    >
+                      <option value="">Escolha a variável</option>
+                      {numeric.map((signal) => (
+                        <option key={signal.id} value={signal.key}>
+                          {signal.key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="field">
+                  {form.targetFromHmi
+                    ? `Meta fixa por turno (${metricInfo[form.metric].unit}) — se a IHM não enviar`
+                    : `Valor da meta por turno (${metricInfo[form.metric].unit})`}
+                  <input
+                    inputMode="decimal"
+                    value={form.target}
+                    onChange={(event) => setForm({ ...form, target: event.target.value })}
+                  />
+                </label>
+              </>
             )}
             <div className="notice full-field">
               <b>Como a máquina é classificada</b>

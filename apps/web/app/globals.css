@@ -4665,8 +4665,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   --goal-soft: #fce6df;
 }
 [data-goal='running'] {
-  --goal: #12b8a6;
-  --goal-soft: #e6f6f4;
+  /* Blue, clearly apart from the green of a met target. */
+  --goal: #3b82f6;
+  --goal-soft: #e8f0fe;
 }
 [data-goal='no-target'] {
   --goal: #b8c4c8;
@@ -4709,7 +4710,56 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 72px;
+}
+/* Same height while loading and once loaded: the strip never shrinks and grows back. */
+.goal-calendar .goal-loading,
+.goal-calendar .goal-days {
+  min-height: 76px;
+}
+.goal-day[data-tip] {
+  position: relative;
+}
+.goal-day[data-tip]:hover {
+  outline: 2px solid #0b2028;
+  outline-offset: 1px;
+}
+.goal-day[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 30;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #0b2028;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.shift-kpi-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.shift-kpi .kpi-edit {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #71868d;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.shift-kpi .kpi-edit:hover {
+  color: #0b2028;
+}
+@container (min-width: 900px) {
+  .shift-kpis:has(> :nth-child(5)) {
+    grid-template-columns: 1.2fr repeat(4, minmax(0, 1fr));
+  }
 }
 .goal-loading .detail-spinner {
   width: 28px;
@@ -4760,18 +4810,18 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .goal-calendar.medium .goal-day[data-goal='no-target'] {
   color: #6b7f86;
 }
+/* The year spreads over the whole width: weeks share the columns, weekdays are the rows. */
 .goal-calendar.small .goal-days {
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, 12px);
-  grid-auto-columns: 12px;
+  grid-template-rows: repeat(7, 14px);
+  grid-auto-columns: minmax(8px, 1fr);
   gap: 3px;
-  overflow-x: auto;
   padding-bottom: 4px;
 }
 .goal-calendar.small .goal-day {
-  width: 12px;
-  height: 12px;
+  width: 100%;
+  height: 14px;
   border-radius: 3px;
   background: var(--goal);
 }

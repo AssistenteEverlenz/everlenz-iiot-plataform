@@ -736,7 +736,17 @@ function ProductionPage() {
                   key={day.date}
                   className="goal-day"
                   data-goal={day.status}
-                  title={`${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`}
+                  // Big cards already show the numbers; small squares show them on hover.
+                  title={
+                    goalSize === 'large'
+                      ? `${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`
+                      : undefined
+                  }
+                  data-tip={
+                    goalSize === 'large'
+                      ? undefined
+                      : `${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`
+                  }
                 >
                   {goalSize === 'large' ? (
                     <>

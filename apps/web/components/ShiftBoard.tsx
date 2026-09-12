@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { usePoll } from './data';
+import { TargetModal } from './TargetModal';
 
 // "Quadro de produção": one card that answers how the shift (or the day) is going. Produced
 // against the target, where the pace leads by the end (S-curve and projection), what is needed
@@ -57,6 +58,8 @@ interface BoardData {
   utilization: number | null;
   target: {
     value: number;
+    /** 'hmi': read from the HMI variable; 'fixed': the configured value. */
+    source?: 'hmi' | 'fixed';
     actual: number;
     plannedToNow: number;
     projected: number;
@@ -193,7 +196,15 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
   );
   if (!response.data)
     return <div className="shift-board-empty">{response.error ?? 'Carregando produção…'}</div>;
-  return <ShiftBoardView data={response.data} deviceId={deviceId} mode={mode} onMode={setMode} />;
+  return (
+    <ShiftBoardView
+      data={response.data}
+      deviceId={deviceId}
+      mode={mode}
+      onMode={setMode}
+      onChanged={() => void response.refresh()}
+    />
+  );
 }
 
 /**
@@ -205,16 +216,20 @@ export function ShiftBoardView({
   deviceId,
   mode = data.mode,
   onMode,
+  onChanged,
   historical = false,
 }: {
   data: ShiftBoardResponse;
   deviceId: string;
   mode?: 'shift' | 'day';
   onMode?: (mode: 'shift' | 'day') => void;
+  /** The target was edited: reload the board. */
+  onChanged?: () => void;
   historical?: boolean;
 }) {
   // Unique gradient id per board: several boards can share one page.
   const reactId = useId();
+  const [editingTarget, setEditingTarget] = useState(false);
   if (!data.configured)
     return (
       <div className="shift-board-empty">
@@ -336,7 +351,20 @@ export function ShiftBoardView({
               <em>{secondaries.join(' · ') || 'nenhuma peça ainda'}</em>
             </div>
             <div className="shift-kpi">
-              <span>Meta</span>
+              <span className="shift-kpi-title">
+                Meta
+                {!historical && (
+                  <button
+                    type="button"
+                    className="kpi-edit"
+                    title="Editar a meta do turno"
+                    aria-label="Editar a meta do turno"
+                    onClick={() => setEditingTarget(true)}
+                  >
+                    ✎
+                  </button>
+                )}
+              </span>
               {target ? (
                 <>
                   <b>
@@ -345,6 +373,7 @@ export function ShiftBoardView({
                   <em>
                     esperado agora {formatNumber(target.plannedToNow, info.decimals)} · feito{' '}
                     {formatNumber(target.actual, info.decimals)}
+                    {target.source === 'hmi' ? ' · meta da IHM' : ''}
                   </em>
                 </>
               ) : (
@@ -379,16 +408,22 @@ export function ShiftBoardView({
                   ? `necessário ${formatNumber(target.requiredPerHour, info.decimals)} ${info.unit}/h`
                   : `restam ${duration(board.remainingSeconds)} produtivos`}
               </em>
-              {board.palletTiming && board.palletTiming.count > 0 && (
-                <em
-                  className="shift-pallet-timing"
-                  title="Último palete: tempo entre os dois últimos paletes. Média: tempo produzindo dividido pelos paletes do período."
-                >
-                  último palete <b>{minutesSeconds(board.palletTiming.lastSeconds)}</b> · média{' '}
-                  <b>{minutesSeconds(board.palletTiming.averageSeconds)}</b>
-                </em>
-              )}
             </div>
+            {board.palletTiming && board.palletTiming.count > 0 && (
+              <div
+                className="shift-kpi"
+                title="Média: tempo produzindo dividido pelos paletes do período (paradas não entram). Último: tempo entre os dois últimos paletes."
+              >
+                <span>Tempo por palete</span>
+                <b>
+                  {minutesSeconds(board.palletTiming.averageSeconds)} <small>média</small>
+                </b>
+                <em>
+                  último palete {minutesSeconds(board.palletTiming.lastSeconds)}
+                  {board.palletTiming.lastAt ? ` · às ${clock(board.palletTiming.lastAt)}` : ''}
+                </em>
+              </div>
+            )}
           </div>
 
           {healthText && <div className={`shift-health ${tone}`}>{healthText}</div>}
@@ -556,6 +591,15 @@ export function ShiftBoardView({
             </small>
           )}
         </>
+      )}
+      {editingTarget && (
+        <TargetModal
+          deviceId={deviceId}
+          onClose={(saved) => {
+            setEditingTarget(false);
+            if (saved) onChanged?.();
+          }}
+        />
       )}
     </div>
   );
