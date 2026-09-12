@@ -72,6 +72,11 @@ function amountOf(row: { pieces: number; pallets: number; tons: number }, metric
 function share(part: number, total: number) {
   return total > 0 ? `${formatNumber((part / total) * 100, 1)}%` : '—';
 }
+/** "35 min", "4h03", "2d 5h": how long the machine has been in its state. */
+export function sinceText(minutes: number) {
+  if (minutes >= 1440) return `${Math.floor(minutes / 1440)}d ${Math.floor((minutes % 1440) / 60)}h`;
+  return duration(minutes * 60);
+}
 function isOn(sample: Sample | undefined) {
   if (!sample) return false;
   if (sample.value_boolean != null) return sample.value_boolean;
@@ -99,16 +104,17 @@ export function useTvData(id: string) {
   const current = board.data?.board ?? null;
   const metric: ProductionMetric = current?.metric ?? 'pallets';
   const state = board.data?.state ?? 'unknown';
-  // How long the machine has been in its current state, from the 5-minute timeline.
-  const stateMinutes = useMemo(() => {
-    const timeline = current?.timeline ?? [];
-    const same = (value: string) =>
-      value === state || (state === 'idle' && (value === 'waiting' || value === 'closing'));
-    let count = 0;
-    for (let index = timeline.length - 1; index >= 0 && same(timeline[index].state); index -= 1)
-      count += 1;
-    return count * 5;
-  }, [current, state]);
+  // How long the machine has been in its current state, as the API measured it from what was
+  // recorded (the shift timeline stops at the shift end, which froze the count). None while
+  // producing.
+  const stateSince = board.data?.stateSince ?? null;
+  const stateMinutes = useMemo(
+    () =>
+      stateSince ? Math.max(0, Math.round((Date.now() - new Date(stateSince).getTime()) / 60000)) : 0,
+    // Recomputed with every board refresh (20 s).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stateSince, board.data],
+  );
 
   const week = useMemo(() => {
     const byDate = new Map<
@@ -308,14 +314,25 @@ function TvCurve({ data }: { data: TvData }) {
           <i className="projected" /> projeção
         </span>
       </div>
-      {/* The colours under "realizado" are the machine states. */}
+      {/* The colours under "realizado" are the machine states, each with its time and share of
+          the shift's productive time (the pause, outside it, shows its time only). */}
       <div className="tv3-legend tv3-curve-states">
-        {[...new Set(current.timeline.map((segment) => segment.state))].map((item) => (
-          <span key={item}>
-            <i style={{ background: stateInfo[item]?.color }} />
-            {stateInfo[item]?.label ?? item}
-          </span>
-        ))}
+        {[...new Set(current.timeline.map((segment) => segment.state))].map((item) => {
+          const seconds = (current.time as unknown as Record<string, number | undefined>)[item];
+          const elapsed = current.time.elapsedProductive;
+          return (
+            <span key={item}>
+              <i style={{ background: stateInfo[item]?.color }} />
+              {stateInfo[item]?.label ?? item}
+              {seconds != null && (
+                <b>
+                  {duration(seconds)}
+                  {item !== 'pause' && elapsed > 0 ? ` · ${formatNumber((seconds / elapsed) * 100)}%` : ''}
+                </b>
+              )}
+            </span>
+          );
+        })}
       </div>
       <div className="tv3-chart">
         <ShiftCurve board={current} fontSize={13} />
@@ -443,7 +460,7 @@ function TvState({ data }: { data: TvData }) {
         <i />
         {info?.label ?? 'Sem dados'}
       </span>
-      <b>{data.stateMinutes >= 5 ? `há ${duration(data.stateMinutes * 60)}` : 'agora'}</b>
+      <b>{data.stateMinutes >= 1 ? `há ${sinceText(data.stateMinutes)}` : ''}</b>
       <small>{data.board.data?.product ? `produto ${data.board.data.product}` : ''}</small>
     </section>
   );
@@ -456,7 +473,7 @@ function TvAlert({ data }: { data: TvData }) {
     data.stateMinutes >= 10;
   return stopped ? (
     <div className="tv3-alert bad">
-      Máquina {stateInfo[data.state]?.label.toLowerCase() ?? 'parada'} há {duration(data.stateMinutes * 60)}
+      Máquina {stateInfo[data.state]?.label.toLowerCase() ?? 'parada'} há {sinceText(data.stateMinutes)}
     </div>
   ) : (
     <div className="tv3-alert good">Sem paradas longas no turno</div>

@@ -90,6 +90,8 @@ export interface ShiftBoardResponse {
   defaultShifts: boolean;
   now: string;
   state: MachineState;
+  /** Since when the machine is in this state (none while producing). */
+  stateSince?: string | null;
   product: string | null;
   next: Occurrence | null;
   status: 'running' | 'finished' | 'upcoming' | 'between' | 'no_shift';

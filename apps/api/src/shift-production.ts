@@ -553,7 +553,42 @@ async function buildBoard(
   };
 }
 
-async function currentState(db: Database, deviceId: string, idleSeconds: number, now: Date) {
+/**
+ * The machine state now and since when, from what was recorded (not from the shift window, so it
+ * stays right after the shift ends): offline since the last message; manual since the machine
+ * was last in automatic (from the 5-minute buckets, cheap); idle since the counter stopped plus
+ * the idle limit. A producing machine carries no "since".
+ */
+async function currentState(
+  db: Database,
+  deviceId: string,
+  idleSeconds: number,
+  now: Date,
+): Promise<{ state: string; product: string | null; since: string | null }> {
+  const found = await currentStateBase(db, deviceId, idleSeconds, now);
+  if (found.state !== 'manual') return found;
+  const lastAutomatic = await db.query<{ bucket: Date | string; auto_s: number }>(
+    `SELECT bucket,sum(producing_s+idle_s) auto_s FROM production_buckets
+     WHERE device_id=$1 AND bucket > now() - interval '30 days'
+     GROUP BY bucket HAVING sum(producing_s+idle_s) > 0
+     ORDER BY bucket DESC LIMIT 1`,
+    [deviceId],
+  );
+  const row = lastAutomatic.rows[0];
+  return {
+    ...found,
+    since: row
+      ? new Date(new Date(row.bucket).getTime() + Number(row.auto_s) * 1000).toISOString()
+      : null,
+  };
+}
+
+async function currentStateBase(
+  db: Database,
+  deviceId: string,
+  idleSeconds: number,
+  now: Date,
+): Promise<{ state: string; product: string | null; since: string | null }> {
   const result = await db.query<{
     last_at: Date | string;
     last_increment_at: Date | string | null;
@@ -564,15 +599,17 @@ async function currentState(db: Database, deviceId: string, idleSeconds: number,
     [deviceId],
   );
   const row = result.rows[0];
-  if (!row) return { state: 'unknown', product: null };
+  if (!row) return { state: 'unknown', product: null, since: null };
   const lastAt = new Date(row.last_at).getTime();
   if (now.getTime() - lastAt > env.DEVICE_OFFLINE_SECONDS * 1000)
-    return { state: 'offline', product: row.product_code };
-  if (row.auto === false) return { state: 'manual', product: row.product_code };
+    return { state: 'offline', product: row.product_code, since: new Date(lastAt).toISOString() };
+  if (row.auto === false) return { state: 'manual', product: row.product_code, since: null };
   const lastIncrement = row.last_increment_at ? new Date(row.last_increment_at).getTime() : lastAt;
+  const idle = now.getTime() - lastIncrement > idleSeconds * 1000;
   return {
-    state: now.getTime() - lastIncrement > idleSeconds * 1000 ? 'idle' : 'producing',
+    state: idle ? 'idle' : 'producing',
     product: row.product_code,
+    since: idle ? new Date(lastIncrement + idleSeconds * 1000).toISOString() : null,
   };
 }
 
@@ -1265,6 +1302,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       defaultShifts: isDefault,
       now: now.toISOString(),
       state: state.state,
+      stateSince: state.since,
       product: state.product,
       next: next ? occurrenceJson(next) : null,
     };

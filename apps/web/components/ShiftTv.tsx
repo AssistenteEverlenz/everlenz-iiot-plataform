@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { TvGrid, useTvData } from './TvBlocks';
+import { sinceText, TvGrid, useTvData } from './TvBlocks';
 import { defaultScreens, type TvScreen } from './tvConfig';
 import { clock, duration, stateInfo } from './ShiftBoard';
 
@@ -204,7 +204,7 @@ export function ShiftTv({ id }: { id: string }) {
           >
             <i />
             {stateInfo[state]?.label ?? 'Sem dados'}
-            {data.stateMinutes >= 5 && <small>há {duration(data.stateMinutes * 60)}</small>}
+            {data.stateMinutes >= 1 && <small>há {sinceText(data.stateMinutes)}</small>}
           </span>
           <strong className="tv3-clock">
             {now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}

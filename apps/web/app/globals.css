@@ -5446,6 +5446,15 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   color: #92a2a7;
   font-size: 0.72vw;
 }
+.tv3-curve-states b {
+  margin-left: 0.25vw;
+  color: #d6dfe2;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tv3.light .tv3-curve-states b {
+  color: #20343b;
+}
 .tv3-avail {
   grid-column: 9 / -1;
 }

@@ -1558,6 +1558,12 @@
   :root[data-theme='dark'] .tv3-curve-states {
     color: #92a2a7;
   }
+  :root[data-theme='dark'] .tv3-curve-states b {
+    color: #d6dfe2;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-curve-states b {
+    color: #cfd8db;
+  }
   :root[data-theme='dark'] .tv3-states b {
     color: #fff;
   }
