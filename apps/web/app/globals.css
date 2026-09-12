@@ -5532,7 +5532,6 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   border-radius: 2px;
 }
 .tv3-empty-shift {
-  grid-column: 1 / -1;
   align-items: center;
   justify-content: center;
   gap: 0.4vw;
@@ -5544,9 +5543,6 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3-empty-shift span {
   color: #92a2a7;
   font-size: 1vw;
-}
-.tv3-week {
-  grid-column: 1 / span 6;
 }
 .tv3-week-days {
   display: grid;
@@ -5645,6 +5641,201 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   margin: 0;
   color: #92a2a7;
 }
+/* TV page Turno, second row: S-curve (8 columns) and production per product of today (4). */
+.tv3-daymix {
+  grid-column: 9 / -1;
+}
+.tv3-daymix-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.5vw;
+  flex: 1;
+  min-height: 0;
+}
+.tv3-mixlist {
+  display: grid;
+  gap: 0.35vw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tv3-mixlist li {
+  display: grid;
+  gap: 0.1vw;
+  padding-top: 0.3vw;
+  border-top: 1px solid #1d2a2e;
+}
+.tv3-mixlist-name {
+  display: flex;
+  align-items: center;
+  gap: 0.45vw;
+  overflow: hidden;
+  font-size: 0.85vw;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv3-mixlist-name i {
+  flex: none;
+  width: 0.6vw;
+  height: 0.6vw;
+  border-radius: 2px;
+}
+.tv3-mixlist-values {
+  padding-left: 1.05vw;
+  color: #92a2a7;
+  font-size: 0.8vw;
+}
+.tv3-mixlist-values b {
+  color: #fff;
+  font-weight: 600;
+}
+.tv3-mixlist-sep {
+  margin: 0 0.5vw;
+  opacity: 0.5;
+}
+/* The week fills the last row: bigger days with target, amounts and availability gauge. */
+.tv3-week {
+  grid-column: 1 / -1;
+}
+.tv3-day {
+  justify-content: flex-start;
+  gap: 0.3vw;
+  padding: 0.55vw 0.7vw;
+}
+.tv3-day.today {
+  box-shadow: inset 0 0 0 2px var(--goal);
+}
+.tv3-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tv3-day-head span {
+  color: #92a2a7;
+  font-size: 0.8vw;
+}
+.tv3-day-head em {
+  padding: 0.05vw 0.45vw;
+  border-radius: 999px;
+  background: var(--goal);
+  color: #fff;
+  font-size: 0.65vw;
+  font-style: normal;
+  font-weight: 700;
+}
+.tv3-day-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5vw;
+  min-height: 0;
+}
+.tv3-day-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2vw;
+  min-width: 0;
+}
+.tv3-day-goal b {
+  color: #fff;
+  font-size: 2vw;
+  line-height: 1;
+}
+.tv3-day-goal small {
+  overflow: hidden;
+  color: #b9c7cb;
+  font-size: 0.72vw;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv3-day-util {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+  width: 5.2vw;
+}
+.tv3-day-util .shift-gauge {
+  width: 100%;
+}
+.tv3-day-util small {
+  color: #92a2a7;
+  font-size: 0.6vw;
+}
+
+/* Light theme of the TV (toggle next to full screen). */
+.tv3.light {
+  background: linear-gradient(180deg, #f4f8f9, #e6eef0);
+  color: #0b2028;
+}
+.tv3.light .tv3-card,
+.tv3.light .tv3-kpi {
+  border-top-color: #dce5e8;
+  border-right-color: #dce5e8;
+  border-bottom-color: #dce5e8;
+  background: #ffffff;
+}
+.tv3.light .tv3-kpi:not(.good):not(.warn):not(.bad) {
+  border-left-color: #cfdadd;
+}
+.tv3.light .tv3-title h1,
+.tv3.light .tv3-shift strong,
+.tv3.light .tv3-clock,
+.tv3.light .tv3-kpi b,
+.tv3.light .tv3-day-goal b,
+.tv3.light .tv3-mixlist-values b,
+.tv3.light .tv3-empty-shift strong,
+.tv3.light .tv3-state {
+  color: #0b2028;
+}
+.tv3.light .tv3-card-title strong {
+  color: #20343b;
+}
+.tv3.light .tv3-kpi em,
+.tv3.light .tv3-day-goal small,
+.tv3.light .tv3-mixlist-name {
+  color: #3d5158;
+}
+.tv3.light .tv3-mixlist li {
+  border-top-color: #e3ebed;
+}
+.tv3.light .tv3-day {
+  background: color-mix(in srgb, var(--goal) 14%, #ffffff);
+}
+.tv3.light .tv3-icon,
+.tv3.light .tv3-pages {
+  border-color: #cfdadd;
+  color: #3d5158;
+}
+.tv3.light .tv3-pages button {
+  color: #3d5158;
+}
+.tv3.light .tv3-pages button.active {
+  color: #ffffff;
+}
+.tv3.light .tv3-gauge-track {
+  stroke: #e3ebed;
+}
+.tv3.light .tv3-gauge-number {
+  fill: #0b2028;
+}
+.tv3.light .tv3-alert.good {
+  border-color: #9bd9bd;
+  background: #e3f7ee;
+  color: #11734c;
+}
+.tv3.light .tv3-alert.warn {
+  border-color: #f0c77a;
+  background: #fdf1dc;
+  color: #8a5a00;
+}
+.tv3.light .tv3-alert.bad {
+  border-color: #f0a592;
+  background: #fce6df;
+  color: #a3321c;
+}
+
 /* TV page selector (Turno / Produtos) in the header. */
 .tv3-pages {
   display: inline-flex;

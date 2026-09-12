@@ -18,11 +18,12 @@ import {
   type ShiftBoardResponse,
 } from './ShiftBoard';
 
-// Modo TV ("Gestão à Vista"): the production board for a wall screen, with its own 16:9 grid
-// so nothing overlaps and nothing scrolls. From the top: machine state and for how long, an
-// alert line, the shift's numbers next to the dashboard's two gauges, the S-curve with the
-// machine's availability, the shift timeline, this week's targets and the last 7 days of
-// production per product (pallets and tons). Dark theme, refreshes by itself, screen awake.
+// Modo TV ("Gestão à Vista"): the production board for a wall screen, on its own 16:9 grid so
+// nothing overlaps and nothing scrolls. Page "Turno": the machine state and for how long, an
+// alert line, the shift numbers next to the dashboard gauges, the S-curve with today's
+// production per product, and the week's targets with each day's availability. Page
+// "Produtos": the dashboard's product charts. The pages turn every 20 s by themselves; a TV
+// remote's arrow keys (or a click on the header) pick one. Light or dark theme, screen awake.
 
 interface ReportRow {
   kind: 'shift' | 'off_shift';
@@ -32,14 +33,19 @@ interface ReportRow {
   pieces: number;
   pallets: number;
   tons: number;
+  producing_s?: number;
+  idle_s?: number;
   target_metric: ProductionMetric | null;
   target_value: number | null;
   products?: Array<{ product_code: string; pieces: number; pallets: number; tons: number }>;
 }
 type Tone = 'good' | 'warn' | 'bad';
+type Theme = 'dark' | 'light';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const PALETTE = ['#12b8a6', '#3b82f6', '#f2a93b', '#e4572e', '#a78bfa', '#2bb3e6', '#8aa29e', '#d65db1'];
+const THEME_KEY = 'everlenz-tv-theme';
+const HOLD_MS = 2 * 60 * 1000;
 
 function plantToday() {
   return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -73,14 +79,17 @@ export function ShiftTv({ id }: { id: string }) {
   const latest = usePoll<Sample[]>(deviceId ? `/devices/${deviceId}/latest` : null, 5000);
   const today = plantToday();
   const monday = addDays(today, -((weekdayOf(today) + 6) % 7));
-  const sevenDaysAgo = addDays(today, -6);
   const reports = usePoll<{ reports: ReportRow[] }>(
-    deviceId ? `/devices/${deviceId}/shift-reports?from=${sevenDaysAgo}&to=${today}` : null,
+    deviceId ? `/devices/${deviceId}/shift-reports?from=${monday}&to=${today}` : null,
     60000,
   );
   const [now, setNow] = useState(() => new Date());
-  // Two pages in turn, every 20 s: the shift, then the dashboard's product charts. Picking a
-  // page on the header holds it for two minutes.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Two pages in turn every 20 s: the shift, then the dashboard's product charts.
   const quickWidgets = (dashboard.data?.widgets ?? [])
     .filter(
       (widget) =>
@@ -97,16 +106,28 @@ export function ShiftTv({ id }: { id: string }) {
     }, 20000);
     return () => clearInterval(timer);
   }, [pages, holdUntil]);
-  const shown = page % pages;
+  // A TV remote sends arrow keys: they turn the page, which then holds for two minutes.
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  // Dark theme while the TV is open; the screen stays awake where the browser allows it.
+    const onKey = (event: KeyboardEvent) => {
+      if (pages < 2) return;
+      const forward = ['ArrowRight', 'ArrowDown', 'PageDown'].includes(event.key);
+      const back = ['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key);
+      if (!forward && !back) return;
+      event.preventDefault();
+      setPage((currentPage) => (currentPage + (forward ? 1 : pages - 1)) % pages);
+      setHoldUntil(Date.now() + HOLD_MS);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pages]);
+  const shown = page % pages;
+
+  // Theme: dark by default, remembered on this screen. The platform theme is restored on exit;
+  // the screen stays awake where the browser allows it.
+  const [theme, setTheme] = useState<Theme>('dark');
   useEffect(() => {
     const root = document.documentElement;
     const previous = root.dataset.theme;
-    root.dataset.theme = 'dark';
     let lock: { release: () => Promise<void> } | null = null;
     const nav = navigator as Navigator & {
       wakeLock?: { request: (type: 'screen') => Promise<{ release: () => Promise<void> }> };
@@ -117,12 +138,25 @@ export function ShiftTv({ id }: { id: string }) {
         lock = granted;
       })
       .catch(() => undefined);
+    try {
+      if (localStorage.getItem(THEME_KEY) === 'light') setTheme('light');
+    } catch {
+      // No storage: the dark default stays.
+    }
     return () => {
       if (previous) root.dataset.theme = previous;
       else delete root.dataset.theme;
       void lock?.release().catch(() => undefined);
     };
   }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // The choice lasts for this visit.
+    }
+  }, [theme]);
 
   const data = board.data;
   const current = data?.board ?? null;
@@ -165,20 +199,36 @@ export function ShiftTv({ id }: { id: string }) {
     };
   })();
 
-  // This week's targets, Monday to Sunday.
+  // The week, Monday to Sunday: target reached and each day's machine availability.
   const week = useMemo(() => {
     const byDate = new Map<
       string,
-      { target: number; achieved: number; metric: ProductionMetric | null; open: boolean }
+      {
+        target: number;
+        achieved: number;
+        metric: ProductionMetric | null;
+        open: boolean;
+        producing: number;
+        idle: number;
+      }
     >();
     for (const row of reports.data?.reports ?? []) {
       if (row.kind !== 'shift' || row.source === 'manual') continue;
-      const day = byDate.get(row.production_date) ?? { target: 0, achieved: 0, metric: null, open: false };
+      const day = byDate.get(row.production_date) ?? {
+        target: 0,
+        achieved: 0,
+        metric: null,
+        open: false,
+        producing: 0,
+        idle: 0,
+      };
       if (row.target_value && row.target_metric) {
         day.target += Number(row.target_value);
         day.achieved += amountOf(row, row.target_metric);
         day.metric = row.target_metric;
       }
+      day.producing += Number(row.producing_s ?? 0);
+      day.idle += Number(row.idle_s ?? 0);
       day.open = day.open || Boolean(row.open);
       byDate.set(row.production_date, day);
     }
@@ -186,6 +236,8 @@ export function ShiftTv({ id }: { id: string }) {
       const date = addDays(monday, index);
       const day = byDate.get(date);
       const ratio = day && day.target > 0 ? day.achieved / day.target : null;
+      const availability =
+        day && day.producing + day.idle > 0 ? day.producing / (day.producing + day.idle) : null;
       const future = date > today;
       const status = future || !day
         ? 'none'
@@ -198,15 +250,15 @@ export function ShiftTv({ id }: { id: string }) {
               : ratio >= 0.9
                 ? 'near'
                 : 'missed';
-      return { date, day, ratio, status, future };
+      return { date, day, ratio, availability, status, future, isToday: date === today };
     });
   }, [reports.data, monday, today]);
 
-  // Last 7 days per product: pallets (or pieces) and tons, each with its share.
-  const mix = useMemo(() => {
+  // Today's production per product: pallets (or pieces) and tons, each with its share.
+  const dayMix = useMemo(() => {
     const totals = new Map<string, { pallets: number; tons: number; pieces: number }>();
     for (const row of reports.data?.reports ?? []) {
-      if (row.source === 'manual') continue;
+      if (row.production_date !== today || row.source === 'manual') continue;
       for (const product of row.products ?? []) {
         const total = totals.get(product.product_code) ?? { pallets: 0, tons: 0, pieces: 0 };
         total.pallets += Number(product.pallets);
@@ -224,7 +276,7 @@ export function ShiftTv({ id }: { id: string }) {
     const byPallets = pallets > 0;
     list.sort((a, b) => (byPallets ? b.pallets - a.pallets : b.pieces - a.pieces));
     return { list, pallets, tons, pieces, byPallets };
-  }, [reports.data]);
+  }, [reports.data, today]);
 
   const gauges = (dashboard.data?.widgets ?? [])
     .filter((widget) => widget.widget_type === 'gauge' && widget.tag_id)
@@ -242,10 +294,9 @@ export function ShiftTv({ id }: { id: string }) {
         : target?.health
           ? 'bad'
           : '';
-  const elapsed = current?.time.elapsedProductive ?? 0;
 
   return (
-    <div className="tv3">
+    <div className={`tv3 ${theme}`}>
       <header className="tv3-head">
         <div className="tv3-title">
           <span className="tv3-eyebrow">GESTÃO À VISTA · PRODUÇÃO</span>
@@ -271,7 +322,12 @@ export function ShiftTv({ id }: { id: string }) {
         </div>
         <div className="tv3-right">
           {pages > 1 && (
-            <span className="tv3-pages" role="group" aria-label="Página da TV">
+            <span
+              className="tv3-pages"
+              role="group"
+              aria-label="Página da TV"
+              title="As páginas trocam sozinhas a cada 20 s; as setas do controle remoto também trocam"
+            >
               {['Turno', 'Produtos'].map((label, index) => (
                 <button
                   key={label}
@@ -279,7 +335,7 @@ export function ShiftTv({ id }: { id: string }) {
                   className={shown === index ? 'active' : ''}
                   onClick={() => {
                     setPage(index);
-                    setHoldUntil(Date.now() + 120000);
+                    setHoldUntil(Date.now() + HOLD_MS);
                   }}
                 >
                   {label}
@@ -301,6 +357,15 @@ export function ShiftTv({ id }: { id: string }) {
               {now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
             </small>
           </strong>
+          <button
+            type="button"
+            className="tv3-icon"
+            title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+            aria-label={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+            onClick={() => setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'))}
+          >
+            {theme === 'dark' ? '☀' : '☾'}
+          </button>
           <button
             type="button"
             className="tv3-icon"
@@ -374,7 +439,7 @@ export function ShiftTv({ id }: { id: string }) {
               <em>
                 {target?.requiredPerHour != null && (current?.remainingSeconds ?? 0) > 0
                   ? `necessário ${number(target.requiredPerHour)} ${info.unit}/h`
-                  : `restam ${duration(current?.remainingSeconds ?? 0)}`}
+                  : `aproveitamento ${current?.utilization == null ? '—' : `${formatNumber(current.utilization * 100)}%`}`}
               </em>
             </div>
             <div className="tv3-kpi">
@@ -393,153 +458,138 @@ export function ShiftTv({ id }: { id: string }) {
           </section>
 
           {current ? (
-            <>
-              <section className="tv3-card tv3-curve">
-                <div className="tv3-card-title">
-                  <strong>Curva S · {info.name} acumulados</strong>
-                  <span className="tv3-curve-legend">
-                    <i className="planned" /> planejado <i className="actual" /> realizado{' '}
-                    <i className="projected" /> projeção
+            <section className="tv3-card tv3-curve">
+              <div className="tv3-card-title">
+                <strong>Curva S · {info.name} acumulados</strong>
+                <span className="tv3-curve-legend">
+                  <i className="planned" /> planejado <i className="actual" /> realizado{' '}
+                  <i className="projected" /> projeção
+                </span>
+              </div>
+              {/* The colours under "realizado" are the machine states. */}
+              <div className="tv3-legend tv3-curve-states">
+                {[...new Set(current.timeline.map((segment) => segment.state))].map((item) => (
+                  <span key={item}>
+                    <i style={{ background: stateInfo[item]?.color }} />
+                    {stateInfo[item]?.label ?? item}
                   </span>
-                </div>
-                {/* The colours under "realizado" are the machine states: their legend lives
-                    here, the separate timeline strip was dropped from the wall (confusing). */}
-                <div className="tv3-legend tv3-curve-states">
-                  {[...new Set(current.timeline.map((segment) => segment.state))].map((item) => (
-                    <span key={item}>
-                      <i style={{ background: stateInfo[item]?.color }} />
-                      {stateInfo[item]?.label ?? item}
-                    </span>
-                  ))}
-                </div>
-                <div className="tv3-chart">
-                  <ShiftCurve board={current} fontSize={13} />
-                </div>
-              </section>
-              <section className="tv3-card tv3-avail">
-                <div className="tv3-card-title">
-                  <strong>Aproveitamento da máquina</strong>
-                </div>
-                <div className="tv3-avail-body">
-                  <Gauge value={current.utilization} />
-                  <ul className="tv3-states">
-                    {(['waiting', 'producing', 'idle', 'manual', 'offline', 'closing', 'pause'] as const)
-                      .filter(
-                        (item) =>
-                          !['waiting', 'closing', 'pause'].includes(item) ||
-                          (current.time[item] ?? 0) >= 60,
-                      )
-                      .map((item) => {
-                        const seconds = current.time[item] ?? 0;
-                        return (
-                          <li key={item}>
-                            <i style={{ background: stateInfo[item].color }} />
-                            <span>{stateInfo[item].label}</span>
-                            <b>{duration(seconds)}</b>
-                            <em>
-                              {item === 'pause' || elapsed <= 0
-                                ? '—'
-                                : `${formatNumber((seconds / elapsed) * 100)}%`}
-                            </em>
-                          </li>
-                        );
-                      })}
-                  </ul>
-                </div>
-              </section>
-            </>
+                ))}
+              </div>
+              <div className="tv3-chart">
+                <ShiftCurve board={current} fontSize={13} />
+              </div>
+            </section>
           ) : (
-            <section className="tv3-card tv3-empty-shift">
+            <section className="tv3-card tv3-curve tv3-empty-shift">
               <strong>Sem turno em andamento</strong>
-              <span>{data.next ? `Próximo turno às ${clock(data.next.start)}` : 'Cadastre os turnos da fábrica na tela Produção.'}</span>
+              <span>
+                {data.next
+                  ? `Próximo turno às ${clock(data.next.start)}`
+                  : 'Cadastre os turnos da fábrica na tela Produção.'}
+              </span>
             </section>
           )}
 
-          <section className="tv3-card tv3-week">
+          <section className="tv3-card tv3-daymix">
             <div className="tv3-card-title">
-              <strong>Meta da semana</strong>
-            </div>
-            <div className="tv3-week-days">
-              {week.map((item) => (
-                <div key={item.date} className="tv3-day" data-goal={item.status}>
-                  <span>
-                    {WEEKDAYS[weekdayOf(item.date)]} {item.date.slice(8)}/{item.date.slice(5, 7)}
-                  </span>
-                  <b>{item.ratio == null ? '—' : `${formatNumber(item.ratio * 100)}%`}</b>
-                  <small>
-                    {item.day && item.ratio != null && item.day.metric
-                      ? `${formatNumber(item.day.achieved, metricInfo[item.day.metric].decimals)} de ${formatNumber(item.day.target, metricInfo[item.day.metric].decimals)}`
-                      : item.future
-                        ? ''
-                        : item.day
-                          ? 'sem meta'
-                          : 'sem turno'}
-                  </small>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="tv3-card tv3-mix">
-            <div className="tv3-card-title">
-              <strong>Produção por produto · 7 dias</strong>
+              <strong>Produção por produto · hoje</strong>
               <span>
-                {formatNumber(mix.byPallets ? mix.pallets : mix.pieces)} {mix.byPallets ? 'paletes' : 'peças'} ·{' '}
-                {formatNumber(mix.tons, 1)} t
+                {formatNumber(dayMix.byPallets ? dayMix.pallets : dayMix.pieces)}{' '}
+                {dayMix.byPallets ? 'paletes' : 'peças'} · {formatNumber(dayMix.tons, 1)} t
               </span>
             </div>
-            {mix.list.length ? (
-              <div className="tv3-mix-body">
+            {dayMix.list.length ? (
+              <div className="tv3-daymix-body">
                 <div className="tv3-donut">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={mix.list}
-                        dataKey={mix.byPallets ? 'pallets' : 'pieces'}
+                        data={dayMix.list}
+                        dataKey={dayMix.byPallets ? 'pallets' : 'pieces'}
                         nameKey="code"
                         innerRadius="58%"
                         outerRadius="96%"
                         stroke="none"
                         isAnimationActive={false}
                       >
-                        {mix.list.map((row, index) => (
+                        {dayMix.list.map((row, index) => (
                           <Cell key={row.code} fill={PALETTE[index % PALETTE.length]} />
                         ))}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <table className="tv3-mix-table">
-                  <thead>
-                    <tr>
-                      <th>Produto</th>
-                      <th>{mix.byPallets ? 'Paletes' : 'Peças'}</th>
-                      <th>Toneladas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mix.list.slice(0, 5).map((row, index) => (
-                      <tr key={row.code}>
-                        <td>
-                          <i style={{ background: PALETTE[index % PALETTE.length] }} />
-                          {row.code}
-                        </td>
-                        <td>
-                          <b>{formatNumber(mix.byPallets ? row.pallets : row.pieces)} un</b>
-                          <small>{share(mix.byPallets ? row.pallets : row.pieces, mix.byPallets ? mix.pallets : mix.pieces)}</small>
-                        </td>
-                        <td>
-                          <b>{formatNumber(row.tons, 1)} t</b>
-                          <small>{share(row.tons, mix.tons)}</small>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <ul className="tv3-mixlist">
+                  {dayMix.list.slice(0, 4).map((row, index) => (
+                    <li key={row.code}>
+                      <span className="tv3-mixlist-name">
+                        <i style={{ background: PALETTE[index % PALETTE.length] }} />
+                        {row.code}
+                      </span>
+                      <span className="tv3-mixlist-values">
+                        <b>{formatNumber(dayMix.byPallets ? row.pallets : row.pieces)} un</b>{' '}
+                        <small>
+                          {share(
+                            dayMix.byPallets ? row.pallets : row.pieces,
+                            dayMix.byPallets ? dayMix.pallets : dayMix.pieces,
+                          )}
+                        </small>
+                        <span className="tv3-mixlist-sep">|</span>
+                        <b>{formatNumber(row.tons, 1)} t</b> <small>{share(row.tons, dayMix.tons)}</small>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : (
-              <p className="tv3-empty">Sem produção nos últimos 7 dias.</p>
+              <p className="tv3-empty">Sem produção hoje.</p>
             )}
+          </section>
+
+          <section className="tv3-card tv3-week">
+            <div className="tv3-card-title">
+              <strong>Meta da semana</strong>
+              <span>% da meta · produzido de previsto · aproveitamento da máquina</span>
+            </div>
+            <div className="tv3-week-days">
+              {week.map((item) => {
+                const unit = item.day?.metric ? metricInfo[item.day.metric] : null;
+                return (
+                  <div
+                    key={item.date}
+                    className={`tv3-day ${item.isToday ? 'today' : ''}`}
+                    data-goal={item.status}
+                  >
+                    <div className="tv3-day-head">
+                      <span>
+                        {WEEKDAYS[weekdayOf(item.date)]} {item.date.slice(8)}/{item.date.slice(5, 7)}
+                      </span>
+                      {item.isToday && <em>hoje</em>}
+                    </div>
+                    <div className="tv3-day-body">
+                      <div className="tv3-day-goal">
+                        <b>{item.ratio == null ? '—' : `${formatNumber(item.ratio * 100)}%`}</b>
+                        <small>
+                          {item.day && item.ratio != null && unit
+                            ? `${formatNumber(item.day.achieved, unit.decimals)} de ${formatNumber(item.day.target, unit.decimals)} ${unit.unit}`
+                            : item.future
+                              ? ''
+                              : item.day
+                                ? 'sem meta'
+                                : 'sem turno'}
+                        </small>
+                      </div>
+                      {item.availability != null && (
+                        <div className="tv3-day-util" title="Aproveitamento: produzindo ÷ (produzindo + ociosa)">
+                          <Gauge value={item.availability} />
+                          <small>aproveitamento</small>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </section>
         </div>
       )}

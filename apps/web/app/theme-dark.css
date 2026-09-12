@@ -1607,6 +1607,104 @@
   :root[data-theme='dark'] .tv3-empty {
     color: #92a2a7;
   }
+  :root[data-theme='dark'] .tv3-mixlist li {
+    border-top: 1px solid #1d2a2e;
+  }
+  :root[data-theme='dark'] .tv3-mixlist-values {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .tv3-mixlist-values b {
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tv3-day.today {
+    box-shadow: inset 0 0 0 2px var(--goal);
+  }
+  :root[data-theme='dark'] .tv3-day-head span {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .tv3-day-head em {
+    background: var(--goal);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tv3-day-goal b {
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tv3-day-goal small {
+    color: #b9c7cb;
+  }
+  :root[data-theme='dark'] .tv3-day-util small {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .tv3.light {
+    background: linear-gradient(180deg, #172124, #1e2b2f);
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-card,
+  :root[data-theme='dark'] .tv3.light .tv3-kpi {
+    border-top-color: #243338;
+    border-right-color: #243338;
+    border-bottom-color: #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-kpi:not(.good):not(.warn):not(.bad) {
+    border-left-color: #2b3d43;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-title h1,
+  :root[data-theme='dark'] .tv3.light .tv3-shift strong,
+  :root[data-theme='dark'] .tv3.light .tv3-clock,
+  :root[data-theme='dark'] .tv3.light .tv3-kpi b,
+  :root[data-theme='dark'] .tv3.light .tv3-day-goal b,
+  :root[data-theme='dark'] .tv3.light .tv3-mixlist-values b,
+  :root[data-theme='dark'] .tv3.light .tv3-empty-shift strong,
+  :root[data-theme='dark'] .tv3.light .tv3-state {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-card-title strong {
+    color: #cfd8db;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-kpi em,
+  :root[data-theme='dark'] .tv3.light .tv3-day-goal small,
+  :root[data-theme='dark'] .tv3.light .tv3-mixlist-name {
+    color: #b6c4c9;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-mixlist li {
+    border-top-color: #202d32;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-day {
+    background: color-mix(in srgb, var(--goal) 14%, #12191c);
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-icon,
+  :root[data-theme='dark'] .tv3.light .tv3-pages {
+    border-color: #2b3d43;
+    color: #b6c4c9;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-pages button {
+    color: #b6c4c9;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-pages button.active {
+    color: #ffffff;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-gauge-track {
+    stroke: #202d32;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-gauge-number {
+    fill: #e0e6e8;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-alert.good {
+    border-color: #3c5e4e;
+    background: #1b2f26;
+    color: #82e3bc;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-alert.warn {
+    border-color: #715a31;
+    background: #362a15;
+    color: #f4c671;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-alert.bad {
+    border-color: #62372c;
+    background: #341d15;
+    color: #e09485;
+  }
   :root[data-theme='dark'] .tv3-pages {
     border: 1px solid #2a3a3f;
   }
