@@ -5645,6 +5645,62 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   margin: 0;
   color: #92a2a7;
 }
+/* TV page selector (Turno / Produtos) in the header. */
+.tv3-pages {
+  display: inline-flex;
+  gap: 0.2vw;
+  padding: 0.2vw;
+  border: 1px solid #2a3a3f;
+  border-radius: 999px;
+}
+.tv3-pages button {
+  padding: 0.3vw 0.8vw;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #92a2a7;
+  font-size: 0.8vw;
+  cursor: pointer;
+}
+.tv3-pages button.active {
+  background: #12b8a6;
+  color: #04201c;
+  font-weight: 700;
+}
+/* Second TV page: the dashboard product charts filling the screen, two per row. */
+.tv3-products-page {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 0.6vw;
+  min-height: 0;
+}
+.tv3-products-page.count-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tv3-products-page.count-3 > :first-child {
+  grid-row: span 2;
+}
+.tv3-quick-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.tv3-quick .quick-chart {
+  height: 100%;
+  margin-top: 0;
+}
+.tv3-quick .quick-layout,
+.tv3-quick .quick-donut-chart {
+  height: 100%;
+}
+.tv3-quick .quick-visual {
+  height: 100%;
+  min-height: 180px;
+}
+.tv3-quick .quick-empty {
+  height: 100%;
+}
 .production-detail-loading {
   display: flex;
   align-items: center;

@@ -1607,6 +1607,18 @@
   :root[data-theme='dark'] .tv3-empty {
     color: #92a2a7;
   }
+  :root[data-theme='dark'] .tv3-pages {
+    border: 1px solid #2a3a3f;
+  }
+  :root[data-theme='dark'] .tv3-pages button {
+    border: 0;
+    background: transparent;
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .tv3-pages button.active {
+    background: #12b8a6;
+    color: #e7ebed;
+  }
   :root[data-theme='dark'] .detail-spinner {
     border: 4px solid #243339;
     border-top-color: var(--accent, #12b8a6);

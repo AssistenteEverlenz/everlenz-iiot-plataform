@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import { usePoll, type Dashboard, type DashboardWidget, type Device, type Sample } from './data';
+import { TvProductsPage } from './TvProductsPage';
 import {
   clock,
   duration,
@@ -78,6 +79,25 @@ export function ShiftTv({ id }: { id: string }) {
     60000,
   );
   const [now, setNow] = useState(() => new Date());
+  // Two pages in turn, every 20 s: the shift, then the dashboard's product charts. Picking a
+  // page on the header holds it for two minutes.
+  const quickWidgets = (dashboard.data?.widgets ?? [])
+    .filter(
+      (widget) =>
+        ['donut', 'bar_vertical', 'bar_horizontal'].includes(widget.widget_type) && widget.tag_id,
+    )
+    .slice(0, 4);
+  const pages = quickWidgets.length ? 2 : 1;
+  const [page, setPage] = useState(0);
+  const [holdUntil, setHoldUntil] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (Date.now() < holdUntil) return;
+      setPage((currentPage) => (currentPage + 1) % pages);
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [pages, holdUntil]);
+  const shown = page % pages;
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
@@ -250,6 +270,23 @@ export function ShiftTv({ id }: { id: string }) {
           </span>
         </div>
         <div className="tv3-right">
+          {pages > 1 && (
+            <span className="tv3-pages" role="group" aria-label="Página da TV">
+              {['Turno', 'Produtos'].map((label, index) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={shown === index ? 'active' : ''}
+                  onClick={() => {
+                    setPage(index);
+                    setHoldUntil(Date.now() + 120000);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
+          )}
           <span
             className="tv3-state"
             style={{ '--state': stateInfo[state]?.color ?? '#98a6ab' } as React.CSSProperties}
@@ -281,7 +318,9 @@ export function ShiftTv({ id }: { id: string }) {
 
       {alert && <div className={`tv3-alert ${alert.tone}`}>{alert.text}</div>}
 
-      {!data ? (
+      {shown === 1 ? (
+        <TvProductsPage dashboardId={id} widgets={quickWidgets} />
+      ) : !data ? (
         <div className="tv3-loading">
           {board.error ?? dashboard.error ?? <span className="detail-spinner" aria-label="Carregando" />}
         </div>
