@@ -59,6 +59,14 @@ const navigation = [
   { href: '/dashboards', label: 'Painéis', short: 'Painéis', icon: 'panels' },
   { href: '/devices', label: 'Dispositivos', short: 'Ativos', icon: 'device' },
 ] satisfies { href: string; label: string; short: string; icon: NavIconName }[];
+// Every user reads production history; on phones it lives in the "Mais" sheet so the bottom
+// bar keeps its four slots.
+const productionNavigation = {
+  href: '/production',
+  label: 'Produção',
+  short: 'Produção',
+  icon: 'production' as const,
+};
 
 export function PlatformShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -150,6 +158,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
     session.user.role === 'master'
       ? [
           ...navigation,
+          productionNavigation,
           {
             href: '/users',
             label: 'Usuários e acessos',
@@ -164,7 +173,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             icon: 'mqtt' as const,
           },
         ]
-      : navigation;
+      : [...navigation, productionNavigation];
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });

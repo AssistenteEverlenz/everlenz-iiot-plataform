@@ -29,6 +29,7 @@ import {
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
+import { ShiftBoard } from './ShiftBoard';
 import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
@@ -72,6 +73,7 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   line: 4,
   production: 10,
   oee: 3,
+  shift_board: 11,
   pareto: 3,
   donut: 6,
   bar_vertical: 6,
@@ -226,6 +228,8 @@ const visualizationHelp: Record<DashboardWidget['widget_type'], string> = {
   production:
     'Usa uma taxa numérica, como ton/h. Calcula média, mínimo e pico no período configurado.',
   oee: 'O OEE não usa uma única variável. Precisa de tempo planejado, tempo operando, produção total, produção boa e ciclo ideal.',
+  shift_board:
+    'Quadro do turno ou do dia: produzido em milheiros, meta, projeção, curva S, ritmo necessário e aproveitamento da máquina. Não usa uma variável: configure o contador, o automático e a meta em Produção.',
   pareto: 'Precisa de eventos de parada com motivo e duração para ordenar as maiores perdas.',
   donut: 'Pizza com a participação (%) de cada produto no período. Use um contador, como paletes.',
   bar_vertical: 'Barras verticais da produção no período, uma por produto ou uma por dia.',
@@ -900,6 +904,7 @@ function Widget({
           periodText={periodLabel(period, statistics?.trend_days ?? 7)}
         />
       )}
+      {widget.widget_type === 'shift_board' && <ShiftBoard deviceId={widget.device_id} />}
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
           <strong>OEE pronto para configurar</strong>
@@ -1100,8 +1105,13 @@ export function DashboardCanvas({ id }: { id: string }) {
           title ||
           selectedSignal?.name ||
           selectedSignal?.key ||
-          (widgetType === 'oee' ? 'OEE' : 'Pareto de perdas'),
-        width,
+          (widgetType === 'oee'
+            ? 'OEE'
+            : widgetType === 'shift_board'
+              ? 'Quadro de produção'
+              : 'Pareto de perdas'),
+        // The production board needs the whole row to be readable.
+        width: widgetType === 'shift_board' ? 'full' : width,
         config: {
           // New cards start in the White label primary colour; existing cards keep their own.
           color: branding.primary_color,
@@ -1446,6 +1456,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                       ['bar_horizontal', '▬', 'Barras horiz.'],
                       ['oee', '%', 'OEE'],
                       ['pareto', '▥', 'Pareto'],
+                      ['shift_board', '◷', 'Quadro de produção'],
                     ] as const
                   ).map(([type, icon, label]) => (
                     <button

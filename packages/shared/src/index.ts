@@ -228,3 +228,6 @@ export function convertTag(value: unknown, tag: TagConfig): number | boolean | s
   if (!Number.isFinite(n)) throw new Error(`Non-finite number: ${tag.key}`);
   return n;
 }
+
+// Plant shift calendar (production by shift).
+export * from './shifts.js';

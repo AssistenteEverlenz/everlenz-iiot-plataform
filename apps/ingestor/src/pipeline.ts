@@ -1,7 +1,9 @@
 import { adapters, DeviceResolver } from '@iiot/adapters';
+import { ProductionTracker } from './production-tracker.js';
 import {
   convertTag,
   decodePayload,
+  env,
   logger,
   type MqttMessage,
   type Device,
@@ -166,6 +168,7 @@ export class IngestionPipeline {
     private repository = new TelemetryRepository(),
     private log = logger('ingestor'),
     private catalog = new SignalCatalogRepository(),
+    private tracker = new ProductionTracker(db, env.DEVICE_OFFLINE_SECONDS),
   ) {}
   private async resolutionConfiguration(force = false) {
     if (!force && this.resolutionCache && this.resolutionCache.expiresAt > Date.now())
@@ -331,6 +334,16 @@ export class IngestionPipeline {
         rows,
       });
       this.log.info({ event: 'telemetry_saved', rawId, deviceId: device.id, samples: rows.length });
+      // Shift accounting must never cost a message: the telemetry is already stored.
+      try {
+        await this.tracker.observe(device, tags, samples, productCode, message.receivedAt);
+      } catch (error) {
+        this.log.warn({
+          event: 'production_tracking_failed',
+          deviceId: device.id,
+          error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+        });
+      }
       return {
         rawId,
         status: 'processed',

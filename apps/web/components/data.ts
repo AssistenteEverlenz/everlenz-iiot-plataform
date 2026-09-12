@@ -85,7 +85,8 @@ export interface DashboardWidget {
     | 'pareto'
     | 'donut'
     | 'bar_vertical'
-    | 'bar_horizontal';
+    | 'bar_horizontal'
+    | 'shift_board';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';
@@ -217,7 +218,11 @@ export function usePoll<T>(path: string | null, intervalMs = 5000) {
   }, [refresh, intervalMs, path]);
   return { data, error, loading: path !== null && data === null, refresh };
 }
-export async function mutate<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown) {
+export async function mutate<T>(
+  path: string,
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+  body?: unknown,
+) {
   const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? '/api'}${path}`, {
     method,
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },

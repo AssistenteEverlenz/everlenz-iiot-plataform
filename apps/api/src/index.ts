@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { env } from '@iiot/shared';
 import { database, pool } from '@iiot/database';
 import { startLegacyMqttProxy, type LegacyDevice } from './legacy-mqtt.js';
+import { closeShiftReports } from './shift-production.js';
 const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
 
@@ -52,6 +53,28 @@ const legacyProxy = env.MQTT_LEGACY_PORT
     })
   : null;
 
+// Closes finished shifts into immutable reports (apps/api/src/shift-production.ts). Every 5
+// minutes is enough: a report only has to exist before someone reads the history.
+let closingShifts = false;
+async function closeShifts() {
+  if (closingShifts) return;
+  closingShifts = true;
+  try {
+    const written = await closeShiftReports(database);
+    if (written) app.log.info({ event: 'shift_reports_closed', written });
+  } catch (error) {
+    app.log.warn({
+      event: 'shift_report_close_failed',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    closingShifts = false;
+  }
+}
+const shiftTimer = setInterval(() => void closeShifts(), 5 * 60 * 1000);
+shiftTimer.unref();
+setTimeout(() => void closeShifts(), 20_000).unref();
+
 let stopping = false;
 async function shutdown() {
   if (stopping) return;
@@ -59,6 +82,7 @@ async function shutdown() {
   app.log.info({ event: 'shutdown' });
   const deadline = setTimeout(() => process.exit(1), 20000);
   deadline.unref();
+  clearInterval(shiftTimer);
   legacyProxy?.close();
   await app.close();
   await pool.end();

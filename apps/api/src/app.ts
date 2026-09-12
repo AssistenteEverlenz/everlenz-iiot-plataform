@@ -10,6 +10,7 @@ import { createAccessControl, registerAuthRoutes, type Principal } from './auth.
 import { recordAudit } from './audit.js';
 import { publishCommand, type CommandPublisher } from './commands.js';
 import { registerProductionRoutes } from './production.js';
+import { registerShiftProductionRoutes } from './shift-production.js';
 const uuid = z.uuid();
 /** How long a PLC reset bit stays at 1 before the platform writes it back to 0. */
 const COMMAND_PULSE_MS = 2000;
@@ -380,6 +381,7 @@ export async function createApp(
     ).rows;
   });
   registerProductionRoutes(app, db, access);
+  registerShiftProductionRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
@@ -1256,6 +1258,7 @@ export async function createApp(
           'donut',
           'bar_vertical',
           'bar_horizontal',
+          'shift_board',
         ]),
         title: z.string().min(1).max(120),
         width: z.enum(['small', 'medium', 'large', 'full']).default('medium'),
@@ -1684,7 +1687,8 @@ interface DashboardWidgetRecord {
     | 'pareto'
     | 'donut'
     | 'bar_vertical'
-    | 'bar_horizontal';
+    | 'bar_horizontal'
+    | 'shift_board';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';

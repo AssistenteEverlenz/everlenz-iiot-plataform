@@ -1171,4 +1171,192 @@
   :root[data-theme='dark'] .login-remember small {
     color: #85979d;
   }
+  :root[data-theme='dark'] .shift-board-empty {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .shift-board-empty strong {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .shift-board-head strong {
+    color: #d4dcdf;
+  }
+  :root[data-theme='dark'] .shift-board-head span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .shift-state {
+    background: color-mix(in srgb, var(--state, #4b6a75) 14%, transparent);
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .shift-board-head .shift-state {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .shift-state i {
+    background: var(--state, #4b6a75);
+  }
+  :root[data-theme='dark'] .shift-mode,
+  :root[data-theme='dark'] .production-view {
+    border: 1px solid #243338;
+    background: #172125;
+  }
+  :root[data-theme='dark'] .shift-mode button,
+  :root[data-theme='dark'] .production-view button {
+    border: 0;
+    background: transparent;
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .shift-mode button.active,
+  :root[data-theme='dark'] .production-view button.active {
+    background: #12191c;
+    color: #e0e6e8;
+    box-shadow: 0 1px 3px #0b20281f;
+  }
+  :root[data-theme='dark'] .shift-kpi {
+    border: 1px solid #202d32;
+    background: #141d1f;
+  }
+  :root[data-theme='dark'] .shift-kpi span {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .shift-kpi b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .shift-kpi b small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .shift-kpi b.muted {
+    color: #98a6ab;
+  }
+  :root[data-theme='dark'] .shift-kpi em {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .shift-health.good {
+    border: 1px solid #2e4a3c;
+    background: #192a22;
+    color: #86dfb6;
+  }
+  :root[data-theme='dark'] .shift-health.warn {
+    border: 1px solid #574828;
+    background: #302613;
+    color: #ebc17a;
+  }
+  :root[data-theme='dark'] .shift-health.bad {
+    border: 1px solid #4d2f27;
+    background: #2e1a13;
+    color: #e29683;
+  }
+  :root[data-theme='dark'] .shift-section-title {
+    color: #bbc8cd;
+  }
+  :root[data-theme='dark'] .shift-legend {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .shift-legend i.planned {
+    background: #50717c;
+  }
+  :root[data-theme='dark'] .shift-legend i.actual {
+    background: var(--accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .shift-legend i.projected {
+    background: repeating-linear-gradient(90deg, var(--accent, #12b8a6) 0 4px, transparent 4px 7px);
+  }
+  :root[data-theme='dark'] .shift-availability {
+    border: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .shift-gauge-track,
+  :root[data-theme='dark'] .shift-gauge-value {
+    fill: none;
+  }
+  :root[data-theme='dark'] .shift-gauge-track {
+    stroke: #1f2c30;
+  }
+  :root[data-theme='dark'] .shift-gauge-number {
+    fill: #e0e6e8;
+  }
+  :root[data-theme='dark'] .shift-gauge-caption {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-states span {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .shift-states b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .shift-states em {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-timeline {
+    background: #1b262a;
+  }
+  :root[data-theme='dark'] .shift-timeline-axis {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-products span {
+    background: #192327;
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .shift-products b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .shift-note {
+    color: #dcc389;
+  }
+  :root[data-theme='dark'] .production-check {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .production-totals div {
+    border: 1px solid #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .production-totals span {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .production-totals b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .production-columns-menu {
+    border: 1px solid #243338;
+    background: #12191c;
+    box-shadow: 0 14px 34px #18343d2e;
+  }
+  :root[data-theme='dark'] .production-columns-menu label {
+    color: #bbc8cd;
+  }
+  :root[data-theme='dark'] .production-table tr.open td {
+    background: #172622;
+  }
+  :root[data-theme='dark'] .production-table tr.off-shift td {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .production-products-row td {
+    background: #151e21;
+  }
+  :root[data-theme='dark'] .production-products span {
+    background: #12191c;
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .production-products b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .shifts-help {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .shift-form {
+    border: 1px solid #243338;
+  }
+  :root[data-theme='dark'] .weekday-picker button {
+    border: 1px solid #293b41;
+    background: #12191c;
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .weekday-picker button.selected {
+    border-color: var(--brand-accent, #12b8a6);
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 12%, #12191c);
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .shift-breaks small {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .shift-break {
+    color: #92a2a7;
+  }
 }
