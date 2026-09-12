@@ -29,6 +29,8 @@ interface Layout {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+// The TV header shows the current screen name in a fixed-width slot sized for this many letters.
+const SCREEN_NAME_MAX = 16;
 
 export function TvEditor({ id }: { id: string }) {
   const { user } = usePlatform();
@@ -237,8 +239,12 @@ export function TvEditor({ id }: { id: string }) {
               <div className="tv-editor-group">
                 <div className="shift-section-title">Tela selecionada</div>
                 <label className="field">
-                  Nome
-                  <input value={screen.name} maxLength={60} onChange={(event) => updateScreen({ name: event.target.value })} />
+                  Nome (até {SCREEN_NAME_MAX} caracteres)
+                  <input
+                    value={screen.name}
+                    maxLength={SCREEN_NAME_MAX}
+                    onChange={(event) => updateScreen({ name: event.target.value.slice(0, SCREEN_NAME_MAX) })}
+                  />
                 </label>
                 <div className="tv-editor-row">
                   <label className="field">

@@ -6089,10 +6089,12 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3-title {
   min-width: 14vw;
 }
+/* Fixed width for up to 16 characters: the indicator keeps its size when the screen changes. */
 .tv3-pages .tv3-pages-name {
-  max-width: 10vw;
+  width: 9.5em;
   margin: 0 0.3vw 0 0.2vw;
   overflow: hidden;
+  text-align: center;
   color: #d6dfe2;
   font-size: 0.8vw;
   font-weight: 600;
