@@ -1705,6 +1705,78 @@
     background: #341d15;
     color: #e09485;
   }
+  :root[data-theme='dark'] .tv3-value-body b {
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tv3-value-body small {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .tv3-status-body i {
+    background: #e4572e;
+    box-shadow: 0 0 1.2vw #e4572e;
+  }
+  :root[data-theme='dark'] .tv3-status.on .tv3-status-body i {
+    background: #1fbf7a;
+    box-shadow: 0 0 1.2vw #1fbf7a;
+  }
+  :root[data-theme='dark'] .tv3-status-body b {
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tv3-statecard {
+    border-left: 0.35vw solid var(--state);
+  }
+  :root[data-theme='dark'] .tv3-statecard-label {
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tv3-statecard-label i {
+    background: var(--state);
+    box-shadow: 0 0 0.8vw var(--state);
+  }
+  :root[data-theme='dark'] .tv3-statecard b {
+    color: #b9c7cb;
+  }
+  :root[data-theme='dark'] .tv3-statecard small {
+    color: #92a2a7;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-value-body b,
+  :root[data-theme='dark'] .tv3.light .tv3-status-body b,
+  :root[data-theme='dark'] .tv3.light .tv3-statecard-label {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .tv-editor-screens button.active {
+    border-color: #12b8a6;
+    background: #1c2d2b;
+  }
+  :root[data-theme='dark'] .tv-editor-screens small {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .tv-editor-group {
+    border-top: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .tv-editor-canvas {
+    background: #0a1215;
+  }
+  :root[data-theme='dark'] .tv-editor-canvas iframe {
+    border: 0;
+  }
+  :root[data-theme='dark'] .tv-editor-handle {
+    border: 2px dashed rgba(18, 184, 166, 0.75);
+    background: rgba(18, 184, 166, 0.06);
+  }
+  :root[data-theme='dark'] .tv-editor-handle.selected {
+    border-color: #f2a93b;
+    background: rgba(242, 169, 59, 0.1);
+  }
+  :root[data-theme='dark'] .tv-editor-handle span {
+    background: rgba(11, 32, 40, 0.8);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tv-editor-handle i {
+    background: #f2a93b;
+  }
+  :root[data-theme='dark'] .tv-editor-hint {
+    color: #92a2a8;
+  }
   :root[data-theme='dark'] .tv3-pages {
     border: 1px solid #2a3a3f;
   }

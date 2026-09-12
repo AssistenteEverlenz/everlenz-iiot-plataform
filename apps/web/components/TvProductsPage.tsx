@@ -32,7 +32,7 @@ export function TvProductsPage({
   );
 }
 
-function TvQuick({ dashboardId, widget }: { dashboardId: string; widget: DashboardWidget }) {
+export function TvQuick({ dashboardId, widget }: { dashboardId: string; widget: DashboardWidget }) {
   const configured = widget.config.productionDefaultPeriod;
   const period = configured && configured !== 'custom' ? configured : '7d';
   const statistics = usePoll<QuickStatistic[]>(

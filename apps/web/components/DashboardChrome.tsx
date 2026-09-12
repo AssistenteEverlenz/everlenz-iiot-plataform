@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { PageSlots } from './PlatformShell';
+import { usePlatform, type PageSlots } from './PlatformShell';
 import { ThemeToggle } from './ThemeToggle';
 
 // What a dashboard puts in the platform shell: the equipment and its heartbeat in the top bar,
@@ -76,6 +76,7 @@ function ActionsButton({
   onSnapshot,
 }: DashboardChromeProps & { variant: 'menu' | 'fab' }) {
   const [open, setOpen] = useState(false);
+  const { user } = usePlatform();
   const wrapper = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!open || variant !== 'menu') return;
@@ -101,6 +102,10 @@ function ActionsButton({
       </a>
       {/* Opens the managerial wall board; the widget grid stays the operator's view. */}
       <button onClick={run(() => window.location.assign(tvHref))}>Modo TV</button>
+      {/* The customer sees the TV; only the master lays it out. */}
+      {user.role === 'master' && (
+        <button onClick={run(() => window.location.assign(`${tvHref}/editor`))}>Configurar TV</button>
+      )}
       <button onClick={run(onSnapshot)}>Snapshot</button>
       <label className="actions-refresh">
         <span>Atualização {savingRefresh && <span className="button-spinner dark" />}</span>

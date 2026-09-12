@@ -5148,7 +5148,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   inset: 0;
   z-index: 60;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0.6vw;
   padding: 0.9vw 1.2vw;
   overflow: hidden;
@@ -5647,10 +5647,15 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .tv3-daymix-body {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 0.5vw;
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 0.8vw;
   flex: 1;
   min-height: 0;
+}
+.tv3-daymix-body .tv3-donut {
+  height: 100%;
+  max-height: 16vw;
 }
 .tv3-mixlist {
   display: grid;
@@ -5681,9 +5686,16 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   border-radius: 2px;
 }
 .tv3-mixlist-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.35vw;
   padding-left: 1.05vw;
   color: #92a2a7;
   font-size: 0.8vw;
+}
+.tv3-mixlist-values > * {
+  display: inline;
 }
 .tv3-mixlist-values b {
   color: #fff;
@@ -5834,6 +5846,223 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   border-color: #f0a592;
   background: #fce6df;
   color: #a3321c;
+}
+
+/* Configurable TV: a screen is a 12-column grid whose rows share the height of the screen.
+   Every card fills its cell; a card is a size container, so its numbers follow its area. */
+.tv-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.6vw;
+  min-height: 0;
+}
+.tv-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  container-type: size;
+}
+.tv-cell > * {
+  flex: 1;
+  min-height: 0;
+}
+.tv-cell > .tv3-kpis {
+  grid-template-rows: minmax(0, 1fr);
+}
+.tv-cell .tv3-gauge svg {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+.tv-cell > .tv3-alert {
+  display: flex;
+  align-items: center;
+}
+.tv3-value-body,
+.tv3-status-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6vw;
+  min-height: 0;
+}
+.tv3-value-body b {
+  color: #fff;
+  font-size: min(42cqh, 16cqw);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.tv3-value-body small {
+  color: #92a2a7;
+  font-size: min(14cqh, 6cqw);
+}
+.tv3-status-body i {
+  width: min(22cqh, 10cqw);
+  height: min(22cqh, 10cqw);
+  border-radius: 50%;
+  background: #e4572e;
+  box-shadow: 0 0 1.2vw #e4572e;
+}
+.tv3-status.on .tv3-status-body i {
+  background: #1fbf7a;
+  box-shadow: 0 0 1.2vw #1fbf7a;
+}
+.tv3-status-body b {
+  color: #fff;
+  font-size: min(22cqh, 9cqw);
+}
+.tv3-statecard {
+  justify-content: center;
+  gap: 0.4vw;
+  border-left: 0.35vw solid var(--state);
+}
+.tv3-statecard-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6vw;
+  color: #fff;
+  font-size: min(16cqh, 7cqw);
+  font-weight: 700;
+}
+.tv3-statecard-label i {
+  width: 0.9vw;
+  height: 0.9vw;
+  border-radius: 50%;
+  background: var(--state);
+  box-shadow: 0 0 0.8vw var(--state);
+}
+.tv3-statecard b {
+  color: #b9c7cb;
+  font-size: min(12cqh, 5cqw);
+}
+.tv3-statecard small {
+  color: #92a2a7;
+  font-size: 0.8vw;
+}
+.tv3-embedded-board {
+  overflow: hidden;
+}
+.tv3.light .tv3-value-body b,
+.tv3.light .tv3-status-body b,
+.tv3.light .tv3-statecard-label {
+  color: #0b2028;
+}
+
+/* TV editor (master): side panel and the live preview with a handle over each card. */
+.tv-editor-body {
+  display: grid;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.tv-editor-side {
+  display: grid;
+  gap: 12px;
+}
+.tv-editor-screens {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tv-editor-screens button {
+  width: 100%;
+  text-align: left;
+}
+.tv-editor-screens button.active {
+  border-color: #12b8a6;
+  background: #e6f6f4;
+}
+.tv-editor-screens small {
+  color: #6b7f86;
+}
+.tv-editor-group {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e3ebed;
+}
+.tv-editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tv-editor-row > * {
+  flex: 1 1 0;
+}
+.tv-editor-grid4 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.tv-editor-stage {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.tv-editor-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0a1215;
+}
+.tv-editor-canvas iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.tv-editor-overlay {
+  position: absolute;
+  inset: 0;
+}
+.tv-editor-handle {
+  position: absolute;
+  border: 2px dashed rgba(18, 184, 166, 0.75);
+  border-radius: 6px;
+  background: rgba(18, 184, 166, 0.06);
+  cursor: move;
+  touch-action: none;
+}
+.tv-editor-handle.selected {
+  border-style: solid;
+  border-color: #f2a93b;
+  background: rgba(242, 169, 59, 0.1);
+}
+.tv-editor-handle span {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(11, 32, 40, 0.8);
+  color: #fff;
+  font-size: 11px;
+  pointer-events: none;
+}
+.tv-editor-handle i {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #f2a93b;
+  cursor: nwse-resize;
+}
+.tv-editor-hint {
+  color: #6b7f86;
+}
+@media (max-width: 900px) {
+  .tv-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* TV page selector (Turno / Produtos) in the header. */

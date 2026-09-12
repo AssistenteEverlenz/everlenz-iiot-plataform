@@ -13,6 +13,7 @@ import { registerProductionRoutes } from './production.js';
 import { registerShiftProductionRoutes } from './shift-production.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
+import { registerTvRoutes } from './tv-screens.js';
 const uuid = z.uuid();
 /** How long a PLC reset bit stays at 1 before the platform writes it back to 0. */
 const COMMAND_PULSE_MS = 2000;
@@ -386,6 +387,7 @@ export async function createApp(
   registerShiftProductionRoutes(app, db, access);
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
+  registerTvRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;

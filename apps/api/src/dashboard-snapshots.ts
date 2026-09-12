@@ -5,6 +5,7 @@ import type { Database } from '@iiot/database';
 import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
 import { scheduleProductionRebuild } from './shift-production.js';
+import { loadTv, saveTv, type TvScreen } from './tv-screens.js';
 
 // Dashboard snapshots (migration 022): a manual "photo" of a dashboard — its cards with their
 // settings, the dashboard's refresh settings and the device's production parameters — that can
@@ -36,6 +37,8 @@ interface SnapshotContent {
   widgets: SnapshotWidget[];
   production: Record<string, unknown> | null;
   productionContext: { product_key: string | null; fallback_product_code: string } | null;
+  /** The configured TV (screens and cards); absent in snapshots taken before migration 023. */
+  tv?: TvScreen[];
 }
 
 function withoutOwnColumns(row: Record<string, unknown> | undefined) {
@@ -88,6 +91,7 @@ async function capture(
     widgets: widgets.rows,
     production,
     productionContext,
+    tv: await loadTv(sql, tenantId, dashboardId),
   };
 }
 
@@ -124,6 +128,9 @@ async function restore(
       )
     ).rows.map((row) => row.id),
   );
+  // Deleting the cards cascades to the TV cards that show them: the TV is put back after the
+  // cards, from the snapshot or, for an older snapshot without one, as it is now.
+  const tv = content.tv ?? (await loadTv(sql, tenantId, dashboardId));
   await sql.query('DELETE FROM dashboard_widgets WHERE tenant_id=$1 AND dashboard_id=$2', [
     tenantId,
     dashboardId,
@@ -150,6 +157,7 @@ async function restore(
     );
     position += 1;
   }
+  await saveTv(sql, tenantId, dashboardId, tv);
   if (!deviceId) return false;
   let productionRestored = false;
   if (content.production) {
