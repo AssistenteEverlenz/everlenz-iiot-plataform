@@ -71,7 +71,9 @@ async function closeShifts() {
     closingShifts = false;
   }
 }
-const shiftTimer = setInterval(() => void closeShifts(), 5 * 60 * 1000);
+// Every minute: when a shift ends, its row replaces the "em andamento" one in the history
+// almost at once, instead of leaving the day without a row (and its target) for minutes.
+const shiftTimer = setInterval(() => void closeShifts(), 60 * 1000);
 shiftTimer.unref();
 setTimeout(() => void closeShifts(), 20_000).unref();
 // Production counted from all the stored telemetry, also for devices configured after it came.
