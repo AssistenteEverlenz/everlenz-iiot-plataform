@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -13,7 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { usePoll, type Dashboard, type DashboardWidget, type Device, type Sample } from './data';
-import { TvQuick } from './TvProductsPage';
+import { QuickChart } from './QuickChart';
 import { ProductionInsight, type ProductionPeriod, type Statistic } from './DashboardCanvas';
 import type { TvScreen } from './tvConfig';
 import {
@@ -536,40 +536,132 @@ const PERIOD_TEXT: Record<string, string> = {
   '30d': 'últimos 30 dias',
 };
 
-/** A "production" card of the dashboard, the same body the dashboard shows, at its default period. */
-function TvProduction({ dashboardId, widget }: { dashboardId: string; widget: DashboardWidget }) {
+const PERIOD_CHIP: Record<string, string> = {
+  today: 'Hoje',
+  '7d': '7 dias',
+  week: 'Semana',
+  month: 'Mês',
+  year: 'Ano',
+  '30d': '30 dias',
+};
+// Width of one dashboard column, in pixels, on a wide screen: a TV card of N columns is laid
+// out as the dashboard lays out a card of N columns, then zoomed to its place on the TV.
+const PANEL_COLUMN_PX = 130;
+
+/**
+ * Draws a dashboard card inside the dashboard's own card frame, at the width that card would
+ * have on the dashboard for the same columns, and zooms the whole of it to fill its TV cell:
+ * the TV shows the card exactly as the dashboard does, only bigger or smaller.
+ */
+function PanelScale({
+  columns,
+  color,
+  children,
+}: {
+  columns: number;
+  color: string;
+  children: React.ReactNode;
+}) {
+  const outer = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const element = outer.current;
+    if (!element) return;
+    const measure = () => setBox({ width: element.clientWidth, height: element.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const designWidth = Math.max(360, columns * PANEL_COLUMN_PX);
+  const scale = box.width > 0 ? box.width / designWidth : 1;
+  return (
+    <div ref={outer} className="tv-panel-scale">
+      {box.width > 0 && (
+        <article
+          className="dashboard-widget sized tv-panel-card"
+          style={
+            {
+              width: designWidth,
+              height: box.height / scale,
+              transform: `scale(${scale})`,
+              '--accent': color,
+            } as React.CSSProperties
+          }
+        >
+          {children}
+        </article>
+      )}
+    </div>
+  );
+}
+
+/** A production, donut or bar card of the dashboard, drawn as the dashboard draws it. */
+function TvPanelCard({
+  dashboardId,
+  widget,
+  columns,
+}: {
+  dashboardId: string;
+  widget: DashboardWidget;
+  columns: number;
+}) {
   const configured = widget.config.productionDefaultPeriod;
   const period: ProductionPeriod = configured && configured !== 'custom' ? configured : '7d';
   const statistics = usePoll<Statistic[]>(
     `/dashboards/${dashboardId}/statistics?widgetId=${widget.id}&period=${period}`,
     60000,
   );
+  // The period in use, shown as the dashboard shows its selected chip (no choosing on a TV).
+  const chip = (
+    <div className="widget-period" role="group" aria-label="Período do gráfico">
+      <button type="button" className="active" tabIndex={-1}>
+        {PERIOD_CHIP[period] ?? '7 dias'}
+      </button>
+    </div>
+  );
+  const text = PERIOD_TEXT[period] ?? 'últimos 7 dias';
   return (
-    <section className="tv3-card tv3-production">
-      <div className="tv3-card-title">
-        <strong>{widget.title}</strong>
-        <span>{PERIOD_TEXT[period] ?? 'últimos 7 dias'}</span>
+    <PanelScale columns={columns} color={widget.config.color ?? '#12b8a6'}>
+      <div className="widget-head">
+        <span />
+        <div>
+          <span className="widget-kicker">{widget.widget_type.toUpperCase()}</span>
+          <h2>{widget.title}</h2>
+        </div>
+        <span />
       </div>
-      <div className="tv3-quick-body">
-        {statistics.data ? (
-          <ProductionInsight
-            widget={widget}
-            statistics={statistics.data[0]}
-            period={period}
-            periodChips={null}
-          />
-        ) : (
-          <div className="tv3-loading">
-            {statistics.error ?? <span className="detail-spinner" aria-label="Carregando" />}
-          </div>
-        )}
-      </div>
-    </section>
+      {!statistics.data ? (
+        <div className="tv3-loading">
+          {statistics.error ?? <span className="detail-spinner" aria-label="Carregando" />}
+        </div>
+      ) : widget.widget_type === 'production' ? (
+        <ProductionInsight
+          widget={widget}
+          statistics={statistics.data[0]}
+          period={period}
+          periodChips={chip}
+        />
+      ) : (
+        <QuickChart widget={widget} statistics={statistics.data[0]} periodChips={chip} periodText={text} />
+      )}
+    </PanelScale>
   );
 }
 
 /** A dashboard card on the TV, drawn at wall size with the dashboard's own configuration. */
-function TvWidgetCard({ widget, data, dashboardId }: { widget: DashboardWidget; data: TvData; dashboardId: string }) {
+function TvWidgetCard({
+  widget,
+  data,
+  dashboardId,
+  columns,
+}: {
+  widget: DashboardWidget;
+  data: TvData;
+  dashboardId: string;
+  /** Columns the card takes on the TV grid: the dashboard width it is laid out at. */
+  columns: number;
+}) {
   const sample = widget.tag_id ? data.latest.data?.find((item) => item.tag_id === widget.tag_id) : undefined;
   const unit = widget.config.unitLabel?.trim() || widget.unit || '';
   switch (widget.widget_type) {
@@ -613,9 +705,8 @@ function TvWidgetCard({ widget, data, dashboardId }: { widget: DashboardWidget; 
     case 'donut':
     case 'bar_vertical':
     case 'bar_horizontal':
-      return <TvQuick dashboardId={dashboardId} widget={widget} />;
     case 'production':
-      return <TvProduction dashboardId={dashboardId} widget={widget} />;
+      return <TvPanelCard dashboardId={dashboardId} widget={widget} columns={columns} />;
     case 'line':
       return <TvLine widget={widget} deviceId={data.deviceId} minutes={data.dashboard.data?.time_window_minutes ?? 60} />;
     case 'shift_board':
@@ -661,7 +752,7 @@ export function TvGrid({ screen, data, dashboardId }: { screen: TvScreen; data: 
             ) : card.kind === 'tv_alert' ? (
               <TvAlert data={data} />
             ) : widget ? (
-              <TvWidgetCard widget={widget} data={data} dashboardId={dashboardId} />
+              <TvWidgetCard widget={widget} data={data} dashboardId={dashboardId} columns={card.w} />
             ) : (
               <section className="tv3-card tv3-empty-shift">
                 <span>Card removido do painel</span>
