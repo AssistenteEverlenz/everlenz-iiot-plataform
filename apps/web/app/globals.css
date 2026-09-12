@@ -5141,6 +5141,500 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   margin: 0;
   color: #92a2a7;
 }
+/* Modo TV, own 16:9 grid: header, alert, then numbers / curve + availability / timeline /
+   week + products. Sized by the screen width so a 43" TV shows compact, readable blocks. */
+.tv3 {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.6vw;
+  padding: 0.9vw 1.2vw;
+  overflow: hidden;
+  background: radial-gradient(circle at 18% 0%, #13262b, #0a1215 60%);
+  color: #e0e6e8;
+  font-size: clamp(11px, 0.85vw, 20px);
+}
+.tv3-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1.6vw;
+}
+.tv3-eyebrow {
+  color: #5fd3c4;
+  font-size: 0.65vw;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+}
+.tv3-title h1 {
+  margin: 0.15vw 0 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 1.7vw;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv3-title h1 small {
+  color: #92a2a7;
+  font-size: 0.9vw;
+  font-weight: 500;
+}
+.tv3-shift {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15vw;
+  text-align: right;
+}
+.tv3-shift strong {
+  color: #fff;
+  font-size: 1.2vw;
+  font-weight: 600;
+}
+.tv3-shift span {
+  color: #92a2a7;
+  font-size: 0.85vw;
+}
+.tv3-right {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+}
+.tv3-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5vw;
+  padding: 0.4vw 0.9vw;
+  border: 2px solid var(--state);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--state) 26%, transparent);
+  color: #fff;
+  font-size: 1.1vw;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tv3-state i {
+  width: 0.75vw;
+  height: 0.75vw;
+  border-radius: 50%;
+  background: var(--state);
+  box-shadow: 0 0 0.7vw var(--state);
+}
+.tv3-state small {
+  font-size: 0.85vw;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.tv3-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: #fff;
+  font-size: 2vw;
+  line-height: 1;
+}
+.tv3-clock small {
+  margin-top: 0.25vw;
+  color: #92a2a7;
+  font-size: 0.7vw;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+.tv3-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2vw;
+  height: 2vw;
+  min-width: 30px;
+  min-height: 30px;
+  border: 1px solid #2a3a3f;
+  border-radius: 50%;
+  background: transparent;
+  color: #92a2a7;
+  font-size: 0.95vw;
+  text-decoration: none;
+  cursor: pointer;
+}
+.tv3-alert {
+  padding: 0.5vw 1vw;
+  border: 1px solid transparent;
+  border-radius: 0.6vw;
+  font-size: 1.15vw;
+  font-weight: 700;
+}
+.tv3-alert.good {
+  border-color: #1f6b4a;
+  background: #123526;
+  color: #6ee7b7;
+}
+.tv3-alert.warn {
+  border-color: #7a5a1a;
+  background: #3a2c12;
+  color: #fcd34d;
+}
+.tv3-alert.bad {
+  border-color: #7f2d22;
+  background: #3d1a14;
+  color: #fca5a5;
+  animation: tv2-pulse 1.6s ease-in-out infinite;
+}
+.tv3-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #92a2a7;
+}
+.tv3-main {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: auto minmax(0, 1.35fr) auto minmax(0, 1fr);
+  gap: 0.6vw;
+  min-height: 0;
+}
+.tv3-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.6vw 0.8vw;
+  border: 1px solid #1f2c31;
+  border-radius: 0.6vw;
+  background: #111b1e;
+}
+.tv3-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.3vw 1vw;
+  margin-bottom: 0.3vw;
+}
+.tv3-card-title strong {
+  color: #d6dfe2;
+  font-size: 0.9vw;
+  font-weight: 600;
+}
+.tv3-card-title span {
+  color: #92a2a7;
+  font-size: 0.75vw;
+}
+.tv3-kpis {
+  grid-column: 1 / -1;
+  display: grid;
+  /* Five numbers plus the dashboard's gauges, all the same width. */
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0.6vw;
+}
+.tv3-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2vw;
+  min-width: 0;
+  padding: 0.55vw 0.8vw;
+  border: 1px solid #1f2c31;
+  border-left: 0.25vw solid #2a3a3f;
+  border-radius: 0.6vw;
+  background: #111b1e;
+}
+.tv3-kpi.good {
+  border-left-color: #1fbf7a;
+}
+.tv3-kpi.warn {
+  border-left-color: #f2a93b;
+}
+.tv3-kpi.bad {
+  border-left-color: #e4572e;
+}
+.tv3-kpi span {
+  color: #92a2a7;
+  font-size: 0.7vw;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tv3-kpi b {
+  overflow: hidden;
+  color: #fff;
+  font-size: 2vw;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv3-kpi b small {
+  color: #92a2a7;
+  font-size: 0.8vw;
+  font-weight: 500;
+}
+.tv3-kpi b.muted {
+  color: #6b7f86;
+  font-size: 1.3vw;
+}
+.tv3-kpi em {
+  overflow: hidden;
+  color: #b9c7cb;
+  font-size: 0.72vw;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv3-gauge svg {
+  width: 100%;
+  max-height: 5.4vw;
+}
+.tv3-gauge-track,
+.tv3-gauge-value {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 9;
+}
+.tv3-gauge-track {
+  stroke: #24343a;
+}
+.tv3-gauge-value {
+  stroke: #12b8a6;
+}
+.tv3-gauge-number {
+  fill: #fff;
+  font-size: 17px;
+  font-weight: 700;
+}
+.tv3-gauge-limit {
+  fill: #7d9096;
+  font-size: 7px;
+}
+.tv3-curve {
+  grid-column: 1 / span 8;
+}
+.tv3-curve-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4vw;
+}
+.tv3-curve-legend i {
+  display: inline-block;
+  width: 1vw;
+  height: 0.2vw;
+  border-radius: 2px;
+  background: #8a9ca2;
+}
+.tv3-curve-legend i.actual {
+  background: #12b8a6;
+}
+.tv3-curve-legend i.projected {
+  background: repeating-linear-gradient(90deg, #12b8a6 0 4px, transparent 4px 7px);
+}
+.tv3-chart {
+  flex: 1;
+  min-height: 0;
+}
+.tv3-avail {
+  grid-column: 9 / -1;
+}
+.tv3-avail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 0.8vw;
+  flex: 1;
+  min-height: 0;
+}
+.tv3-avail-body .shift-gauge {
+  width: 100%;
+  max-height: 100%;
+}
+.tv3-states {
+  display: grid;
+  gap: 0.3vw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tv3-states li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 3vw;
+  align-items: center;
+  gap: 0.5vw;
+  font-size: 0.85vw;
+}
+.tv3-states i {
+  width: 0.65vw;
+  height: 0.65vw;
+  border-radius: 2px;
+}
+.tv3-states b {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.tv3-states em {
+  color: #92a2a7;
+  font-style: normal;
+  text-align: right;
+}
+.tv3-timeline {
+  grid-column: 1 / -1;
+  gap: 0.3vw;
+}
+.tv3-timeline-bar {
+  display: flex;
+  gap: 1px;
+  height: 1vw;
+  overflow: hidden;
+  border-radius: 0.3vw;
+  background: #18252a;
+}
+.tv3-timeline-bar span {
+  flex: 1;
+  min-width: 1px;
+}
+.tv3-timeline-bar .tv3-timeline-rest {
+  background: transparent;
+}
+.tv3-timeline-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1vw;
+  color: #92a2a7;
+  font-size: 0.72vw;
+}
+.tv3-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.2vw 1vw;
+}
+.tv3-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35vw;
+}
+.tv3-legend i {
+  width: 0.6vw;
+  height: 0.6vw;
+  border-radius: 2px;
+}
+.tv3-empty-shift {
+  grid-column: 1 / -1;
+  grid-row: span 2;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4vw;
+}
+.tv3-empty-shift strong {
+  color: #fff;
+  font-size: 1.6vw;
+}
+.tv3-empty-shift span {
+  color: #92a2a7;
+  font-size: 1vw;
+}
+.tv3-week {
+  grid-column: 1 / span 6;
+}
+.tv3-week-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.45vw;
+  flex: 1;
+  min-height: 0;
+}
+.tv3-day {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15vw;
+  min-width: 0;
+  padding: 0.4vw 0.5vw;
+  border-left: 0.25vw solid var(--goal);
+  border-radius: 0.5vw;
+  background: color-mix(in srgb, var(--goal) 18%, #111b1e);
+}
+.tv3-day span {
+  color: #92a2a7;
+  font-size: 0.68vw;
+}
+.tv3-day b {
+  color: #fff;
+  font-size: 1.35vw;
+}
+.tv3-day small {
+  min-height: 1em;
+  overflow: hidden;
+  color: #b9c7cb;
+  font-size: 0.65vw;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv3-mix {
+  grid-column: 7 / -1;
+}
+.tv3-mix-body {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 0.8vw;
+  flex: 1;
+  min-height: 0;
+}
+.tv3-donut {
+  height: 100%;
+  min-height: 0;
+}
+.tv3-mix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8vw;
+}
+.tv3-mix-table th {
+  padding: 0 0 0.25vw;
+  color: #7d9096;
+  font-size: 0.65vw;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: right;
+  text-transform: uppercase;
+}
+.tv3-mix-table th:first-child,
+.tv3-mix-table td:first-child {
+  text-align: left;
+}
+.tv3-mix-table td {
+  padding: 0.2vw 0;
+  border-top: 1px solid #1d2a2e;
+  text-align: right;
+  white-space: nowrap;
+}
+.tv3-mix-table td:first-child {
+  max-width: 14vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv3-mix-table td i {
+  display: inline-block;
+  width: 0.6vw;
+  height: 0.6vw;
+  margin-right: 0.45vw;
+  border-radius: 2px;
+}
+.tv3-mix-table td b {
+  color: #fff;
+  font-weight: 600;
+}
+.tv3-mix-table td small {
+  margin-left: 0.45vw;
+  color: #92a2a7;
+}
+.tv3-empty {
+  margin: 0;
+  color: #92a2a7;
+}
 .production-detail-loading {
   display: flex;
   align-items: center;

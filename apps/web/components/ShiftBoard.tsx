@@ -29,7 +29,7 @@ interface Occurrence {
   end: string;
   plannedSeconds: number;
 }
-interface BoardData {
+export interface BoardData {
   span: { start: string; end: string };
   plannedSeconds: number;
   remainingSeconds: number;
@@ -164,7 +164,97 @@ function statusLine(data: ShiftBoardResponse) {
   return data.next ? `próximo turno ${clock(data.next.start)}` : 'sem turno programado';
 }
 
-function Gauge({ value }: { value: number | null }) {
+/**
+ * The S-curve: planned, actual and projected, with the area under "realizado" painted with
+ * the machine state of each 5-minute stretch (the segment between curve points k and k+1 is
+ * timeline[k]; hard stops over the area's own width, which objectBoundingBox measures). It
+ * fills its parent, so the board and the TV size it each their own way.
+ */
+export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSize?: number }) {
+  const reactId = useId();
+  const info = metricInfo[board.metric];
+  const chart = board.curve.map((point) => ({ ...point, label: clock(point.t) }));
+  const gradientId = `shift-state-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const lastActual = chart.reduce((last, point, index) => (point.actual != null ? index : last), -1);
+  const stateStops =
+    lastActual > 0
+      ? board.timeline.slice(0, lastActual).flatMap((segment, index) => {
+          const color = stateInfo[segment.state]?.color ?? stateInfo.unknown.color;
+          return [
+            { offset: index / lastActual, color },
+            { offset: (index + 1) / lastActual, color },
+          ];
+        })
+      : [];
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart data={chart} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+        {stateStops.length > 0 && (
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+              {stateStops.map((stop, index) => (
+                <stop key={index} offset={stop.offset} stopColor={stop.color} />
+              ))}
+            </linearGradient>
+          </defs>
+        )}
+        <CartesianGrid stroke="#e6eef0" strokeOpacity={0.35} strokeDasharray="3 5" vertical={false} />
+        <XAxis
+          dataKey="label"
+          tick={{ fontSize, fill: '#71868d' }}
+          tickLine={false}
+          axisLine={false}
+          minTickGap={28}
+        />
+        <YAxis
+          width={fontSize * 4.4}
+          tick={{ fontSize, fill: '#71868d' }}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(value: number) => formatNumber(value, info.decimals && value < 10 ? 1 : 0)}
+        />
+        <Tooltip
+          formatter={(value) =>
+            value == null ? '—' : `${formatNumber(Number(value), info.decimals)} ${info.unit}`
+          }
+          labelFormatter={(label) => `às ${label}`}
+        />
+        <Area
+          type="monotone"
+          dataKey="actual"
+          name="Realizado"
+          stroke="var(--accent, #12b8a6)"
+          fill={stateStops.length ? `url(#${gradientId})` : 'var(--accent, #12b8a6)'}
+          fillOpacity={stateStops.length ? 0.45 : 0.14}
+          strokeWidth={2.5}
+          isAnimationActive={false}
+          connectNulls={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="planned"
+          name="Planejado"
+          stroke="#8a9ca2"
+          strokeWidth={1.8}
+          dot={false}
+          isAnimationActive={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="projected"
+          name="Projeção"
+          stroke="var(--accent, #12b8a6)"
+          strokeDasharray="5 5"
+          strokeWidth={2}
+          dot={false}
+          isAnimationActive={false}
+        />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function Gauge({ value }: { value: number | null }) {
   const ratio = value == null ? 0 : Math.max(0, Math.min(1, value));
   const angle = Math.PI * (1 - ratio);
   const x = 60 + 48 * Math.cos(angle);
@@ -230,8 +320,6 @@ export function ShiftBoardView({
   onChanged?: () => void;
   historical?: boolean;
 }) {
-  // Unique gradient id per board: several boards can share one page.
-  const reactId = useId();
   const [editingTarget, setEditingTarget] = useState(false);
   if (!data.configured)
     return (
@@ -281,22 +369,6 @@ export function ShiftBoardView({
         : target?.health
           ? 'bad'
           : 'none';
-  const chart = (board?.curve ?? []).map((point) => ({ ...point, label: clock(point.t) }));
-  // The area under "realizado" is painted with the machine state of each 5-minute stretch:
-  // the segment between curve points k and k+1 is timeline[k]. Hard stops over the area's own
-  // width (first point to the last actual one), which is what objectBoundingBox measures.
-  const gradientId = `shift-state-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const lastActual = chart.reduce((last, point, index) => (point.actual != null ? index : last), -1);
-  const stateStops =
-    board && lastActual > 0
-      ? board.timeline.slice(0, lastActual).flatMap((segment, index) => {
-          const color = stateInfo[segment.state]?.color ?? stateInfo.unknown.color;
-          return [
-            { offset: index / lastActual, color },
-            { offset: (index + 1) / lastActual, color },
-          ];
-        })
-      : [];
   const elapsed = board?.time.elapsedProductive ?? 0;
   const secondaries = board
     ? [
@@ -445,74 +517,7 @@ export function ShiftBoardView({
                 </span>
               </div>
               <div className="shift-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chart} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-                    {stateStops.length > 0 && (
-                      <defs>
-                        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
-                          {stateStops.map((stop, index) => (
-                            <stop key={index} offset={stop.offset} stopColor={stop.color} />
-                          ))}
-                        </linearGradient>
-                      </defs>
-                    )}
-                    <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fontSize: 10, fill: '#71868d' }}
-                      tickLine={false}
-                      axisLine={false}
-                      minTickGap={28}
-                    />
-                    <YAxis
-                      width={44}
-                      tick={{ fontSize: 10, fill: '#71868d' }}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value: number) =>
-                        formatNumber(value, info.decimals && value < 10 ? 1 : 0)
-                      }
-                    />
-                    <Tooltip
-                      formatter={(value) =>
-                        value == null
-                          ? '—'
-                          : `${formatNumber(Number(value), info.decimals)} ${info.unit}`
-                      }
-                      labelFormatter={(label) => `às ${label}`}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="actual"
-                      name="Realizado"
-                      stroke="var(--accent, #12b8a6)"
-                      fill={stateStops.length ? `url(#${gradientId})` : 'var(--accent, #12b8a6)'}
-                      fillOpacity={stateStops.length ? 0.45 : 0.14}
-                      strokeWidth={2.5}
-                      isAnimationActive={false}
-                      connectNulls={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="planned"
-                      name="Planejado"
-                      stroke="#8a9ca2"
-                      strokeWidth={1.8}
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="projected"
-                      name="Projeção"
-                      stroke="var(--accent, #12b8a6)"
-                      strokeDasharray="5 5"
-                      strokeWidth={2}
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <ShiftCurve board={board} />
               </div>
             </div>
             <div className="shift-availability">
