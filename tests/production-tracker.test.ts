@@ -78,6 +78,15 @@ describe('production tracker', () => {
     expect(sum(result.deltas, 'pieces')).toBe(4);
   });
 
+  it('ignores a small step back instead of taking it for a reset', () => {
+    // Seen on a Delta HMI: 5672 → 5620 → 5680. Counting 5620 as a reset inflated the day.
+    const back = attribute(runtime({ lastPieces: 5672 }), observe(3, { pieces: 5620 }), config, 30);
+    expect(sum(back.deltas, 'pieces')).toBe(0);
+    expect(back.runtime.lastPieces).toBe(5672);
+    const up = attribute(back.runtime, observe(6, { pieces: 5680 }), config, 30);
+    expect(sum(up.deltas, 'pieces')).toBe(8);
+  });
+
   it('splits time across 5-minute buckets', () => {
     const start = Date.parse('2026-09-08T10:04:50Z');
     const result = attribute(

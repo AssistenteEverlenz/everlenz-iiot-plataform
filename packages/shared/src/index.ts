@@ -231,3 +231,5 @@ export function convertTag(value: unknown, tag: TagConfig): number | boolean | s
 
 // Plant shift calendar (production by shift).
 export * from './shifts.js';
+// Production accounting step, live in the ingestor and replayed by the API.
+export * from './production-attribution.js';

@@ -2,7 +2,7 @@ import { createApp } from './app.js';
 import { env } from '@iiot/shared';
 import { database, pool } from '@iiot/database';
 import { startLegacyMqttProxy, type LegacyDevice } from './legacy-mqtt.js';
-import { closeShiftReports } from './shift-production.js';
+import { backfillProduction, closeShiftReports } from './shift-production.js';
 const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
 
@@ -74,6 +74,17 @@ async function closeShifts() {
 const shiftTimer = setInterval(() => void closeShifts(), 5 * 60 * 1000);
 shiftTimer.unref();
 setTimeout(() => void closeShifts(), 20_000).unref();
+// Production counted from all the stored telemetry, also for devices configured after it came.
+setTimeout(
+  () =>
+    void backfillProduction(database, app.log).catch((error) =>
+      app.log.warn({
+        event: 'production_backfill_failed',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    ),
+  40_000,
+).unref();
 
 let stopping = false;
 async function shutdown() {

@@ -3,7 +3,11 @@ import { z } from 'zod';
 import type { Database } from '@iiot/database';
 import {
   addDays,
+  attribute,
   BUCKET_SECONDS,
+  type BucketDelta,
+  type Runtime,
+  type TrackerConfig,
   DEFAULT_SHIFTS,
   env,
   expandShifts,
@@ -399,6 +403,265 @@ async function trackingSince(db: Database, deviceId: string) {
   return result.rows[0]?.first ? new Date(result.rows[0].first) : null;
 }
 
+// How far back a rebuild reaches (same limit as a history query).
+const REBUILD_MAX_DAYS = 400;
+const DAY_MS = 24 * 3600 * 1000;
+
+interface ReplayRow {
+  at: Date | string;
+  product_code: string | null;
+  pieces: number | null;
+  pallets: number | null;
+  tons: number | null;
+  auto: number | null;
+  weight: number | null;
+}
+
+/**
+ * Rebuilds the production buckets of one device from the stored telemetry, replaying every
+ * message through the same attribution the ingestor applies live. Production then covers all
+ * the data the database holds, not only what arrived after the configuration was saved: an
+ * operator who started before the shift or ran past it is counted all the same.
+ * The running bucket stays with the ingestor. Returns the first rebuilt instant, or null.
+ */
+export async function rebuildProductionBuckets(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  options: { from?: Date; until?: Date } = {},
+) {
+  const settings = await db.query<{
+    blocks_tag_id: string | null;
+    pallets_tag_id: string | null;
+    tons_total_tag_id: string | null;
+    auto_tag_id: string | null;
+    idle_seconds: number | null;
+    weight_per_unit_kg: number | null;
+    weight_tag_id: string | null;
+  }>(
+    `SELECT blocks_tag_id,pallets_tag_id,tons_total_tag_id,auto_tag_id,idle_seconds,
+       weight_per_unit_kg,weight_tag_id
+     FROM production_settings WHERE tenant_id=$1 AND device_id=$2`,
+    [tenantId, deviceId],
+  );
+  const row = settings.rows[0];
+  if (!row || (!row.blocks_tag_id && !row.pallets_tag_id)) return null;
+  // Tag ids stand in for keys: the step only asks whether each signal is configured.
+  const config: TrackerConfig = {
+    piecesKey: row.blocks_tag_id,
+    palletsKey: row.pallets_tag_id,
+    tonsKey: row.tons_total_tag_id,
+    autoKey: row.auto_tag_id,
+    idleSeconds: row.idle_seconds ?? 60,
+    weightPerUnitKg: row.weight_per_unit_kg == null ? null : Number(row.weight_per_unit_kg),
+    weightKey: row.weight_tag_id,
+  };
+  const now = Date.now();
+  const cutoff = Math.floor(now / BUCKET_MS) * BUCKET_MS;
+  const until = Math.min(cutoff, options.until?.getTime() ?? cutoff);
+  const earliest = await db.query<{ first: Date | string | null }>(
+    `SELECT min(received_at) first FROM telemetry_samples
+     WHERE tenant_id=$1 AND device_id=$2 AND received_at>=$3`,
+    [tenantId, deviceId, new Date(now - REBUILD_MAX_DAYS * DAY_MS)],
+  );
+  if (!earliest.rows[0]?.first) return null;
+  const firstAt = new Date(earliest.rows[0].first).getTime();
+  const requested = options.from ? Math.max(options.from.getTime(), firstAt) : firstAt;
+  // Whole buckets only: a bucket is deleted and written again as a unit.
+  const start = Math.floor(requested / BUCKET_MS) * BUCKET_MS;
+  if (start >= until) return null;
+
+  // One observation per stored message: the configured signals side by side.
+  const replay = (from: Date, to: Date, order: 'ASC' | 'DESC', limit = '') =>
+    db.query<ReplayRow>(
+      `SELECT min(received_at) at,min(product_code) product_code,
+         max(value_number) FILTER (WHERE tag_id=$3) pieces,
+         max(value_number) FILTER (WHERE tag_id=$4) pallets,
+         max(value_number) FILTER (WHERE tag_id=$5) tons,
+         max(coalesce(value_number,CASE WHEN value_boolean THEN 1 WHEN NOT value_boolean THEN 0 END))
+           FILTER (WHERE tag_id=$6) auto,
+         max(value_number) FILTER (WHERE tag_id=$7) weight
+       FROM telemetry_samples
+       WHERE tenant_id=$1 AND device_id=$2 AND received_at>=$8 AND received_at<$9
+       GROUP BY raw_message_id ORDER BY 1 ${order} ${limit}`,
+      [
+        tenantId,
+        deviceId,
+        row.blocks_tag_id,
+        row.pallets_tag_id,
+        row.tons_total_tag_id,
+        row.auto_tag_id,
+        row.weight_tag_id,
+        from,
+        to,
+      ],
+    );
+  const number = (value: unknown) =>
+    value == null || !Number.isFinite(Number(value)) ? null : Number(value);
+  const observationOf = (item: ReplayRow) => ({
+    at: new Date(item.at).getTime(),
+    pieces: number(item.pieces),
+    pallets: number(item.pallets),
+    tons: number(item.tons),
+    auto: item.auto == null ? null : Number(item.auto) !== 0,
+    productCode: item.product_code ?? 'Sem produto',
+    weightKg: number(item.weight),
+  });
+
+  // Starting mid-history, the message just before carries the counters to compare with.
+  let runtime: Runtime | null = null;
+  if (start > firstAt) {
+    const before = await replay(new Date(start - 2 * DAY_MS), new Date(start), 'DESC', 'LIMIT 1');
+    if (before.rows[0]) {
+      const seed = observationOf(before.rows[0]);
+      runtime = {
+        lastAt: seed.at,
+        lastPieces: seed.pieces,
+        lastPallets: seed.pallets,
+        lastTons: seed.tons,
+        lastIncrementAt: seed.at,
+        auto: seed.auto,
+        productCode: seed.productCode,
+      };
+    }
+  }
+  const buckets = new Map<string, BucketDelta>();
+  for (let chunk = start; chunk < until; chunk += DAY_MS) {
+    const rows = await replay(new Date(chunk), new Date(Math.min(chunk + DAY_MS, until)), 'ASC');
+    for (const item of rows.rows) {
+      const step = attribute(runtime, observationOf(item), config, env.DEVICE_OFFLINE_SECONDS);
+      runtime = step.runtime;
+      for (const delta of step.deltas) {
+        if (delta.bucket < start || delta.bucket >= until) continue;
+        const key = `${delta.bucket}|${delta.productCode}`;
+        const total = buckets.get(key);
+        if (!total) buckets.set(key, { ...delta });
+        else {
+          total.pieces += delta.pieces;
+          total.pallets += delta.pallets;
+          total.tons += delta.tons;
+          total.producing += delta.producing;
+          total.idle += delta.idle;
+          total.manual += delta.manual;
+        }
+      }
+    }
+  }
+  const deltas = [...buckets.values()];
+  await db.transaction(async (sql) => {
+    await sql.query(
+      'DELETE FROM production_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4',
+      [tenantId, deviceId, new Date(start), new Date(until)],
+    );
+    for (let index = 0; index < deltas.length; index += 400) {
+      const values: unknown[] = [];
+      const tuples = deltas.slice(index, index + 400).map((delta) => {
+        const item = [
+          tenantId,
+          deviceId,
+          new Date(delta.bucket),
+          delta.productCode,
+          delta.pieces,
+          delta.pallets,
+          delta.tons,
+          delta.producing,
+          delta.idle,
+          delta.manual,
+        ];
+        return `(${item.map((value) => (values.push(value), `$${values.length}`)).join(',')})`;
+      });
+      await sql.query(
+        `INSERT INTO production_buckets(tenant_id,device_id,bucket,product_code,pieces,pallets,tons,producing_s,idle_s,manual_s)
+         VALUES ${tuples.join(',')}
+         ON CONFLICT(device_id,bucket,product_code) DO UPDATE SET pieces=EXCLUDED.pieces,
+           pallets=EXCLUDED.pallets,tons=EXCLUDED.tons,producing_s=EXCLUDED.producing_s,
+           idle_s=EXCLUDED.idle_s,manual_s=EXCLUDED.manual_s`,
+        values,
+      );
+    }
+  });
+  return new Date(start);
+}
+
+/** Rewrites the automatic shift rows from a date on (rows someone deleted stay deleted). */
+async function refreshShiftReports(db: Database, tenantId: string, deviceId: string, from: Date) {
+  const fromDate = plantDate(from);
+  await db.query(
+    `DELETE FROM shift_reports WHERE tenant_id=$1 AND device_id=$2 AND source='auto'
+     AND deleted_at IS NULL AND production_date>=$3`,
+    [tenantId, deviceId, fromDate],
+  );
+  return closeShiftReports(db, new Date(), { deviceId, fromDate });
+}
+
+// One rebuild per device at a time; a request during a rebuild runs once more afterwards.
+const rebuilding = new Map<string, { again: boolean }>();
+
+/** Full rebuild in the background, e.g. after the production configuration changed. */
+export function scheduleProductionRebuild(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  log?: { warn: (entry: object) => void; info: (entry: object) => void },
+) {
+  const running = rebuilding.get(deviceId);
+  if (running) {
+    running.again = true;
+    return;
+  }
+  const state = { again: false };
+  rebuilding.set(deviceId, state);
+  void (async () => {
+    try {
+      do {
+        state.again = false;
+        const from = await rebuildProductionBuckets(db, tenantId, deviceId);
+        if (from) {
+          const written = await refreshShiftReports(db, tenantId, deviceId, from);
+          log?.info({ event: 'production_rebuilt', deviceId, from: from.toISOString(), written });
+        }
+      } while (state.again);
+    } catch (error) {
+      log?.warn({
+        event: 'production_rebuild_failed',
+        deviceId,
+        message: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+      });
+    } finally {
+      rebuilding.delete(deviceId);
+    }
+  })();
+}
+
+/**
+ * At startup: every configured device whose buckets begin later than its stored telemetry
+ * (configured after the data arrived, or before this rebuild existed) is rebuilt.
+ */
+export async function backfillProduction(
+  db: Database,
+  log?: { warn: (entry: object) => void; info: (entry: object) => void },
+) {
+  const devices = await db.query<{ tenant_id: string; device_id: string }>(
+    `SELECT ps.tenant_id,ps.device_id FROM production_settings ps
+     JOIN devices d ON d.id=ps.device_id AND d.archived_at IS NULL
+     WHERE ps.blocks_tag_id IS NOT NULL OR ps.pallets_tag_id IS NOT NULL`,
+  );
+  for (const device of devices.rows) {
+    const span = await db.query<{ first_sample: Date | string | null; first_bucket: Date | string | null }>(
+      `SELECT (SELECT min(received_at) FROM telemetry_samples WHERE tenant_id=$1 AND device_id=$2
+                 AND received_at>=$3) first_sample,
+              (SELECT min(bucket) FROM production_buckets WHERE device_id=$2) first_bucket`,
+      [device.tenant_id, device.device_id, new Date(Date.now() - REBUILD_MAX_DAYS * DAY_MS)],
+    );
+    const firstSample = span.rows[0]?.first_sample;
+    if (!firstSample) continue;
+    const firstBucket = span.rows[0]?.first_bucket;
+    if (firstBucket && new Date(firstBucket).getTime() - new Date(firstSample).getTime() < 3600_000)
+      continue;
+    scheduleProductionRebuild(db, device.tenant_id, device.device_id, log);
+  }
+}
+
 /**
  * Writes every finished shift of the last days that has no report yet, and per past day the
  * production made outside every shift. A shift that started before tracking began is skipped:
@@ -677,6 +940,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         summary: body,
       });
     });
+    // The whole stored history is recounted with the new configuration, in the background.
+    scheduleProductionRebuild(db, current.tenantId, id, req.log);
     return loadConfig(db, current.tenantId, id);
   });
 
@@ -896,6 +1161,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     if (addDays(body.from, 62) < body.to)
       return reply.code(400).send({ error: 'Recalcule no máximo 62 dias por vez' });
     const current = access.principal(req);
+    // First the counts themselves, from the stored telemetry of the period.
+    await rebuildProductionBuckets(db, current.tenantId, id, {
+      from: plantInstant(body.from, '00:00'),
+      until: plantInstant(addDays(body.to, 1), '00:00'),
+    });
     await db.query(
       `DELETE FROM shift_reports WHERE tenant_id=$1 AND device_id=$2 AND source='auto'
        AND production_date BETWEEN $3 AND $4`,

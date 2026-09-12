@@ -843,7 +843,7 @@ function ProductionPage() {
       {confirming === 'recalculate' && (
         <ActionModal
           title="Recalcular período"
-          description={`As linhas automáticas de ${brDate(from)} a ${brDate(to)} serão geradas de novo a partir dos dados registrados (inclusive as que foram excluídas). As parciais manuais não mudam.`}
+          description={`As linhas automáticas de ${brDate(from)} a ${brDate(to)} serão geradas de novo, recontando a produção a partir do histórico de variáveis gravado (inclusive as linhas que foram excluídas). As parciais manuais não mudam.`}
           confirmLabel="Recalcular"
           onConfirm={recalculate}
           onClose={() => setConfirming(null)}
