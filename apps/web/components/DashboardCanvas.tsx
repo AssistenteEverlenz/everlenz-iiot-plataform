@@ -1028,6 +1028,8 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [savingRefresh, setSavingRefresh] = useState(false);
   const [removingWidget, setRemovingWidget] = useState<DashboardWidget | null>(null);
   const [resettingWidget, setResettingWidget] = useState<DashboardWidget | null>(null);
+  // Wiping a variable's history (wrong format or address): every card on it starts over.
+  const [clearingHistory, setClearingHistory] = useState<DashboardWidget | null>(null);
   // A poll that left before a move or resize was saved would bring the old layout back
   // and make the card jump. Local edits hold the server copy off until they are saved
   // and a fresh read has had time to arrive.
@@ -1247,6 +1249,12 @@ export function DashboardCanvas({ id }: { id: string }) {
   async function resetCounter(widget: DashboardWidget) {
     await mutate(`/dashboards/${id}/widgets/${widget.id}/reset-counter`, 'POST');
     await Promise.all([dashboard.refresh(), counters.refresh()]);
+  }
+  async function clearVariableHistory(widget: DashboardWidget) {
+    if (!widget.tag_id) return;
+    await mutate(`/devices/${widget.device_id}/tags/${widget.tag_id}/history`, 'DELETE');
+    setEditingWidget(null);
+    await Promise.all([dashboard.refresh(), history.refresh(), latest.refresh()]);
   }
   async function resizeWidget(widget: DashboardWidget, cols: number, rows: number) {
     // Optimistic: the card keeps its new size immediately; the server merges the config.
@@ -1969,6 +1977,16 @@ export function DashboardCanvas({ id }: { id: string }) {
               >
                 Excluir item
               </button>
+              {editingWidget.tag_id && (
+                <button
+                  type="button"
+                  disabled={savingModal}
+                  className="danger-text"
+                  onClick={() => setClearingHistory(editingWidget)}
+                >
+                  Zerar histórico da variável
+                </button>
+              )}
               <button type="button" disabled={savingModal} onClick={() => setEditingWidget(null)}>
                 Cancelar
               </button>
@@ -1988,6 +2006,16 @@ export function DashboardCanvas({ id }: { id: string }) {
           danger
           onClose={() => setRemovingWidget(null)}
           onConfirm={() => removeWidget(removingWidget)}
+        />
+      )}
+      {clearingHistory && (
+        <ActionModal
+          title="Zerar histórico da variável"
+          description={`Todas as leituras gravadas de “${clearingHistory.key ?? clearingHistory.title}” serão apagadas, com os totais e médias calculados a partir delas. Use quando a variável foi lida com formato ou endereço errado. Todos os itens que usam esta variável recomeçam do zero a partir da próxima leitura. Esta ação não pode ser desfeita.`}
+          confirmLabel="Zerar histórico"
+          danger
+          onClose={() => setClearingHistory(null)}
+          onConfirm={() => clearVariableHistory(clearingHistory)}
         />
       )}
       {resettingWidget && (

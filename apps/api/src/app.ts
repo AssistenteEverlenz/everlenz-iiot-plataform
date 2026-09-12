@@ -423,6 +423,44 @@ export async function createApp(
     });
     return result.rows[0];
   });
+  // Wipes the recorded history of one variable: its samples, the hourly rollups built from
+  // them and the counter baseline. Used when a variable was read with the wrong format or
+  // address and every average or total built on it is wrong; the next reading starts clean,
+  // and the cleared baseline keeps a cumulative counter from counting its whole value as one
+  // increment. Every card on this variable starts over. Master only, recorded in the audit.
+  app.delete('/api/devices/:id/tags/:tagId/history', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id, tagId } = z.object({ id: uuid, tagId: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const current = access.principal(req);
+    const tag = await db.query<{ key: string }>(
+      'SELECT key FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+      [current.tenantId, id, tagId],
+    );
+    if (!tag.rows.length) return reply.code(404).send({ error: 'Variable not found' });
+    const removed = await db.transaction(async (sql) => {
+      await sql.query(
+        'DELETE FROM telemetry_hourly_rollups WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+        [current.tenantId, id, tagId],
+      );
+      const samples = await sql.query(
+        'DELETE FROM telemetry_samples WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+        [current.tenantId, id, tagId],
+      );
+      await sql.query(
+        'DELETE FROM telemetry_numeric_state WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+        [current.tenantId, id, tagId],
+      );
+      await recordAudit(sql, req, current, {
+        action: 'tag.history.clear',
+        targetType: 'tag',
+        targetId: tagId,
+        summary: { key: tag.rows[0].key, samples: samples.rowCount ?? 0 },
+      });
+      return samples.rowCount ?? 0;
+    });
+    return { key: tag.rows[0].key, removedSamples: removed };
+  });
   app.post('/api/devices/:id/tags', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     // Tag scaling rewrites how every future sample is interpreted: master only.
