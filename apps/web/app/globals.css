@@ -4649,6 +4649,124 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .production-detail-products {
   margin-bottom: 16px;
 }
+.production-period .production-view {
+  flex-wrap: wrap;
+}
+[data-goal='met'] {
+  --goal: #1fbf7a;
+  --goal-soft: #e3f7ee;
+}
+[data-goal='near'] {
+  --goal: #f2a93b;
+  --goal-soft: #fdf1dc;
+}
+[data-goal='missed'] {
+  --goal: #e4572e;
+  --goal-soft: #fce6df;
+}
+[data-goal='running'] {
+  --goal: #12b8a6;
+  --goal-soft: #e6f6f4;
+}
+[data-goal='no-target'] {
+  --goal: #b8c4c8;
+  --goal-soft: #eef2f3;
+}
+[data-goal='none'] {
+  --goal: #dfe6e8;
+  --goal-soft: #f6f8f9;
+}
+.goal-calendar {
+  padding-block: 12px;
+}
+.goal-calendar-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-bottom: 8px;
+}
+.goal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: #6b7f86;
+}
+.goal-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.goal-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--goal);
+}
+.goal-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.goal-calendar.large .goal-day {
+  flex: 1 1 120px;
+  max-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 4px solid var(--goal);
+  border-radius: 10px;
+  background: var(--goal-soft);
+}
+.goal-calendar.large .goal-date {
+  font-size: 11px;
+  color: #6b7f86;
+}
+.goal-calendar.large .goal-day b {
+  font-size: 18px;
+  font-weight: 600;
+}
+.goal-calendar.large .goal-day small {
+  font-size: 11px;
+  color: #4d6168;
+}
+.goal-calendar.medium .goal-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--goal);
+}
+.goal-calendar.medium .goal-day[data-goal='none'],
+.goal-calendar.medium .goal-day[data-goal='no-target'] {
+  color: #6b7f86;
+}
+.goal-calendar.small .goal-days {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 12px);
+  grid-auto-columns: 12px;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.goal-calendar.small .goal-day {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--goal);
+}
+.goal-calendar.small .goal-day.blank {
+  background: transparent;
+}
 .production-detail-loading {
   display: flex;
   align-items: center;

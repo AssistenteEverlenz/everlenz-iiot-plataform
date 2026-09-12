@@ -2,16 +2,6 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { ActionModal } from '../../components/ActionModal';
 import { ProductionConfigModal } from '../../components/ProductionConfigModal';
 import { HmiCheckModal } from '../../components/HmiCheckModal';
@@ -91,6 +81,24 @@ interface ShiftForm {
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const COLUMNS_KEY = 'everlenz-production-columns';
+const PERIODS = [
+  ['today', 'Hoje'],
+  ['7d', '7 dias'],
+  ['week', 'Semana'],
+  ['month', 'Mês'],
+  ['year', 'Ano'],
+  ['custom', 'Personalizado'],
+] as const;
+type Period = (typeof PERIODS)[number][0];
+type GoalStatus = 'met' | 'near' | 'missed' | 'running' | 'no-target' | 'none';
+const GOAL_LEGEND: Array<[GoalStatus, string]> = [
+  ['met', 'bateu a meta'],
+  ['near', '90% ou mais'],
+  ['missed', 'abaixo de 90%'],
+  ['running', 'em andamento'],
+  ['no-target', 'sem meta'],
+  ['none', 'sem turno'],
+];
 
 function plantToday() {
   return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -99,6 +107,10 @@ function shiftDay(date: string, days: number) {
   const parsed = new Date(`${date}T12:00:00Z`);
   parsed.setUTCDate(parsed.getUTCDate() + days);
   return parsed.toISOString().slice(0, 10);
+}
+/** 0 = Sunday … 6 = Saturday, for a plant date (YYYY-MM-DD). */
+function weekdayOf(date: string) {
+  return new Date(`${date}T12:00:00Z`).getUTCDay();
 }
 function brDate(date: string) {
   return date.split('-').reverse().join('/');
@@ -353,6 +365,7 @@ function ProductionPage() {
   const [deviceId, setDeviceId] = useState(search.get('device') ?? '');
   const [from, setFrom] = useState(() => shiftDay(plantToday(), -6));
   const [to, setTo] = useState(plantToday);
+  const [period, setPeriod] = useState<Period>('7d');
   const [view, setView] = useState<'shift' | 'day'>('shift');
   const [shiftFilter, setShiftFilter] = useState('');
   const [includeOffShift, setIncludeOffShift] = useState(true);
@@ -429,8 +442,6 @@ function ProductionPage() {
     [reports.data, includeOffShift, shiftFilter],
   );
   const rows = view === 'day' ? groupByDay(shiftRows) : shiftRows;
-  const metric: ProductionMetric = reports.data?.targetMetric ?? 'milheiros';
-  const info = metricInfo[metric];
   const totals = rows.reduce(
     (sum, row) => ({
       milheiros: sum.milheiros + row.milheiros,
@@ -447,17 +458,73 @@ function ProductionPage() {
   );
   const visible = COLUMNS.filter((column) => columns.includes(column.id));
   const selectable = view === 'shift' ? rows.flatMap((row) => (row.id ? [row.id] : [])) : [];
-  const chartRows = [...rows]
-    .filter((row) => !row.offShift)
-    .reverse()
-    .map((row) => ({
-      label:
-        view === 'day'
-          ? brDate(row.date).slice(0, 5)
-          : `${brDate(row.date).slice(0, 5)} ${row.shift}`,
-      value: metricOf(row, metric),
-      target: row.target,
-    }));
+  // Target calendar: one square per day of the period, coloured by whether the day's target
+  // (the sum of its shifts' targets) was met. Partial snapshots would count a shift twice.
+  const goalDays = useMemo(() => {
+    const byDate = new Map<
+      string,
+      { target: number; achieved: number; metric: ProductionMetric | null; open: boolean }
+    >();
+    for (const row of shiftRows) {
+      if (row.offShift || row.source === 'manual') continue;
+      const day = byDate.get(row.date) ?? { target: 0, achieved: 0, metric: null, open: false };
+      if (row.target && row.targetMetric) {
+        day.target += row.target;
+        day.achieved += metricOf(row, row.targetMetric);
+        day.metric = row.targetMetric;
+      }
+      day.open = day.open || row.open;
+      byDate.set(row.date, day);
+    }
+    const days: Array<{
+      date: string;
+      status: GoalStatus;
+      ratio: number | null;
+      target: number;
+      achieved: number;
+      metric: ProductionMetric | null;
+    }> = [];
+    for (let date = from; date <= to && days.length < 400; date = shiftDay(date, 1)) {
+      const day = byDate.get(date);
+      const ratio = day && day.target > 0 ? day.achieved / day.target : null;
+      const status: GoalStatus = !day
+        ? 'none'
+        : ratio == null
+          ? 'no-target'
+          : ratio >= 1
+            ? 'met'
+            : day.open
+              ? 'running'
+              : ratio >= 0.9
+                ? 'near'
+                : 'missed';
+      days.push({
+        date,
+        status,
+        ratio,
+        target: day?.target ?? 0,
+        achieved: day?.achieved ?? 0,
+        metric: day?.metric ?? null,
+      });
+    }
+    return days;
+  }, [shiftRows, from, to]);
+  const goalSize = goalDays.length <= 14 ? 'large' : goalDays.length <= 62 ? 'medium' : 'small';
+  // The year grid runs by week (columns) and weekday (rows): blanks until the first weekday.
+  const goalLead = goalSize === 'small' && goalDays[0] ? weekdayOf(goalDays[0].date) : 0;
+
+  function choosePeriod(next: Period) {
+    setPeriod(next);
+    if (next === 'custom') return;
+    const today = plantToday();
+    setTo(today);
+    if (next === 'today') setFrom(today);
+    if (next === '7d') setFrom(shiftDay(today, -6));
+    // The week starts on Monday.
+    if (next === 'week') setFrom(shiftDay(today, -((weekdayOf(today) + 6) % 7)));
+    if (next === 'month') setFrom(`${today.slice(0, 8)}01`);
+    if (next === 'year') setFrom(`${today.slice(0, 4)}-01-01`);
+  }
 
   function exportCsv() {
     // One line per product: the quantities of that product, the rest of the shift (or day)
@@ -521,25 +588,44 @@ function ProductionPage() {
             ))}
           </select>
         </label>
-        <label className="field">
-          De
-          <input
-            type="date"
-            value={from}
-            max={to}
-            onChange={(event) => setFrom(event.target.value)}
-          />
-        </label>
-        <label className="field">
-          Até
-          <input
-            type="date"
-            value={to}
-            min={from}
-            max={plantToday()}
-            onChange={(event) => setTo(event.target.value)}
-          />
-        </label>
+        <div className="field production-period">
+          Período
+          <div className="production-view" role="group" aria-label="Período">
+            {PERIODS.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={period === id ? 'active' : ''}
+                onClick={() => choosePeriod(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {period === 'custom' && (
+          <>
+            <label className="field">
+              De
+              <input
+                type="date"
+                value={from}
+                max={to}
+                onChange={(event) => setFrom(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              Até
+              <input
+                type="date"
+                value={to}
+                min={from}
+                max={plantToday()}
+                onChange={(event) => setTo(event.target.value)}
+              />
+            </label>
+          </>
+        )}
         <label className="field">
           Turno
           <select value={shiftFilter} onChange={(event) => setShiftFilter(event.target.value)}>
@@ -610,52 +696,58 @@ function ProductionPage() {
         </div>
       </section>
 
-      {chartRows.length > 0 && (
-        <section className="card production-chart">
-          <div className="shift-section-title">
-            {info.name} por {view === 'day' ? 'dia' : 'turno'}
-            {totals.target > 0 && ' · linha = meta'}
+      {goalDays.length > 0 && reports.data && (
+        <section className={`card goal-calendar ${goalSize}`}>
+          <div className="goal-calendar-head">
+            <span className="shift-section-title">Meta por dia</span>
+            <span className="goal-legend">
+              {GOAL_LEGEND.map(([status, label]) => (
+                <span key={status}>
+                  <i data-goal={status} />
+                  {label}
+                </span>
+              ))}
+            </span>
           </div>
-          <div className="production-chart-area">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartRows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 10, fill: '#71868d' }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  width={48}
-                  tick={{ fontSize: 10, fill: '#71868d' }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip
-                  formatter={(value) =>
-                    `${formatNumber(Number(value), info.decimals)} ${info.unit}`
-                  }
-                />
-                <Bar
-                  dataKey="value"
-                  name="Produzido"
-                  fill="var(--brand-accent, #12b8a6)"
-                  radius={[5, 5, 0, 0]}
-                  isAnimationActive={false}
-                />
-                <Line
-                  dataKey="target"
-                  name="Meta"
-                  stroke="#e4572e"
-                  strokeWidth={2}
-                  dot={false}
-                  strokeDasharray="5 4"
-                  isAnimationActive={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div className="goal-days">
+            {Array.from({ length: goalLead }, (_, index) => (
+              <span key={`blank-${index}`} className="goal-day blank" />
+            ))}
+            {goalDays.map((day) => {
+              const unit = day.metric ? metricInfo[day.metric] : null;
+              const amounts =
+                unit && day.ratio != null
+                  ? `${formatNumber(day.achieved, unit.decimals)} de ${formatNumber(day.target, unit.decimals)} ${unit.unit}`
+                  : null;
+              const label =
+                day.status === 'none'
+                  ? 'sem turno registrado'
+                  : amounts
+                    ? `${amounts} (${formatNumber((day.ratio ?? 0) * 100)}%)`
+                    : 'sem meta';
+              return (
+                <div
+                  key={day.date}
+                  className="goal-day"
+                  data-goal={day.status}
+                  title={`${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`}
+                >
+                  {goalSize === 'large' ? (
+                    <>
+                      <span className="goal-date">
+                        {WEEKDAYS[weekdayOf(day.date)]} {brDate(day.date).slice(0, 5)}
+                      </span>
+                      <b>{day.ratio == null ? '—' : `${formatNumber(day.ratio * 100)}%`}</b>
+                      <small>
+                        {amounts ?? (day.status === 'none' ? 'sem turno' : 'sem meta')}
+                      </small>
+                    </>
+                  ) : goalSize === 'medium' ? (
+                    <span>{Number(day.date.slice(8))}</span>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
