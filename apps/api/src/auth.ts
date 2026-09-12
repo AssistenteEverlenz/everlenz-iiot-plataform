@@ -35,6 +35,11 @@ const ACCOUNT_LOCK_MINUTES = 15;
  * logged out mid-shift, while an abandoned browser stops being a usable credential.
  */
 const SESSION_IDLE_HOURS = 4;
+/**
+ * "Manter conectado" (migration 017): no idle limit, 30 days renewed while the session is used.
+ * Logout, deactivating the user and changing the password still end it.
+ */
+const PERSISTENT_SESSION_DAYS = 30;
 
 export interface Principal {
   id: string;
@@ -45,6 +50,8 @@ export interface Principal {
   status: 'active' | 'inactive';
   mustChangePassword: boolean;
   sessionHash: string;
+  /** Created with "Manter conectado". */
+  persistentSession: boolean;
 }
 
 interface AuthSettings {
@@ -81,6 +88,7 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
         status: 'active',
         mustChangePassword: false,
         sessionHash: '',
+        persistentSession: false,
       };
     throw new Error('Authenticated principal missing');
   }
@@ -99,11 +107,13 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
       status: 'active' | 'inactive';
       must_change_password: boolean;
       last_seen_at: Date | string;
+      persistent: boolean;
     }>(
-      `SELECT u.id,u.tenant_id,u.email,u.full_name,u.role,u.status,u.must_change_password,s.last_seen_at
+      `SELECT u.id,u.tenant_id,u.email,u.full_name,u.role,u.status,u.must_change_password,
+         s.last_seen_at,s.persistent
        FROM app_sessions s JOIN app_users u ON u.id=s.user_id
        WHERE s.token_hash=$1 AND s.expires_at>now()
-         AND s.last_seen_at > now()-($2::int * interval '1 hour')`,
+         AND (s.persistent OR s.last_seen_at > now()-($2::int * interval '1 hour'))`,
       [tokenHash, SESSION_IDLE_HOURS],
     );
     const row = result.rows[0];
@@ -126,10 +136,18 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
       status: row.status,
       mustChangePassword: row.must_change_password,
       sessionHash: tokenHash,
+      persistentSession: row.persistent,
     };
     principals.set(request, authenticated);
+    // A persistent session is pushed forward while it is used, so it only runs out after
+    // 30 days without any access.
     if (Date.now() - new Date(row.last_seen_at).getTime() > 5 * 60 * 1000)
-      await db.query('UPDATE app_sessions SET last_seen_at=now() WHERE token_hash=$1', [tokenHash]);
+      await db.query(
+        `UPDATE app_sessions SET last_seen_at=now(),
+           expires_at=CASE WHEN persistent THEN now()+($2::int * interval '1 day') ELSE expires_at END
+         WHERE token_hash=$1`,
+        [tokenHash, PERSISTENT_SESSION_DAYS],
+      );
     const allowedDuringPasswordChange = new Set([
       '/api/auth/session',
       '/api/auth/change-password',
@@ -208,16 +226,18 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
     loginAttempts.set(key, attempt);
   }
 
-  async function createSession(userId: string, request: FastifyRequest) {
+  async function createSession(userId: string, request: FastifyRequest, persistent = false) {
     const token = sessionToken();
     await db.query(
-      `INSERT INTO app_sessions(user_id,token_hash,expires_at,ip_address,user_agent)
-       VALUES($1,$2,now()+interval '12 hours',$3,$4)`,
+      `INSERT INTO app_sessions(user_id,token_hash,expires_at,ip_address,user_agent,persistent)
+       VALUES($1,$2,CASE WHEN $5 THEN now()+($6::int * interval '1 day') ELSE now()+interval '12 hours' END,$3,$4,$5)`,
       [
         userId,
         sessionTokenHash(token),
         request.ip,
         request.headers['user-agent']?.slice(0, 500) ?? null,
+        persistent,
+        PERSISTENT_SESSION_DAYS,
       ],
     );
     return token;
@@ -250,7 +270,12 @@ export function registerAuthRoutes(
     { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const body = z
-        .object({ email: z.email().max(254), password: z.string().min(1).max(128) })
+        .object({
+          email: z.email().max(254),
+          password: z.string().min(1).max(128),
+          // "Manter conectado".
+          remember: z.boolean().optional(),
+        })
         .parse(request.body);
       const email = body.email.trim().toLowerCase();
       // Two independent budgets. The per-origin key alone is bypassed by spreading an
@@ -300,12 +325,13 @@ export function registerAuthRoutes(
       }
       access.clearLoginAttempts(originKey);
       access.clearLoginAttempts(accountKey);
-      const token = await access.createSession(user.id, request);
+      const persistent = body.remember ?? false;
+      const token = await access.createSession(user.id, request, persistent);
       await db.query(
         'UPDATE app_users SET last_login_at=now(),failed_attempts=0,locked_until=NULL WHERE id=$1',
         [user.id],
       );
-      return { token, user: publicUser(user) };
+      return { token, persistent, user: publicUser(user) };
     },
   );
 
@@ -323,6 +349,8 @@ export function registerAuthRoutes(
         mustChangePassword: current.mustChangePassword,
       },
       deviceIds,
+      // Tells the web server to renew the long-lived cookie of a "Manter conectado" session.
+      persistent: current.persistentSession,
     };
   });
 
@@ -364,20 +392,32 @@ export function registerAuthRoutes(
         [current.id, passwordHash],
       );
       await sql.query('DELETE FROM app_sessions WHERE user_id=$1', [current.id]);
+      // The new session keeps the "Manter conectado" choice of the one it replaces.
       const nextToken = sessionToken();
       await sql.query(
-        `INSERT INTO app_sessions(user_id,token_hash,expires_at,ip_address,user_agent)
-         VALUES($1,$2,now()+interval '12 hours',$3,$4)`,
+        `INSERT INTO app_sessions(user_id,token_hash,expires_at,ip_address,user_agent,persistent)
+         VALUES($1,$2,CASE WHEN $5 THEN now()+($6::int * interval '1 day') ELSE now()+interval '12 hours' END,$3,$4,$5)`,
         [
           current.id,
           sessionTokenHash(nextToken),
           request.ip,
           request.headers['user-agent']?.slice(0, 500) ?? null,
+          current.persistentSession,
+          PERSISTENT_SESSION_DAYS,
         ],
       );
       return nextToken;
     });
-    return { token, user: { ...current, mustChangePassword: false, sessionHash: undefined } };
+    return {
+      token,
+      persistent: current.persistentSession,
+      user: {
+        ...current,
+        mustChangePassword: false,
+        sessionHash: undefined,
+        persistentSession: undefined,
+      },
+    };
   });
 
   app.get(

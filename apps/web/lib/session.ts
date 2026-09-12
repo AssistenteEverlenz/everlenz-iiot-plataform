@@ -10,6 +10,16 @@ export const sessionCookieOptions = {
   maxAge: 60 * 60 * 12,
 };
 
+/** "Manter conectado": 30 days, renewed on every session check (apps/api auth.ts). */
+export const persistentSessionCookieOptions = {
+  ...sessionCookieOptions,
+  maxAge: 60 * 60 * 24 * 30,
+};
+
+export function cookieOptionsFor(persistent: boolean | undefined) {
+  return persistent ? persistentSessionCookieOptions : sessionCookieOptions;
+}
+
 export function apiUrl(path: string) {
   return `${process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001'}/api/${path}`;
 }

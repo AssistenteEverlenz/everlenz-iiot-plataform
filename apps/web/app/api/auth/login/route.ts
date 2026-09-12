@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   apiUrl,
   clientAddressHeaders,
+  cookieOptionsFor,
   sessionCookie,
-  sessionCookieOptions,
 } from '../../../../lib/session';
 import { originAllowed } from '../../../../lib/origin';
 
@@ -17,13 +17,19 @@ export async function POST(request: NextRequest) {
     body: await request.text(),
     cache: 'no-store',
   });
-  const body = (await result.json()) as { token?: string; user?: unknown; error?: string };
+  const body = (await result.json()) as {
+    token?: string;
+    persistent?: boolean;
+    user?: unknown;
+    error?: string;
+  };
   if (!result.ok || !body.token)
     return NextResponse.json(
       { error: body.error ?? 'Não foi possível entrar' },
       { status: result.status },
     );
   const response = NextResponse.json({ user: body.user });
-  response.cookies.set(sessionCookie, body.token, sessionCookieOptions);
+  // "Manter conectado" keeps the cookie for 30 days; otherwise it lasts the 12 h session.
+  response.cookies.set(sessionCookie, body.token, cookieOptionsFor(body.persistent));
   return response;
 }

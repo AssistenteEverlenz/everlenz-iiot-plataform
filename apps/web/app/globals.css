@@ -4274,3 +4274,30 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .legacy-attempt span {
   color: #6c7f86;
 }
+
+/* Login: "Manter conectado". */
+.login-remember {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin: 2px 0 14px;
+  color: #324d57;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.login-remember input {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+}
+.login-remember span {
+  display: grid;
+  gap: 2px;
+}
+.login-remember small {
+  color: #7b8f95;
+  font-size: 11px;
+  font-weight: 400;
+}

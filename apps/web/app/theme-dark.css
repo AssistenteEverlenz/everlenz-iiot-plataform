@@ -1165,4 +1165,10 @@
   :root[data-theme='dark'] .legacy-attempt span {
     color: #92a2a7;
   }
+  :root[data-theme='dark'] .login-remember {
+    color: #bbc8cd;
+  }
+  :root[data-theme='dark'] .login-remember small {
+    color: #85979d;
+  }
 }

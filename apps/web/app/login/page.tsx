@@ -7,6 +7,8 @@ function LoginForm() {
   const search = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // "Manter conectado": 30 days renewed while in use instead of the 4 h idle / 12 h limits.
+  const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   async function submit(event: React.FormEvent) {
@@ -16,7 +18,7 @@ function LoginForm() {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, remember }),
     });
     setLoading(false);
     if (!response.ok) {
@@ -77,6 +79,17 @@ function LoginForm() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
+          </label>
+          <label className="login-remember">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(event) => setRemember(event.target.checked)}
+            />
+            <span>
+              Manter conectado
+              <small>Use em computadores e TVs da empresa. Continua logado até você sair.</small>
+            </span>
           </label>
           {error && <div className="form-error">{error}</div>}
           <button className="primary-button login-button" disabled={loading}>
