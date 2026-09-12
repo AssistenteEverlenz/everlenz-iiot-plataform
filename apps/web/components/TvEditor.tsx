@@ -202,7 +202,8 @@ export function TvEditor({ id }: { id: string }) {
         </div>
       ) : (
         <div className="tv-editor-body">
-          <aside className="tv-editor-side card">
+          {/* A div, not <aside>: the platform styles every <aside> as its fixed sidebar. */}
+          <div className="tv-editor-side card">
             <div className="shift-section-title">Telas</div>
             <ul className="tv-editor-screens">
               {screens.map((item, index) => (
@@ -348,7 +349,7 @@ export function TvEditor({ id }: { id: string }) {
                 </button>
               </div>
             )}
-          </aside>
+          </div>
 
           <div className="tv-editor-stage">
             <div className="tv-editor-canvas">

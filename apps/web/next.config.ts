@@ -32,12 +32,26 @@ const securityHeaders = [
   { key: 'Permissions-Policy', value: 'geolocation=(), camera=(), microphone=(), payment=()' },
 ];
 
+// The TV page is the live preview inside the TV editor, which frames it: that page alone may
+// be framed, and only by the platform itself (same origin). Every other page stays unframable.
+// Next applies the matching rules in order, the later value of a header replacing the earlier.
+const tvFrameHeaders = [
+  {
+    key: 'Content-Security-Policy',
+    value: contentSecurityPolicy.replace("frame-ancestors 'none'", "frame-ancestors 'self'"),
+  },
+  { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+];
+
 const config: NextConfig = {
   poweredByHeader: false,
   output: 'standalone',
   outputFileTracingRoot: process.cwd().replace(/[\\/]apps[\\/]web$/, ''),
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
+    return [
+      { source: '/:path*', headers: securityHeaders },
+      { source: '/dashboards/:id/tv', headers: tvFrameHeaders },
+    ];
   },
 };
 export default config;
