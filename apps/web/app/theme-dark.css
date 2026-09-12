@@ -1359,4 +1359,10 @@
   :root[data-theme='dark'] .shift-break {
     color: #92a2a7;
   }
+  :root[data-theme='dark'] .clear-history-options > label {
+    color: #bbc8cd;
+  }
+  :root[data-theme='dark'] .clear-history-warning {
+    color: #e29683;
+  }
 }

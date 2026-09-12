@@ -431,6 +431,16 @@ export async function createApp(
   app.delete('/api/devices/:id/tags/:tagId/history', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const { id, tagId } = z.object({ id: uuid, tagId: uuid }).parse(req.params);
+    // Optional period: only readings in [from, to) go; without it the whole history does.
+    const range = z
+      .object({ from: z.iso.datetime().optional(), to: z.iso.datetime().optional() })
+      .parse(req.query);
+    if (Boolean(range.from) !== Boolean(range.to))
+      return reply.code(400).send({ error: 'Informe o início e o fim do período.' });
+    const from = range.from ? new Date(range.from) : null;
+    const to = range.to ? new Date(range.to) : null;
+    if (from && to && from >= to)
+      return reply.code(400).send({ error: 'O início do período precisa ser antes do fim.' });
     if (!(await access.requireDevice(req, reply, id))) return;
     const current = access.principal(req);
     const tag = await db.query<{ key: string }>(
@@ -438,26 +448,106 @@ export async function createApp(
       [current.tenantId, id, tagId],
     );
     if (!tag.rows.length) return reply.code(404).send({ error: 'Variable not found' });
+    const scope = [current.tenantId, id, tagId];
     const removed = await db.transaction(async (sql) => {
-      await sql.query(
-        'DELETE FROM telemetry_hourly_rollups WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
-        [current.tenantId, id, tagId],
-      );
-      const samples = await sql.query(
-        'DELETE FROM telemetry_samples WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
-        [current.tenantId, id, tagId],
-      );
+      let count = 0;
+      if (!from || !to) {
+        await sql.query(
+          'DELETE FROM telemetry_hourly_rollups WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+          scope,
+        );
+        count =
+          (
+            await sql.query(
+              'DELETE FROM telemetry_samples WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+              scope,
+            )
+          ).rowCount ?? 0;
+      } else {
+        count =
+          (
+            await sql.query(
+              `DELETE FROM telemetry_samples WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
+               AND timestamp >= $4 AND timestamp < $5`,
+              [...scope, from, to],
+            )
+          ).rowCount ?? 0;
+        // Hours to rebuild: those the period touches, plus the hour of the first reading after
+        // it, whose increment was measured against a reading that no longer exists.
+        const window = await sql.query<{ start: Date | string; end: Date | string }>(
+          `SELECT date_trunc('hour',$4::timestamptz) AS start,
+             greatest(date_trunc('hour',$5::timestamptz - interval '1 millisecond') + interval '1 hour',
+               COALESCE((SELECT date_trunc('hour',min(timestamp)) + interval '1 hour'
+                 FROM telemetry_samples WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
+                 AND timestamp >= $5), '-infinity'::timestamptz)) AS end`,
+          [...scope, from, to],
+        );
+        const start = new Date(window.rows[0].start);
+        const end = new Date(window.rows[0].end);
+        await sql.query(
+          `DELETE FROM telemetry_hourly_rollups WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
+           AND bucket >= $4 AND bucket < $5`,
+          [...scope, start, end],
+        );
+        // Same arithmetic as migrations 010/011: increments against the previous reading, a
+        // counter that went back counts from zero, split by product.
+        await sql.query(
+          `WITH previous AS (
+             SELECT max(timestamp) at FROM telemetry_samples
+             WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL
+               AND timestamp < $4
+           ), ordered AS (
+             SELECT tenant_id,site_id,device_id,tag_id,product_code,timestamp,value_number,
+               lag(value_number) OVER (ORDER BY timestamp,id) previous_value
+             FROM telemetry_samples
+             WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL
+               AND timestamp >= COALESCE((SELECT at FROM previous),$4) AND timestamp < $5
+           ), grouped AS (
+             SELECT tenant_id,site_id,device_id,tag_id,product_code,
+               date_trunc('hour',timestamp) bucket,count(*) sample_count,
+               sum(value_number) value_sum,min(value_number) value_min,max(value_number) value_max,
+               (array_agg(value_number ORDER BY timestamp))[1] first_value,min(timestamp) first_at,
+               (array_agg(value_number ORDER BY timestamp DESC))[1] last_value,max(timestamp) last_at,
+               sum(CASE WHEN previous_value IS NULL THEN 0
+                 WHEN value_number >= previous_value THEN value_number-previous_value
+                 ELSE greatest(value_number,0) END) positive_delta
+             FROM ordered WHERE timestamp >= $4
+             GROUP BY tenant_id,site_id,device_id,tag_id,product_code,date_trunc('hour',timestamp)
+           )
+           INSERT INTO telemetry_hourly_rollups(
+             tenant_id,site_id,device_id,tag_id,product_code,bucket,sample_count,value_sum,
+             value_min,value_max,first_value,first_at,last_value,last_at,positive_delta
+           )
+           SELECT tenant_id,site_id,device_id,tag_id,product_code,bucket,sample_count,value_sum,
+             value_min,value_max,first_value,first_at,last_value,last_at,positive_delta
+           FROM grouped`,
+          [...scope, start, end],
+        );
+      }
+      // The counter baseline follows the newest reading that is left (none after a full wipe).
       await sql.query(
         'DELETE FROM telemetry_numeric_state WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
-        [current.tenantId, id, tagId],
+        scope,
+      );
+      await sql.query(
+        `INSERT INTO telemetry_numeric_state(tenant_id,site_id,device_id,tag_id,last_timestamp,last_value)
+         SELECT tenant_id,site_id,device_id,tag_id,timestamp,value_number FROM telemetry_samples
+         WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL
+         ORDER BY timestamp DESC,id DESC LIMIT 1`,
+        scope,
       );
       await recordAudit(sql, req, current, {
         action: 'tag.history.clear',
         targetType: 'tag',
         targetId: tagId,
-        summary: { key: tag.rows[0].key, samples: samples.rowCount ?? 0 },
+        summary: {
+          key: tag.rows[0].key,
+          samples: count,
+          from: from?.toISOString() ?? null,
+          to: to?.toISOString() ?? null,
+        },
       });
-      return samples.rowCount ?? 0;
+      return count;
     });
     return { key: tag.rows[0].key, removedSamples: removed };
   });

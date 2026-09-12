@@ -4848,3 +4848,40 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     display: none !important;
   }
 }
+
+/* Zerar histórico: choose a period or the whole history. */
+.clear-history-options {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 4px;
+  text-align: left;
+}
+.clear-history-options > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #324d57;
+  font-size: 13px;
+}
+.clear-history-options input[type='radio'] {
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+}
+.clear-history-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding-left: 24px;
+}
+.clear-history-range .field {
+  margin: 0;
+}
+.clear-history-range input {
+  min-width: 0;
+}
+.clear-history-warning {
+  color: #9b3218;
+  font-size: 12px;
+  font-weight: 600;
+}

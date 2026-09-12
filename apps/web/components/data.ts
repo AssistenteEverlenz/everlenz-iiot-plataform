@@ -132,6 +132,8 @@ export interface DashboardWidget {
     counterResetAt?: string;
     /** PLC boolean that zeroes the machine count; "Zerar contador" pulses it via the HMI. */
     resetVariable?: string;
+    /** Unit shown on the card ("Ton/h"), up to 10 characters; else the variable's unit. */
+    unitLabel?: string;
   };
   key: string | null;
   tag_name: string | null;

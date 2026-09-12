@@ -47,6 +47,10 @@ const OTHERS = 'Outros';
 /** Donut slices under this percentage fold into "Outros" when there are two or more. */
 const GROUP_SHARE = 5;
 const OTHERS_COLOR = '#c3cfd2';
+/** Axis names longer than this are shortened with "…"; tooltips keep the full name. */
+const TICK_LABEL_MAX = 18;
+const shortLabel = (label: string) =>
+  label.length > TICK_LABEL_MAX ? `${label.slice(0, TICK_LABEL_MAX - 1)}…` : label;
 const RADIAN = Math.PI / 180;
 
 function hexToHsl(hex: string): [number, number, number] {
@@ -446,7 +450,8 @@ export function QuickChart({
   const decimals = widget.config.decimals ?? 1;
   // Decimal places follow the widget configuration ("Casas decimais" in the editor).
   const amount = (value: number | null | undefined) => format(value, decimals);
-  const unit = widget.unit ?? '';
+  // The unit typed on the card ("Ton/h") wins over the variable's own.
+  const unit = widget.config.unitLabel?.trim() || widget.unit || '';
   const allProducts = statistics?.product_breakdown ?? [];
   // "Mostrar até N" folds the smaller products into one neutral "Outros" slice or bar. On the
   // donut, slices under GROUP_SHARE % fold too when there are at least two of them (a single
@@ -505,6 +510,13 @@ export function QuickChart({
   const barColors = byDay ? bars.map(() => accent) : colors;
   const angledTicks =
     !horizontal && (bars.length > 4 || bars.some((bar) => String(bar.label).length > 9));
+  // Tilted names need room below the bars in proportion to the longest one (capped: longer
+  // names are shortened, the tooltip keeps them whole).
+  const longestLabel = Math.min(
+    TICK_LABEL_MAX,
+    bars.reduce((longest, bar) => Math.max(longest, String(bar.label).length), 0),
+  );
+  const tickHeight = angledTicks ? Math.round(18 + longestLabel * 5.4) : 30;
   const empty = donut ? !products.length : !bars.some((bar) => bar.value > 0);
   const changeText =
     change == null ? '—' : `${change >= 0 ? '▲' : '▼'} ${format(Math.abs(change), 1)}%`;
@@ -584,7 +596,7 @@ export function QuickChart({
                 margin={
                   horizontal
                     ? { top: 4, right: 52, bottom: 0, left: 0 }
-                    : { top: 24, right: 8, bottom: 0, left: 0 }
+                    : { top: 24, right: 8, bottom: 0, left: angledTicks ? 30 : 0 }
                 }
               >
                 <CartesianGrid
@@ -604,7 +616,8 @@ export function QuickChart({
                       ? { fontSize: 10, fill: '#71868d', angle: -35, textAnchor: 'end' }
                       : { fontSize: 10, fill: '#71868d' }
                   }
-                  height={angledTicks ? 58 : 30}
+                  height={tickHeight}
+                  tickFormatter={(value) => shortLabel(String(value))}
                   axisLine={false}
                   tickLine={false}
                   interval={0}

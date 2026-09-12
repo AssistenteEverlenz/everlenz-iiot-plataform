@@ -30,6 +30,7 @@ import {
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
 import { ShiftBoard } from './ShiftBoard';
+import { ClearHistoryModal } from './ClearHistoryModal';
 import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
@@ -108,6 +109,17 @@ function visualOrder(widgets: DashboardWidget[]) {
     .sort((a, b) => a.row - b.row || a.col - b.col || a.index - b.index)
     .forEach((item, position) => order.set(item.id, position));
   return order;
+}
+
+/**
+ * A machine bit as the status card reads it. HMIs send it as a boolean, a number (Delta:
+ * "Unsigned Decimal" BIT arrives as 1/0) or text, and the variable may be stored as any of them.
+ */
+function isOn(sample: Sample | undefined) {
+  if (!sample) return false;
+  if (sample.value_boolean != null) return sample.value_boolean;
+  if (sample.value_number != null) return sample.value_number !== 0;
+  return /^(1|true|on|sim|ligado)$/i.test(sample.value_text?.trim() ?? '');
 }
 
 function spansOf(widget: DashboardWidget) {
@@ -636,10 +648,10 @@ function Widget({
         </div>
       )}
       {widget.widget_type === 'status' && (
-        <div className={`machine-status ${latest?.value_boolean ? 'running' : ''}`}>
+        <div className={`machine-status ${isOn(latest) ? 'running' : ''}`}>
           <span className="status-orb" />
           <div>
-            <strong>{latest?.value_boolean ? 'Em operação' : 'Parada'}</strong>
+            <strong>{isOn(latest) ? 'Em operação' : 'Parada'}</strong>
           </div>
         </div>
       )}
@@ -1014,6 +1026,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [chartDimension, setChartDimension] = useState<'product' | 'day'>('product');
   const [chartPalette, setChartPalette] = useState<'shades' | 'colorful'>('shades');
   const [maxProducts, setMaxProducts] = useState(0);
+  const [unitLabel, setUnitLabel] = useState('');
   const [productColors, setProductColors] = useState<Record<string, string>>({});
   const [productKey, setProductKey] = useState('');
   const [fallbackProductCode, setFallbackProductCode] = useState('ITEM GERAL');
@@ -1180,6 +1193,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setChartDimension(widget.config.chartDimension ?? 'product');
     setChartPalette(widget.config.chartPalette ?? 'shades');
     setMaxProducts(widget.config.maxProducts ?? 0);
+    setUnitLabel(widget.config.unitLabel ?? '');
     setProductColors(widget.config.productColors ?? {});
     setCounterMode(widget.config.counterMode ?? false);
     setResetVariable(widget.config.resetVariable ?? '');
@@ -1228,6 +1242,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           chartDimension,
           chartPalette,
           maxProducts,
+          unitLabel: unitLabel.trim().slice(0, 10),
           productColors,
           counterMode,
           resetVariable: counterMode ? resetVariable.trim() : '',
@@ -1250,9 +1265,15 @@ export function DashboardCanvas({ id }: { id: string }) {
     await mutate(`/dashboards/${id}/widgets/${widget.id}/reset-counter`, 'POST');
     await Promise.all([dashboard.refresh(), counters.refresh()]);
   }
-  async function clearVariableHistory(widget: DashboardWidget) {
+  async function clearVariableHistory(
+    widget: DashboardWidget,
+    range: { from: string; to: string } | null,
+  ) {
     if (!widget.tag_id) return;
-    await mutate(`/devices/${widget.device_id}/tags/${widget.tag_id}/history`, 'DELETE');
+    const query = range
+      ? `?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`
+      : '';
+    await mutate(`/devices/${widget.device_id}/tags/${widget.tag_id}/history${query}`, 'DELETE');
     setEditingWidget(null);
     await Promise.all([dashboard.refresh(), history.refresh(), latest.refresh()]);
   }
@@ -1669,6 +1690,15 @@ export function DashboardCanvas({ id }: { id: string }) {
                   {quickTypes.has(editingWidget.widget_type) && (
                     <>
                       <label className="field">
+                        Unidade exibida
+                        <input
+                          value={unitLabel}
+                          maxLength={10}
+                          placeholder={editingWidget.unit || 'uni'}
+                          onChange={(event) => setUnitLabel(event.target.value)}
+                        />
+                      </label>
+                      <label className="field">
                         Cores
                         <select
                           value={chartPalette}
@@ -2009,13 +2039,10 @@ export function DashboardCanvas({ id }: { id: string }) {
         />
       )}
       {clearingHistory && (
-        <ActionModal
-          title="Zerar histórico da variável"
-          description={`Todas as leituras gravadas de “${clearingHistory.key ?? clearingHistory.title}” serão apagadas, com os totais e médias calculados a partir delas. Use quando a variável foi lida com formato ou endereço errado. Todos os itens que usam esta variável recomeçam do zero a partir da próxima leitura. Esta ação não pode ser desfeita.`}
-          confirmLabel="Zerar histórico"
-          danger
+        <ClearHistoryModal
+          variable={clearingHistory.key ?? clearingHistory.title}
           onClose={() => setClearingHistory(null)}
-          onConfirm={() => clearVariableHistory(clearingHistory)}
+          onConfirm={(range) => clearVariableHistory(clearingHistory, range)}
         />
       )}
       {resettingWidget && (
