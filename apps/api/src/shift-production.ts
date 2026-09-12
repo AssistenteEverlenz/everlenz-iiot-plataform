@@ -5,6 +5,7 @@ import {
   addDays,
   attribute,
   BUCKET_SECONDS,
+  counterStep,
   type BucketDelta,
   type Runtime,
   type TrackerConfig,
@@ -239,6 +240,53 @@ function spanOf(occurrences: ShiftOccurrence[]) {
   };
 }
 
+/**
+ * Pallet pace of a window: when the pallet counter last moved, the time between the last two
+ * pallets, and the average producing time per pallet (stops excluded). Read from the stored
+ * counter itself, so it is exact to the message rather than to the 5-minute bucket.
+ */
+async function palletTiming(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  tagId: string,
+  from: Date,
+  to: Date,
+  summary: Summary,
+) {
+  const rows = await db.query<{ at: Date | string; value: number | null }>(
+    `(SELECT received_at at,value_number value FROM telemetry_samples
+      WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at<$4
+      ORDER BY received_at DESC LIMIT 1)
+     UNION ALL
+     (SELECT received_at,value_number FROM telemetry_samples
+      WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at>=$4 AND received_at<$5
+      ORDER BY received_at)`,
+    [tenantId, deviceId, tagId, from, to],
+  );
+  const ordered = rows.rows
+    .map((row) => ({
+      at: new Date(row.at).getTime(),
+      value: row.value == null ? null : Number(row.value),
+    }))
+    .sort((a, b) => a.at - b.at);
+  let reading: number | null = null;
+  const increments: number[] = [];
+  for (const row of ordered) {
+    const step = counterStep(reading, row.value);
+    if (step.delta > 0 && row.at >= from.getTime()) increments.push(row.at);
+    reading = step.reading;
+  }
+  const last = increments.at(-1) ?? null;
+  const previous = increments.at(-2) ?? null;
+  return {
+    lastSeconds: last != null && previous != null ? (last - previous) / 1000 : null,
+    lastAt: last == null ? null : new Date(last).toISOString(),
+    averageSeconds: summary.pallets > 0 ? summary.producing / summary.pallets : null,
+    count: summary.pallets,
+  };
+}
+
 /** Live numbers of one window (a shift, or all the shifts of a day). */
 async function buildBoard(
   db: Database,
@@ -262,6 +310,9 @@ async function buildBoard(
   );
   const closingSeconds = closingSecondsOf(config);
   const summary = summarize(buckets, span, windows, now, closingSeconds);
+  const pallets = config.pallets_tag_id
+    ? await palletTiming(db, tenantId, deviceId, config.pallets_tag_id, span.start, until, summary)
+    : null;
   // Scheduled pauses elapsed so far, shown next to the machine states.
   const pauseSeconds = occurrences.reduce(
     (total, item) =>
@@ -440,6 +491,7 @@ async function buildBoard(
     pacePerHour: ratePerSecond * 3600,
     curve,
     timeline,
+    palletTiming: pallets,
   };
 }
 
@@ -1106,6 +1158,62 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       status: running ? 'running' : selected === last ? 'finished' : 'upcoming',
       productionDate: selected.productionDate,
       shifts: [occurrenceJson(selected)],
+      board,
+    };
+  });
+
+  // Detail of one history row: the board of any shift, day or off-shift day, as it was (a
+  // partial snapshot is shown up to the moment it was taken).
+  app.get('/api/devices/:id/production-detail', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = z
+      .object({
+        date: z.iso.date(),
+        kind: z.enum(['shift', 'day', 'off_shift']).default('shift'),
+        start: z.iso.datetime({ offset: true }).optional(),
+        end: z.iso.datetime({ offset: true }).optional(),
+      })
+      .parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const config = await loadConfig(db, tenantId, id);
+    if (!config) return reply.code(404).send({ error: 'Device not found' });
+    const now = new Date();
+    const { shifts, isDefault } = await loadShifts(db, tenantId, config.site_id);
+    const ofDay = expandShifts(shifts, addDays(query.date, -1), query.date).filter(
+      (item) => item.productionDate === query.date,
+    );
+    let occurrences: ShiftOccurrence[] = query.kind === 'day' ? ofDay : [];
+    let fallback: TimeWindow = {
+      start: plantInstant(query.date, '00:00'),
+      end: plantInstant(addDays(query.date, 1), '00:00'),
+    };
+    if (query.kind === 'shift' && query.start) {
+      const start = new Date(query.start).getTime();
+      const match = ofDay.find((item) => item.start.getTime() === start);
+      if (match) occurrences = [match];
+      else if (query.end) fallback = { start: new Date(query.start), end: new Date(query.end) };
+    }
+    const until =
+      query.kind === 'shift' && query.end
+        ? new Date(Math.min(now.getTime(), new Date(query.end).getTime()))
+        : now;
+    const board = await buildBoard(db, tenantId, id, config, occurrences, fallback, until);
+    const spanEnd = occurrences.length
+      ? Math.max(...occurrences.map((item) => item.end.getTime()))
+      : fallback.end.getTime();
+    return {
+      configured: Boolean(config.blocks_tag_id || config.pallets_tag_id),
+      missing: [],
+      mode: query.kind === 'day' ? 'day' : 'shift',
+      defaultShifts: isDefault,
+      now: until.toISOString(),
+      state: 'unknown',
+      product: null,
+      next: null,
+      status: until.getTime() < spanEnd ? 'running' : 'finished',
+      productionDate: query.date,
+      shifts: occurrences.map(occurrenceJson),
       board,
     };
   });

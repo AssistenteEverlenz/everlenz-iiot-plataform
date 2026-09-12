@@ -13,6 +13,8 @@ import {
   YAxis,
 } from 'recharts';
 import { ActionModal } from '../../components/ActionModal';
+import { ProductionConfigModal } from '../../components/ProductionConfigModal';
+import { ShiftBoardView, type ShiftBoardResponse } from '../../components/ShiftBoard';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, usePoll, type Device } from '../../components/data';
 import {
@@ -77,27 +79,6 @@ interface Row {
   target: number | null;
   targetMetric: ProductionMetric | null;
   products: Array<{ product_code: string; pieces: number; pallets: number; tons: number }>;
-}
-interface Signal {
-  id: string;
-  key: string;
-  data_type: 'number' | 'boolean' | 'string';
-  tag_id: string | null;
-  name: string | null;
-  unit: string | null;
-  present: boolean;
-}
-interface ProductionConfig {
-  site_id: string;
-  blocks_tag_id: string | null;
-  pallets_tag_id: string | null;
-  auto_tag_id: string | null;
-  idle_seconds: number | null;
-  weight_per_unit_kg: number | null;
-  weight_tag_id: string | null;
-  closing_minutes: number | null;
-  target_metric: ProductionMetric | null;
-  target_per_shift: number | null;
 }
 interface ShiftForm {
   name: string;
@@ -374,7 +355,8 @@ function ProductionPage() {
   const [view, setView] = useState<'shift' | 'day'>('shift');
   const [shiftFilter, setShiftFilter] = useState('');
   const [includeOffShift, setIncludeOffShift] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // The row whose details are open (board of that shift or day, products).
+  const [detail, setDetail] = useState<Row | null>(null);
   const [columns, setColumns] = useState<string[]>(() =>
     COLUMNS.filter((column) => column.initial).map((column) => column.id),
   );
@@ -476,9 +458,32 @@ function ProductionPage() {
     }));
 
   function exportCsv() {
-    const header = visible.map((column) => column.label).join(';');
-    const lines = rows.map((row) =>
-      visible.map((column) => (column.csv ?? column.value)(row).replace(/;/g, ',')).join(';'),
+    // One line per product: the quantities of that product, the rest of the shift (or day)
+    // repeated, so a spreadsheet can filter and sum by product.
+    const quantities = new Set(['milheiros', 'pieces', 'pallets', 'tons']);
+    const columns = visible.filter((column) => column.id !== 'product');
+    const productAt = columns.findIndex((column) => column.id === 'shift') + 1;
+    const clean = (text: string) => text.replace(/;/g, ',');
+    const headerCells = columns.map((column) => column.label);
+    headerCells.splice(productAt, 0, 'Produto');
+    const header = headerCells.join(';');
+    const lines = rows.flatMap((row) =>
+      (row.products.length ? row.products : [null]).map((product) => {
+        const own = product
+          ? {
+              ...row,
+              pieces: Number(product.pieces),
+              milheiros: Number(product.pieces) / 1000,
+              pallets: Number(product.pallets),
+              tons: Number(product.tons),
+            }
+          : row;
+        const cells = columns.map((column) =>
+          clean((column.csv ?? column.value)(quantities.has(column.id) ? own : row)),
+        );
+        cells.splice(productAt, 0, clean(product?.product_code ?? '—'));
+        return cells.join(';');
+      }),
     );
     download(
       `producao-${device?.device_code ?? 'equipamento'}-${from}-a-${to}.csv`,
@@ -742,8 +747,8 @@ function ProductionPage() {
                   <tr
                     key={row.key}
                     className={`${row.open ? 'open' : ''} ${row.offShift ? 'off-shift' : ''}`}
-                    onClick={() => setExpanded(expanded === row.key ? null : row.key)}
-                    title="Ver produção por produto"
+                    onClick={() => setDetail(row)}
+                    title="Ver tudo sobre este período: quadro, estados e produtos"
                   >
                     {view === 'shift' && (
                       <td className="source-column">
@@ -783,27 +788,23 @@ function ProductionPage() {
                       </td>
                     ))}
                   </tr>
-                  {expanded === row.key && (
+                  {row.products.length > 1 && (
                     <tr key={`${row.key}-products`} className="production-products-row">
                       <td
                         colSpan={
                           visible.length + (view === 'shift' ? 1 : 0) + (view === 'shift' && canMaintain ? 1 : 0)
                         }
                       >
-                        {row.products.length ? (
-                          <div className="production-products">
-                            {row.products.map((product) => (
-                              <span key={product.product_code}>
-                                <b>{product.product_code}</b>
-                                {formatNumber(product.pieces / 1000, 2)} mil ·{' '}
-                                {formatNumber(product.pieces)} peças ·{' '}
-                                {formatNumber(product.pallets)} paletes
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          'Sem produção registrada.'
-                        )}
+                        <div className="production-products">
+                          {row.products.map((product) => (
+                            <span key={product.product_code}>
+                              <b>{product.product_code}</b>
+                              {formatNumber(product.pieces / 1000, 2)} mil ·{' '}
+                              {formatNumber(product.pieces)} peças ·{' '}
+                              {formatNumber(product.pallets)} paletes
+                            </span>
+                          ))}
+                        </div>
                       </td>
                     </tr>
                   )}
@@ -850,8 +851,16 @@ function ProductionPage() {
           onClose={() => setConfirming(null)}
         />
       )}
+      {detail && deviceId && (
+        <DetailModal
+          deviceId={deviceId}
+          row={detail}
+          view={view}
+          onClose={() => setDetail(null)}
+        />
+      )}
       {editingConfig && device && (
-        <ConfigModal
+        <ProductionConfigModal
           deviceId={device.id}
           deviceName={device.name}
           onClose={() => {
@@ -1091,250 +1100,128 @@ function ShiftsModal({
   );
 }
 
-function ConfigModal({
+/** Everything about one row of the history: the board of that shift or day, and its products. */
+function DetailModal({
   deviceId,
-  deviceName,
+  row,
+  view,
   onClose,
 }: {
   deviceId: string;
-  deviceName: string;
+  row: Row;
+  view: 'shift' | 'day';
   onClose: () => void;
 }) {
-  const config = usePoll<ProductionConfig>(`/devices/${deviceId}/production-config`, 600000);
-  const signals = usePoll<Signal[]>(`/devices/${deviceId}/signals`, 600000);
-  const [form, setForm] = useState<{
-    pieces: string;
-    pallets: string;
-    auto: string;
-    idleSeconds: number;
-    closingMinutes: number;
-    weight: string;
-    weightKey: string;
-    metric: ProductionMetric | '';
-    target: string;
-  } | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    if (!config.data || !signals.data || form) return;
-    const signalFor = (tagId: string | null) =>
-      signals.data?.find((signal) => signal.tag_id && signal.tag_id === tagId)?.key ?? '';
-    setForm({
-      pieces: signalFor(config.data.blocks_tag_id),
-      pallets: signalFor(config.data.pallets_tag_id),
-      auto: signalFor(config.data.auto_tag_id),
-      idleSeconds: config.data.idle_seconds ?? 60,
-      closingMinutes: config.data.closing_minutes ?? 30,
-      weight: config.data.weight_per_unit_kg ? String(config.data.weight_per_unit_kg) : '',
-      weightKey: signalFor(config.data.weight_tag_id),
-      metric: config.data.target_metric ?? '',
-      target: config.data.target_per_shift ? String(config.data.target_per_shift) : '',
-    });
-  }, [config.data, signals.data, form]);
-  const numeric =
-    signals.data?.filter(
-      (signal) => signal.data_type === 'number' && (signal.present || signal.tag_id),
-    ) ?? [];
-  const autoOptions =
-    signals.data?.filter(
-      (signal) =>
-        (signal.data_type === 'boolean' || signal.data_type === 'number') &&
-        (signal.present || signal.tag_id),
-    ) ?? [];
-
-  async function tagIdFor(key: string) {
-    if (!key) return null;
-    const signal = signals.data?.find((item) => item.key === key);
-    if (!signal) return null;
-    if (signal.tag_id) return signal.tag_id;
-    const tag = await mutate<{ id: string }>(`/devices/${deviceId}/tags`, 'POST', {
-      key: signal.key,
-      name: signal.name || signal.key,
-      dataType: signal.data_type,
-      unit: signal.unit,
-      scaleMultiplier: 1,
-      scaleOffset: 0,
-    });
-    return tag.id;
-  }
-  async function save() {
-    if (!form) return;
-    setSaving(true);
-    setError('');
-    try {
-      const [piecesTagId, palletsTagId, autoTagId, weightTagId] = await Promise.all([
-        tagIdFor(form.pieces),
-        tagIdFor(form.pallets),
-        tagIdFor(form.auto),
-        tagIdFor(form.weightKey),
-      ]);
-      await mutate(`/devices/${deviceId}/production-config`, 'PATCH', {
-        piecesTagId,
-        palletsTagId,
-        autoTagId,
-        idleSeconds: Number(form.idleSeconds) || 60,
-        closingMinutes: Number.isFinite(Number(form.closingMinutes))
-          ? Math.min(240, Math.max(0, Math.round(Number(form.closingMinutes))))
-          : 30,
-        weightPerUnitKg: form.weight ? Number(form.weight.replace(',', '.')) : null,
-        weightTagId,
-        targetMetric: form.metric || null,
-        targetPerShift: form.metric && form.target ? Number(form.target.replace(',', '.')) : null,
-      });
-      onClose();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Falha ao salvar a configuração.');
-    } finally {
-      setSaving(false);
-    }
-  }
+  const params = new URLSearchParams({
+    date: row.date,
+    kind: view === 'day' ? 'day' : row.offShift ? 'off_shift' : 'shift',
+  });
+  if (view !== 'day' && row.start) params.set('start', row.start);
+  if (view !== 'day' && row.end) params.set('end', row.end);
+  const detail = usePoll<ShiftBoardResponse>(
+    `/devices/${deviceId}/production-detail?${params.toString()}`,
+    row.open ? 30000 : 600000,
+  );
+  const reached = attainment(row);
+  const machine = utilization(row);
+  const products = [...row.products].sort((a, b) => b.pieces - a.pieces || b.pallets - a.pallets);
   return (
-    <div className="modal-backdrop" onMouseDown={() => !saving && onClose()}>
-      <div className="modal-card" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div
+        className="modal-card production-detail-modal"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="modal-title">
           <div>
-            <div className="eyebrow">PRODUÇÃO DO EQUIPAMENTO</div>
-            <h2>{deviceName}</h2>
+            <div className="eyebrow">{view === 'day' ? 'DIA DE PRODUÇÃO' : 'TURNO DE PRODUÇÃO'}</div>
+            <h2>
+              {brDate(row.date)}
+              {view === 'day' ? '' : ` · ${row.shift}`}
+              {row.start && view !== 'day' ? ` · ${clockOf(row.start)}–${clockOf(row.end)}` : ''}
+            </h2>
           </div>
-          <button type="button" className="icon-button" disabled={saving} onClick={onClose}>
+          <button type="button" className="icon-button" onClick={onClose}>
             ×
           </button>
         </div>
-        {!form ? (
-          <p>Carregando…</p>
-        ) : (
-          <div className="form-grid">
-            <label className="field">
-              Contador de peças (blocos)
-              <select
-                value={form.pieces}
-                onChange={(event) => setForm({ ...form, pieces: event.target.value })}
-              >
-                <option value="">Não usar</option>
-                {numeric.map((signal) => (
-                  <option key={signal.id} value={signal.key}>
-                    {signal.key}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              Contador de paletes
-              <select
-                value={form.pallets}
-                onChange={(event) => setForm({ ...form, pallets: event.target.value })}
-              >
-                <option value="">Não usar</option>
-                {numeric.map((signal) => (
-                  <option key={signal.id} value={signal.key}>
-                    {signal.key}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              Máquina em automático
-              <select
-                value={form.auto}
-                onChange={(event) => setForm({ ...form, auto: event.target.value })}
-              >
-                <option value="">Não usar (parada manual conta como ociosa)</option>
-                {autoOptions.map((signal) => (
-                  <option key={signal.id} value={signal.key}>
-                    {signal.key} · {signal.data_type}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              Ociosa depois de (segundos sem contar)
-              <input
-                type="number"
-                min={5}
-                max={3600}
-                value={form.idleSeconds}
-                onChange={(event) => setForm({ ...form, idleSeconds: Number(event.target.value) })}
-              />
-            </label>
-            <label className="field">
-              Encerrado se parar nos últimos (minutos do turno)
-              <input
-                type="number"
-                min={0}
-                max={240}
-                value={form.closingMinutes}
-                title="Se a máquina para de contar nesses minutos finais e não volta até o fim do turno, o tempo depois da última produção conta como Encerrado, não como ociosa. 0 desliga."
-                onChange={(event) =>
-                  setForm({ ...form, closingMinutes: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label className="field">
-              Peso por peça (kg) — variável da IHM
-              <select
-                value={form.weightKey}
-                onChange={(event) => setForm({ ...form, weightKey: event.target.value })}
-              >
-                <option value="">Não usar (usa o valor fixo)</option>
-                {numeric.map((signal) => (
-                  <option key={signal.id} value={signal.key}>
-                    {signal.key}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              {form.weightKey ? 'Peso fixo (kg) — se a variável não vier' : 'Peso por peça (kg) — valor fixo'}
-              <input
-                inputMode="decimal"
-                value={form.weight}
-                placeholder="Ex.: 2,6"
-                onChange={(event) => setForm({ ...form, weight: event.target.value })}
-              />
-            </label>
-            <label className="field">
-              Meta por turno
-              <select
-                value={form.metric}
-                onChange={(event) =>
-                  setForm({ ...form, metric: event.target.value as ProductionMetric | '' })
-                }
-              >
-                <option value="">Sem meta</option>
-                <option value="milheiros">Milheiros</option>
-                <option value="tons">Toneladas</option>
-                <option value="blocks">Blocos (peças)</option>
-                <option value="pallets">Paletes</option>
-              </select>
-            </label>
-            {form.metric && (
-              <label className="field">
-                Valor da meta por turno ({metricInfo[form.metric].unit})
-                <input
-                  inputMode="decimal"
-                  value={form.target}
-                  onChange={(event) => setForm({ ...form, target: event.target.value })}
-                />
-              </label>
-            )}
-            <div className="notice full-field">
-              <b>Como a máquina é classificada</b>
-              Em automático e contando: produzindo. Em automático sem contar há mais que o tempo
-              acima: ociosa. Fora do automático: manual/parada. Sem mensagens: sem comunicação. 1
-              milheiro = 1.000 peças.
-            </div>
+        <div className="production-detail-summary">
+          <div>
+            <span>Milheiros</span>
+            <b>{formatNumber(row.milheiros, 2)}</b>
           </div>
-        )}
-        {error && <div className="form-error">{error}</div>}
-        <div className="modal-actions">
-          <button type="button" disabled={saving} onClick={onClose}>
-            Cancelar
-          </button>
-          <button className="primary-button" disabled={saving || !form} onClick={() => void save()}>
-            {saving && <span className="button-spinner" />}
-            {saving ? 'Salvando…' : 'Salvar configuração'}
-          </button>
+          <div>
+            <span>Peças</span>
+            <b>{formatNumber(row.pieces)}</b>
+          </div>
+          <div>
+            <span>Paletes</span>
+            <b>{formatNumber(row.pallets)}</b>
+          </div>
+          <div>
+            <span>Toneladas</span>
+            <b>{formatNumber(row.tons, 1)}</b>
+          </div>
+          <div>
+            <span>Meta</span>
+            <b>
+              {row.target && row.targetMetric
+                ? `${formatNumber(row.target, metricInfo[row.targetMetric].decimals)} ${metricInfo[row.targetMetric].unit}`
+                : '—'}
+            </b>
+          </div>
+          <div>
+            <span>% da meta</span>
+            <b>{reached == null ? '—' : `${formatNumber(reached * 100)}%`}</b>
+          </div>
+          <div>
+            <span>Aproveitamento</span>
+            <b>{machine == null ? '—' : `${formatNumber(machine * 100)}%`}</b>
+          </div>
+          <div>
+            <span>Tempo planejado</span>
+            <b>{row.planned ? duration(row.planned) : '—'}</b>
+          </div>
         </div>
+        <div className="production-detail-products">
+          <div className="shift-section-title">Produtos</div>
+          {products.length ? (
+            <table className="production-table">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th className="numeric">Milheiros</th>
+                  <th className="numeric">Peças</th>
+                  <th className="numeric">Paletes</th>
+                  <th className="numeric">Toneladas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.product_code}>
+                    <td>{product.product_code}</td>
+                    <td className="numeric">{formatNumber(product.pieces / 1000, 2)}</td>
+                    <td className="numeric">{formatNumber(product.pieces)}</td>
+                    <td className="numeric">{formatNumber(product.pallets)}</td>
+                    <td className="numeric">{formatNumber(Number(product.tons), 1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="shifts-help">Sem produção registrada.</p>
+          )}
+        </div>
+        {row.offShift && (
+          <p className="shifts-help">
+            Fora de turno: o quadro abaixo mostra o dia inteiro, e os totais acima só o que foi
+            produzido fora dos turnos.
+          </p>
+        )}
+        {detail.data ? (
+          <ShiftBoardView data={detail.data} deviceId={deviceId} historical />
+        ) : (
+          <p>{detail.error ?? 'Carregando o quadro…'}</p>
+        )}
       </div>
     </div>
   );

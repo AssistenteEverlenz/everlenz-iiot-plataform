@@ -4607,6 +4607,51 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   flex: 1;
   min-width: 1px;
 }
+.shift-pallet-timing {
+  display: block;
+  margin-top: 2px;
+}
+.shift-pallet-timing b {
+  font-weight: 600;
+  color: inherit;
+  font-size: inherit;
+}
+.modal-card.production-detail-modal {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+.production-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+.production-detail-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e3ecee;
+  border-radius: 10px;
+}
+.production-detail-summary span {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7f86;
+}
+.production-detail-summary b {
+  font-size: 18px;
+  font-weight: 600;
+}
+.production-detail-products {
+  margin-bottom: 16px;
+}
+.production-detail-products .production-table tbody tr {
+  cursor: default;
+}
 .shift-timeline-legend {
   display: flex;
   flex-wrap: wrap;

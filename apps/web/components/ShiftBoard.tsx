@@ -72,8 +72,15 @@ interface BoardData {
     projected: number | null;
   }>;
   timeline: Array<{ t: string; state: string }>;
+  /** Pallet pace: time between the last two pallets, and producing time per pallet. */
+  palletTiming?: {
+    lastSeconds: number | null;
+    lastAt: string | null;
+    averageSeconds: number | null;
+    count: number;
+  } | null;
 }
-interface ShiftBoardResponse {
+export interface ShiftBoardResponse {
   configured: boolean;
   missing: string[];
   mode: 'shift' | 'day';
@@ -130,6 +137,18 @@ export function duration(seconds: number) {
     : `${minutes} min`;
 }
 
+/** mm:ss (h:mm:ss from one hour on); "—" when unknown. */
+export function minutesSeconds(seconds: number | null | undefined) {
+  if (seconds == null || !Number.isFinite(seconds)) return '—';
+  const total = Math.round(seconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = String(total % 60).padStart(2, '0');
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}`
+    : `${String(minutes).padStart(2, '0')}:${rest}`;
+}
+
 function statusLine(data: ShiftBoardResponse) {
   const now = new Date(data.now).getTime();
   const span = data.board?.span;
@@ -168,15 +187,34 @@ function Gauge({ value }: { value: number | null }) {
 
 export function ShiftBoard({ deviceId }: { deviceId: string }) {
   const [mode, setMode] = useState<'shift' | 'day'>('shift');
-  // Unique gradient id per board: several boards can share one dashboard.
-  const reactId = useId();
   const response = usePoll<ShiftBoardResponse>(
     `/devices/${deviceId}/shift-board?mode=${mode}`,
     30000,
   );
-  const data = response.data;
-  if (!data)
+  if (!response.data)
     return <div className="shift-board-empty">{response.error ?? 'Carregando produção…'}</div>;
+  return <ShiftBoardView data={response.data} deviceId={deviceId} mode={mode} onMode={setMode} />;
+}
+
+/**
+ * The board itself. The live card passes the Turno/Dia switch; the history detail shows a
+ * closed shift or day with it, without the switch and without the machine's current state.
+ */
+export function ShiftBoardView({
+  data,
+  deviceId,
+  mode = data.mode,
+  onMode,
+  historical = false,
+}: {
+  data: ShiftBoardResponse;
+  deviceId: string;
+  mode?: 'shift' | 'day';
+  onMode?: (mode: 'shift' | 'day') => void;
+  historical?: boolean;
+}) {
+  // Unique gradient id per board: several boards can share one page.
+  const reactId = useId();
   if (!data.configured)
     return (
       <div className="shift-board-empty">
@@ -261,21 +299,25 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
             {data.defaultShifts ? ' · turno padrão (seg–sex 07:00–17:00)' : ''}
           </span>
         </div>
-        <span
-          className="shift-state"
-          style={{ '--state': stateInfo[data.state]?.color } as React.CSSProperties}
-        >
-          <i />
-          {stateInfo[data.state]?.label ?? 'Sem dados'}
-        </span>
-        <div className="shift-mode" role="group" aria-label="Período">
-          <button className={mode === 'shift' ? 'active' : ''} onClick={() => setMode('shift')}>
-            Turno
-          </button>
-          <button className={mode === 'day' ? 'active' : ''} onClick={() => setMode('day')}>
-            Dia
-          </button>
-        </div>
+        {!historical && (
+          <span
+            className="shift-state"
+            style={{ '--state': stateInfo[data.state]?.color } as React.CSSProperties}
+          >
+            <i />
+            {stateInfo[data.state]?.label ?? 'Sem dados'}
+          </span>
+        )}
+        {onMode && (
+          <div className="shift-mode" role="group" aria-label="Período">
+            <button className={mode === 'shift' ? 'active' : ''} onClick={() => onMode('shift')}>
+              Turno
+            </button>
+            <button className={mode === 'day' ? 'active' : ''} onClick={() => onMode('day')}>
+              Dia
+            </button>
+          </div>
+        )}
       </div>
 
       {!board ? (
@@ -337,6 +379,15 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
                   ? `necessário ${formatNumber(target.requiredPerHour, info.decimals)} ${info.unit}/h`
                   : `restam ${duration(board.remainingSeconds)} produtivos`}
               </em>
+              {board.palletTiming && board.palletTiming.count > 0 && (
+                <em
+                  className="shift-pallet-timing"
+                  title="Último palete: tempo entre os dois últimos paletes. Média: tempo produzindo dividido pelos paletes do período."
+                >
+                  último palete <b>{minutesSeconds(board.palletTiming.lastSeconds)}</b> · média{' '}
+                  <b>{minutesSeconds(board.palletTiming.averageSeconds)}</b>
+                </em>
+              )}
             </div>
           </div>
 

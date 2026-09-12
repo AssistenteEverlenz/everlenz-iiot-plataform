@@ -30,6 +30,7 @@ import {
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
 import { ShiftBoard } from './ShiftBoard';
+import { ProductionConfigModal } from './ProductionConfigModal';
 import { ClearHistoryModal } from './ClearHistoryModal';
 import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
@@ -994,6 +995,11 @@ export function DashboardCanvas({ id }: { id: string }) {
   );
   const [adding, setAdding] = useState(false);
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
+  // Production parameters opened from the production board's settings.
+  const [productionConfigFor, setProductionConfigFor] = useState<{
+    deviceId: string;
+    name: string;
+  } | null>(null);
   // Products of the widget being edited, so each one can get its own colour.
   const editingProducts = usePoll<Statistic[]>(
     editingWidget && quickTypes.has(editingWidget.widget_type)
@@ -1525,6 +1531,14 @@ export function DashboardCanvas({ id }: { id: string }) {
           </form>
         </div>
       )}
+      {productionConfigFor && (
+        <ProductionConfigModal
+          deviceId={productionConfigFor.deviceId}
+          deviceName={productionConfigFor.name}
+          stacked
+          onClose={() => setProductionConfigFor(null)}
+        />
+      )}
       {editingWidget && (
         <div className="modal-backdrop" onMouseDown={() => !savingModal && setEditingWidget(null)}>
           <form
@@ -1857,7 +1871,29 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </small>
                 </>
               )}
-              {!quickTypes.has(editingWidget.widget_type) && (
+              {editingWidget.widget_type === 'shift_board' && (
+                <div className="notice full-field">
+                  <b>Parâmetros de produção</b>
+                  O quadro usa o contador de peças ou paletes, a variável de automático, a meta e
+                  os tempos de ociosa e encerramento do equipamento. Os mesmos parâmetros valem
+                  para o histórico de produção.
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setProductionConfigFor({
+                          deviceId: editingWidget.device_id,
+                          name: editingWidget.title,
+                        })
+                      }
+                    >
+                      Configurar parâmetros de produção
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!quickTypes.has(editingWidget.widget_type) &&
+                editingWidget.widget_type !== 'shift_board' && (
                 <label className="check-field full-field">
                   <input
                     type="checkbox"
