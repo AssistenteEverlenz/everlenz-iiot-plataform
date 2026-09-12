@@ -5326,7 +5326,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3-kpis {
   grid-column: 1 / -1;
   display: grid;
-  /* Five numbers plus the dashboard's gauges, all the same width. */
+  /* Five numbers plus the gauges of the dashboard, all the same width. */
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
   gap: 0.6vw;

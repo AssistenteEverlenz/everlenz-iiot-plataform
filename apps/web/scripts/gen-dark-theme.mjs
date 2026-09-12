@@ -16,7 +16,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const source = readFileSync(join(root, 'app/globals.css'), 'utf8');
+// Comments go first: an apostrophe inside one (inside a rule body) used to read as the start of
+// a string, and the search for its end wrapped around the file and never stopped.
+const source = readFileSync(join(root, 'app/globals.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const DARK = ":root[data-theme='dark']";
 const SKIPPED_AT_RULES = /^@(keyframes|-webkit-keyframes|font-face|page|import|charset)\b/;
 const TEXT_PROPERTIES = /^(color|fill|caret-color|-webkit-text-fill-color|text-decoration-color)$/;
@@ -33,11 +35,14 @@ function parse(text) {
     const char = text[i];
     if (char === '/' && text[i + 1] === '*') {
       const end = text.indexOf('*/', i + 2);
+      if (end < 0) throw new Error(`comentário sem fim na posição ${i}`);
       text = text.slice(0, i) + text.slice(end + 2);
       continue;
     }
     if (char === '"' || char === "'") {
-      i = text.indexOf(char, i + 1) + 1;
+      const end = text.indexOf(char, i + 1);
+      if (end < 0) throw new Error(`aspas sem par na posição ${i}`);
+      i = end + 1;
       continue;
     }
     if (char === ';') {
@@ -61,8 +66,12 @@ function matching(text, open) {
   let depth = 0;
   for (let i = open; i < text.length; i += 1) {
     const char = text[i];
-    if (char === '"' || char === "'") i = text.indexOf(char, i + 1);
-    else if (char === '{') depth += 1;
+    if (char === '"' || char === "'") {
+      // A quote without its pair used to send the search back to the start: an endless loop.
+      const end = text.indexOf(char, i + 1);
+      if (end < 0) throw new Error(`aspas sem par na posição ${i}`);
+      i = end;
+    } else if (char === '{') depth += 1;
     else if (char === '}' && --depth === 0) return i;
   }
   throw new Error(`chave sem par na posição ${open}`);
