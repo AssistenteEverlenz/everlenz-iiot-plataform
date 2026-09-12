@@ -95,6 +95,7 @@ interface ProductionConfig {
   idle_seconds: number | null;
   weight_per_unit_kg: number | null;
   weight_tag_id: string | null;
+  closing_minutes: number | null;
   target_metric: ProductionMetric | null;
   target_per_shift: number | null;
 }
@@ -1106,6 +1107,7 @@ function ConfigModal({
     pallets: string;
     auto: string;
     idleSeconds: number;
+    closingMinutes: number;
     weight: string;
     weightKey: string;
     metric: ProductionMetric | '';
@@ -1122,6 +1124,7 @@ function ConfigModal({
       pallets: signalFor(config.data.pallets_tag_id),
       auto: signalFor(config.data.auto_tag_id),
       idleSeconds: config.data.idle_seconds ?? 60,
+      closingMinutes: config.data.closing_minutes ?? 30,
       weight: config.data.weight_per_unit_kg ? String(config.data.weight_per_unit_kg) : '',
       weightKey: signalFor(config.data.weight_tag_id),
       metric: config.data.target_metric ?? '',
@@ -1170,6 +1173,9 @@ function ConfigModal({
         palletsTagId,
         autoTagId,
         idleSeconds: Number(form.idleSeconds) || 60,
+        closingMinutes: Number.isFinite(Number(form.closingMinutes))
+          ? Math.min(240, Math.max(0, Math.round(Number(form.closingMinutes))))
+          : 30,
         weightPerUnitKg: form.weight ? Number(form.weight.replace(',', '.')) : null,
         weightTagId,
         targetMetric: form.metric || null,
@@ -1248,6 +1254,19 @@ function ConfigModal({
                 max={3600}
                 value={form.idleSeconds}
                 onChange={(event) => setForm({ ...form, idleSeconds: Number(event.target.value) })}
+              />
+            </label>
+            <label className="field">
+              Encerrado se parar nos últimos (minutos do turno)
+              <input
+                type="number"
+                min={0}
+                max={240}
+                value={form.closingMinutes}
+                title="Se a máquina para de contar nesses minutos finais e não volta até o fim do turno, o tempo depois da última produção conta como Encerrado, não como ociosa. 0 desliga."
+                onChange={(event) =>
+                  setForm({ ...form, closingMinutes: Number(event.target.value) })
+                }
               />
             </label>
             <label className="field">

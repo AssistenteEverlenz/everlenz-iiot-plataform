@@ -46,6 +46,12 @@ interface ProductionConfig {
   weight_tag_id: string | null;
   target_metric: Metric | null;
   target_per_shift: number | null;
+  closing_minutes: number | null;
+}
+
+/** Final minutes of a shift in which a stop that lasts to the end counts as "Encerrado". */
+function closingSecondsOf(config: { closing_minutes: number | null }) {
+  return (config.closing_minutes ?? 30) * 60;
 }
 interface BucketRow {
   bucket: Date | string;
@@ -69,6 +75,8 @@ export interface Summary extends Totals {
   offline: number;
   /** In automatic but before the first production of the window (warm-up, first load). */
   waiting: number;
+  /** In automatic after the last production, when it stopped within the final minutes. */
+  closing: number;
   elapsedProductive: number;
   products: Array<Totals & { product_code: string }>;
 }
@@ -88,10 +96,28 @@ function firstProducingAt(buckets: BucketRow[], span: TimeWindow) {
   return first;
 }
 
+/**
+ * Where "Encerrado" begins: right after the last bucket with production, provided that bucket
+ * ends within the final `closingSeconds` of the window. Null when the rule does not apply.
+ */
+function closingFromAt(buckets: BucketRow[], span: TimeWindow, closingSeconds: number) {
+  if (closingSeconds <= 0) return null;
+  let last: number | null = null;
+  for (const row of buckets) {
+    const at = new Date(row.bucket).getTime();
+    if (at < span.start.getTime() || at >= span.end.getTime()) continue;
+    if (Number(row.producing_s) > 0 && (last == null || at > last)) last = at;
+  }
+  if (last == null) return null;
+  const from = last + BUCKET_MS;
+  return span.end.getTime() - from <= closingSeconds * 1000 ? from : null;
+}
+
 async function loadConfig(db: Database, tenantId: string, deviceId: string) {
   const result = await db.query<ProductionConfig>(
     `SELECT d.site_id,ps.blocks_tag_id,ps.pallets_tag_id,ps.tons_total_tag_id,ps.auto_tag_id,
-       ps.idle_seconds,ps.weight_per_unit_kg,ps.weight_tag_id,ps.target_metric,ps.target_per_shift
+       ps.idle_seconds,ps.weight_per_unit_kg,ps.weight_tag_id,ps.target_metric,ps.target_per_shift,
+       ps.closing_minutes
      FROM devices d LEFT JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
      WHERE d.tenant_id=$1 AND d.id=$2 AND d.archived_at IS NULL`,
     [tenantId, deviceId],
@@ -143,6 +169,7 @@ export function summarize(
   span: TimeWindow,
   windows: TimeWindow[],
   until: Date,
+  closingSeconds = 0,
 ): Summary {
   const summary: Summary = {
     pieces: 0,
@@ -153,11 +180,13 @@ export function summarize(
     manual: 0,
     offline: 0,
     waiting: 0,
+    closing: 0,
     elapsedProductive: 0,
     products: [],
   };
   const products = new Map<string, Totals>();
   const started = firstProducingAt(buckets, span);
+  const closingFrom = closingFromAt(buckets, span, closingSeconds);
   for (const row of buckets) {
     const start = new Date(row.bucket);
     if (start < span.start || start >= span.end) continue;
@@ -174,6 +203,8 @@ export function summarize(
     summary.producing += Number(row.producing_s) * weight;
     if (started == null || start.getTime() < started)
       summary.waiting += Number(row.idle_s) * weight;
+    else if (closingFrom != null && start.getTime() >= closingFrom)
+      summary.closing += Number(row.idle_s) * weight;
     else summary.idle += Number(row.idle_s) * weight;
     summary.manual += Number(row.manual_s) * weight;
   }
@@ -185,7 +216,8 @@ export function summarize(
       summary.producing -
       summary.idle -
       summary.manual -
-      summary.waiting,
+      summary.waiting -
+      summary.closing,
   );
   summary.products = [...products.entries()]
     .map(([product_code, totals]) => ({ product_code, ...totals }))
@@ -228,7 +260,24 @@ async function buildBoard(
     new Date(Math.floor(span.start.getTime() / BUCKET_MS) * BUCKET_MS),
     new Date(until.getTime() + BUCKET_MS),
   );
-  const summary = summarize(buckets, span, windows, now);
+  const closingSeconds = closingSecondsOf(config);
+  const summary = summarize(buckets, span, windows, now, closingSeconds);
+  // Scheduled pauses elapsed so far, shown next to the machine states.
+  const pauseSeconds = occurrences.reduce(
+    (total, item) =>
+      total +
+      item.breaks.reduce(
+        (sum, pause) =>
+          sum +
+          Math.max(
+            0,
+            Math.min(pause.end.getTime(), until.getTime()) - pause.start.getTime(),
+          ) /
+            1000,
+        0,
+      ),
+    0,
+  );
   const metric: Metric = config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets');
   const targetValue =
     config.target_metric && config.target_per_shift
@@ -311,6 +360,7 @@ async function buildBoard(
   }
   const timeline: Array<{ t: string; state: string }> = [];
   const started = firstProducingAt(buckets, span);
+  const closingFrom = closingFromAt(buckets, span, closingSeconds);
   for (let at = firstBucket; at < until.getTime(); at += BUCKET_MS) {
     const start = new Date(at);
     const end = new Date(Math.min(at + BUCKET_MS, until.getTime()));
@@ -323,7 +373,14 @@ async function buildBoard(
     const offline = Math.max(0, productive - seconds.producing - seconds.idle - seconds.manual);
     const ranked = [
       ['producing', seconds.producing],
-      [started == null || at < started ? 'waiting' : 'idle', seconds.idle],
+      [
+        started == null || at < started
+          ? 'waiting'
+          : closingFrom != null && at >= closingFrom
+            ? 'closing'
+            : 'idle',
+        seconds.idle,
+      ],
       ['manual', seconds.manual],
       ['offline', offline],
     ] as const;
@@ -360,6 +417,8 @@ async function buildBoard(
       manual: summary.manual,
       offline: summary.offline,
       waiting: summary.waiting,
+      closing: summary.closing,
+      pause: pauseSeconds,
       elapsedProductive: summary.elapsedProductive,
     },
     utilization:
@@ -703,7 +762,7 @@ export async function closeShiftReports(
   const devices = await db.query<ProductionConfig & { id: string; tenant_id: string }>(
     `SELECT d.id,d.tenant_id,d.site_id,ps.blocks_tag_id,ps.pallets_tag_id,ps.tons_total_tag_id,
        ps.auto_tag_id,ps.idle_seconds,ps.weight_per_unit_kg,ps.weight_tag_id,ps.target_metric,
-       ps.target_per_shift
+       ps.target_per_shift,ps.closing_minutes
      FROM devices d JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
      WHERE d.archived_at IS NULL AND (ps.blocks_tag_id IS NOT NULL OR ps.pallets_tag_id IS NOT NULL)
        AND ($1::uuid IS NULL OR d.id=$1)`,
@@ -788,7 +847,13 @@ export async function closeShiftReports(
         start: occurrence.start,
         end: occurrence.end,
         planned: occurrence.plannedSeconds,
-        summary: summarize(buckets, occurrence, productiveWindows(occurrence), occurrence.end),
+        summary: summarize(
+          buckets,
+          occurrence,
+          productiveWindows(occurrence),
+          occurrence.end,
+          closingSecondsOf(device),
+        ),
       });
     }
     // Production outside every shift, one row per finished calendar day.
@@ -917,6 +982,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         weightTagId: uuid.nullable().default(null),
         targetMetric: z.enum(['milheiros', 'tons', 'blocks', 'pallets']).nullable(),
         targetPerShift: z.number().positive().max(1e9).nullable(),
+        closingMinutes: z.number().int().min(0).max(240).default(30),
       })
       .parse(req.body);
     if (!body.piecesTagId && !body.palletsTagId)
@@ -940,13 +1006,15 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     await db.transaction(async (sql) => {
       await sql.query(
         `INSERT INTO production_settings(device_id,tenant_id,blocks_tag_id,pallets_tag_id,auto_tag_id,
-           idle_seconds,weight_per_unit_kg,target_metric,target_per_shift,weight_tag_id,updated_at)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())
+           idle_seconds,weight_per_unit_kg,target_metric,target_per_shift,weight_tag_id,
+           closing_minutes,updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
          ON CONFLICT(device_id) DO UPDATE SET blocks_tag_id=EXCLUDED.blocks_tag_id,
            pallets_tag_id=EXCLUDED.pallets_tag_id,auto_tag_id=EXCLUDED.auto_tag_id,
            idle_seconds=EXCLUDED.idle_seconds,weight_per_unit_kg=EXCLUDED.weight_per_unit_kg,
            target_metric=EXCLUDED.target_metric,target_per_shift=EXCLUDED.target_per_shift,
-           weight_tag_id=EXCLUDED.weight_tag_id,updated_at=now()`,
+           weight_tag_id=EXCLUDED.weight_tag_id,closing_minutes=EXCLUDED.closing_minutes,
+           updated_at=now()`,
         [
           id,
           current.tenantId,
@@ -958,6 +1026,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
           body.targetMetric,
           body.targetMetric ? body.targetPerShift : null,
           body.weightTagId,
+          body.closingMinutes,
         ],
       );
       await recordAudit(sql, req, current, {
@@ -1076,7 +1145,13 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     let open = null;
     if (running && running.productionDate >= query.from && running.productionDate <= query.to) {
       const buckets = await loadBuckets(db, tenantId, id, running.start, now);
-      const summary = summarize(buckets, running, productiveWindows(running), now);
+      const summary = summarize(
+        buckets,
+        running,
+        productiveWindows(running),
+        now,
+        closingSecondsOf(config),
+      );
       open = {
         id: 'open',
         kind: 'shift',
@@ -1126,7 +1201,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       return reply.code(400).send({ error: 'Nenhum turno em andamento agora para gerar a parcial.' });
     const windows = productiveWindows(running);
     const buckets = await loadBuckets(db, current.tenantId, id, running.start, now);
-    const summary = summarize(buckets, running, windows, now);
+    const summary = summarize(buckets, running, windows, now, closingSecondsOf(config));
     const planned = Math.round(productiveSecondsIn(windows, running.start, now));
     const clockNow = now.toLocaleTimeString('pt-BR', {
       hour: '2-digit',

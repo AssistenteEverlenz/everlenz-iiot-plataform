@@ -48,6 +48,10 @@ interface BoardData {
     offline: number;
     /** Idle before the first production of the window: not counted as idleness. */
     waiting?: number;
+    /** Idle after the last production when it stopped within the final minutes of the shift. */
+    closing?: number;
+    /** Scheduled pauses elapsed so far. */
+    pause?: number;
     elapsedProductive: number;
   };
   utilization: number | null;
@@ -99,6 +103,7 @@ export const stateInfo: Record<string, { label: string; color: string }> = {
   manual: { label: 'Manual / parada', color: '#e4572e' },
   offline: { label: 'Sem comunicação', color: '#98a6ab' },
   waiting: { label: 'Aguardando início', color: '#8fb8de' },
+  closing: { label: 'Encerrado', color: '#5f7f96' },
   // Lilac, far from the grey of "sem comunicação": a lunch break read as an outage.
   pause: { label: 'Pausa', color: '#cdb9ea' },
   outside: { label: 'Fora de turno', color: '#e6ecee' },
@@ -426,24 +431,35 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
               <Gauge value={board.utilization} />
               <small className="shift-gauge-caption">produzindo ÷ (produzindo + ociosa)</small>
               <ul className="shift-states">
-                {(['waiting', 'producing', 'idle', 'manual', 'offline'] as const)
-                  .filter((state) => state !== 'waiting' || (board.time.waiting ?? 0) >= 60)
+                {(
+                  ['waiting', 'producing', 'idle', 'manual', 'offline', 'closing', 'pause'] as const
+                )
+                  .filter(
+                    (state) =>
+                      !['waiting', 'closing', 'pause'].includes(state) ||
+                      (board.time[state] ?? 0) >= 60,
+                  )
                   .map((state) => {
                     const seconds = board.time[state] ?? 0;
+                    const hint =
+                      state === 'waiting'
+                        ? 'Em automático antes da primeira produção do período: não conta como ociosa'
+                        : state === 'closing'
+                          ? 'Parou de contar nos minutos finais do turno e não voltou: não conta como ociosa'
+                          : state === 'pause'
+                            ? 'Pausas cadastradas no turno: fora do tempo produtivo'
+                            : undefined;
                     return (
-                      <li
-                        key={state}
-                        title={
-                          state === 'waiting'
-                            ? 'Em automático antes da primeira produção do período: não conta como ociosa'
-                            : undefined
-                        }
-                      >
+                      <li key={state} title={hint}>
                         <i style={{ background: stateInfo[state].color }} />
                         <span>{stateInfo[state].label}</span>
                         <b>{duration(seconds)}</b>
                         <em>
-                          {elapsed > 0 ? `${formatNumber((seconds / elapsed) * 100)}%` : '—'}
+                          {state === 'pause'
+                            ? '—'
+                            : elapsed > 0
+                              ? `${formatNumber((seconds / elapsed) * 100)}%`
+                              : '—'}
                         </em>
                       </li>
                     );
