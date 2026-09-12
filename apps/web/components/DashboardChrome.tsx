@@ -24,6 +24,8 @@ interface DashboardChromeProps {
   onPdf: () => void;
   csvHref: string;
   tvHref: string;
+  /** Opens the dashboard's snapshots (save or restore a version). */
+  onSnapshot: () => void;
 }
 
 export function DashboardChrome(props: DashboardChromeProps) {
@@ -71,6 +73,7 @@ function ActionsButton({
   onPdf,
   csvHref,
   tvHref,
+  onSnapshot,
 }: DashboardChromeProps & { variant: 'menu' | 'fab' }) {
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLSpanElement>(null);
@@ -98,6 +101,7 @@ function ActionsButton({
       </a>
       {/* Opens the managerial wall board; the widget grid stays the operator's view. */}
       <button onClick={run(() => window.location.assign(tvHref))}>Modo TV</button>
+      <button onClick={run(onSnapshot)}>Snapshot</button>
       <label className="actions-refresh">
         <span>Atualização {savingRefresh && <span className="button-spinner dark" />}</span>
         <select value={refreshMs} onChange={(event) => onRefresh(Number(event.target.value))}>

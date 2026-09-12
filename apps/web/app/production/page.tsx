@@ -568,9 +568,12 @@ function ProductionPage() {
           <h1>Histórico de produção</h1>
           <p>O que, quanto e quando cada turno produziu, com meta e aproveitamento da máquina.</p>
         </div>
-        {user.role === 'master' && device && (
+        {device && (
           <div className="toolbar-actions">
-            <button onClick={() => setEditingShifts(true)}>Turnos da fábrica</button>
+            {/* The plant's calendar affects every machine: master only. */}
+            {user.role === 'master' && (
+              <button onClick={() => setEditingShifts(true)}>Turnos da fábrica</button>
+            )}
             <button onClick={() => setEditingConfig(true)}>Configurar equipamento</button>
             <button onClick={() => setCheckingHmi(true)}>Conferir com a IHM</button>
           </div>
@@ -798,13 +801,16 @@ function ProductionPage() {
             <button onClick={() => window.print()} disabled={!rows.length}>
               Imprimir / PDF
             </button>
-            {canMaintain && deviceId && (
+            {deviceId && (
               <>
                 <button disabled={generating} onClick={() => void generateSnapshot()}>
                   {generating ? 'Gerando…' : 'Gerar parcial agora'}
                 </button>
-                <button onClick={() => setConfirming('recalculate')}>Recalcular período</button>
-                {view === 'shift' && (
+                {/* Rewriting or removing stored rows stays with the master. */}
+                {canMaintain && (
+                  <button onClick={() => setConfirming('recalculate')}>Recalcular período</button>
+                )}
+                {canMaintain && view === 'shift' && (
                   <button
                     className="danger-text"
                     disabled={!selected.length}

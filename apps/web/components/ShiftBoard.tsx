@@ -218,7 +218,10 @@ export function ShiftBoardView({
   onMode,
   onChanged,
   historical = false,
+  hideHead = false,
 }: {
+  /** The TV draws its own header (shift, state, clock). */
+  hideHead?: boolean;
   data: ShiftBoardResponse;
   deviceId: string;
   mode?: 'shift' | 'day';
@@ -304,7 +307,7 @@ export function ShiftBoardView({
     : [];
 
   return (
-    <div className="shift-board">
+    <div className={`shift-board ${hideHead ? 'no-head' : ''}`}>
       <div className="shift-board-head">
         <div>
           <strong>{title}</strong>

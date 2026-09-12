@@ -4771,9 +4771,16 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* The cards share the whole row; a single day (Hoje) sits in the middle. */
+.goal-calendar.large .goal-days:has(> .goal-day:only-child) {
+  justify-content: center;
+}
+.goal-calendar.large .goal-day:only-child {
+  flex: 0 1 280px;
+}
 .goal-calendar.large .goal-day {
-  flex: 1 1 120px;
-  max-width: 190px;
+  flex: 1 1 0;
+  min-width: 110px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -4827,6 +4834,312 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .goal-calendar.small .goal-day.blank {
   background: transparent;
+}
+/* Snapshots of a dashboard. */
+.snapshot-section {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e3ebed;
+}
+.snapshot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.snapshot-row input,
+.snapshot-row select {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+/* A card from the default model before its variable is chosen: only the notice shows. */
+.dashboard-widget.variable-unbound > :not(.widget-head):not(.widget-unbound):not([class*='resize']) {
+  display: none;
+}
+.shift-board.no-head > .shift-board-head {
+  display: none;
+}
+
+/* Modo TV: one dark 16:9 page without scrolling, sized by the screen width. */
+.tv2 {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8vw;
+  padding: 1.2vw 1.6vw;
+  overflow: hidden;
+  background: radial-gradient(circle at 20% 0%, #13262b, #0a1215 60%);
+  color: #e0e6e8;
+  font-size: clamp(12px, 0.95vw, 22px);
+}
+.tv2-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 2vw;
+}
+.tv2-eyebrow {
+  color: #5fd3c4;
+  font-size: 0.75vw;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+}
+.tv2-title h1 {
+  margin: 0.2vw 0 0;
+  color: #fff;
+  font-size: 2.2vw;
+  font-weight: 600;
+}
+.tv2-title small,
+.tv2-shift span {
+  color: #92a2a7;
+  font-size: 0.95vw;
+}
+.tv2-shift {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2vw;
+  text-align: right;
+}
+.tv2-shift strong {
+  color: #fff;
+  font-size: 1.5vw;
+  font-weight: 600;
+}
+.tv2-right {
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+}
+.tv2-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6vw;
+  padding: 0.5vw 1.1vw;
+  border: 2px solid var(--state);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--state) 28%, transparent);
+  color: #fff;
+  font-size: 1.3vw;
+  font-weight: 700;
+}
+.tv2-state i {
+  width: 0.9vw;
+  height: 0.9vw;
+  border-radius: 50%;
+  background: var(--state);
+  box-shadow: 0 0 0.8vw var(--state);
+}
+.tv2-state small {
+  font-size: 1vw;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.tv2-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: #fff;
+  font-size: 2.4vw;
+  line-height: 1;
+}
+.tv2-clock small {
+  margin-top: 0.3vw;
+  color: #92a2a7;
+  font-size: 0.8vw;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+.tv2-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4vw;
+  height: 2.4vw;
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid #2a3a3f;
+  border-radius: 50%;
+  background: transparent;
+  color: #92a2a7;
+  font-size: 1.1vw;
+  text-decoration: none;
+  cursor: pointer;
+}
+.tv2-alert {
+  padding: 0.7vw 1.2vw;
+  border: 1px solid transparent;
+  border-radius: 0.8vw;
+  font-size: 1.4vw;
+  font-weight: 700;
+}
+.tv2-alert.good {
+  border-color: #1f6b4a;
+  background: #123526;
+  color: #6ee7b7;
+}
+.tv2-alert.warn {
+  border-color: #7a5a1a;
+  background: #3a2c12;
+  color: #fcd34d;
+}
+.tv2-alert.bad {
+  border-color: #7f2d22;
+  background: #3d1a14;
+  color: #fca5a5;
+  animation: tv2-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tv2-pulse {
+  50% {
+    opacity: 0.72;
+  }
+}
+.tv2-board {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.tv2-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #92a2a7;
+}
+.tv2 .shift-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8vw;
+  height: 100%;
+}
+.tv2 .shift-kpi {
+  padding: 0.8vw 1vw;
+  border-radius: 0.8vw;
+}
+.tv2 .shift-kpi span {
+  font-size: 0.8vw;
+}
+.tv2 .shift-kpi b {
+  font-size: 2.6vw;
+}
+.tv2 .shift-kpi.hero b {
+  font-size: 3.4vw;
+}
+.tv2 .shift-kpi b small {
+  font-size: 1vw;
+}
+.tv2 .shift-kpi em {
+  font-size: 0.85vw;
+}
+/* The alert line above replaces the board's own message; editing stays off the wall. */
+.tv2 .shift-health,
+.tv2 .kpi-edit,
+.tv2 .shift-products,
+.tv2 .shift-note {
+  display: none;
+}
+.tv2 .shift-chart {
+  height: 30vh;
+}
+.tv2 .shift-section-title {
+  font-size: 0.95vw;
+}
+.tv2 .shift-states li {
+  font-size: 0.95vw;
+}
+.tv2 .shift-timeline {
+  height: 1.2vw;
+}
+.tv2 .shift-timeline-legend,
+.tv2 .shift-timeline-axis {
+  font-size: 0.8vw;
+}
+.tv2-bottom {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.8vw;
+}
+.tv2-card {
+  padding: 0.8vw 1vw;
+  border: 1px solid #202d32;
+  border-radius: 0.8vw;
+  background: #111b1e;
+}
+.tv2-card-title {
+  margin-bottom: 0.5vw;
+  color: #b9c7cb;
+  font-size: 0.95vw;
+  font-weight: 600;
+}
+.tv2-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.5vw;
+}
+.tv2-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15vw;
+  padding: 0.5vw 0.6vw;
+  border-left: 0.3vw solid var(--goal);
+  border-radius: 0.6vw;
+  background: color-mix(in srgb, var(--goal) 18%, #111b1e);
+}
+.tv2-day span {
+  color: #92a2a7;
+  font-size: 0.75vw;
+}
+.tv2-day b {
+  color: #fff;
+  font-size: 1.5vw;
+}
+.tv2-day small {
+  min-height: 1em;
+  color: #b9c7cb;
+  font-size: 0.7vw;
+}
+.tv2-products {
+  display: grid;
+  gap: 0.45vw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tv2-products li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 1fr auto;
+  align-items: center;
+  gap: 0.8vw;
+  font-size: 0.95vw;
+}
+.tv2-products span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv2-products i {
+  height: 0.6vw;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #1d2a2e;
+}
+.tv2-products em {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: #12b8a6;
+}
+.tv2-products b {
+  color: #fff;
+  font-size: 1.1vw;
+}
+.tv2-empty {
+  margin: 0;
+  color: #92a2a7;
 }
 .production-detail-loading {
   display: flex;

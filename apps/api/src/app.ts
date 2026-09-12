@@ -12,6 +12,7 @@ import { publishCommand, type CommandPublisher } from './commands.js';
 import { registerProductionRoutes } from './production.js';
 import { registerShiftProductionRoutes } from './shift-production.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
+import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 const uuid = z.uuid();
 /** How long a PLC reset bit stays at 1 before the platform writes it back to 0. */
 const COMMAND_PULSE_MS = 2000;
@@ -384,6 +385,7 @@ export async function createApp(
   registerProductionRoutes(app, db, access);
   registerShiftProductionRoutes(app, db, access);
   registerHmiCheckRoutes(app, db, access);
+  registerDashboardSnapshotRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
@@ -397,8 +399,8 @@ export async function createApp(
     );
     return result.rows[0] ?? { product_key: null, fallback_product_code: 'ITEM GERAL' };
   });
+  // Which variable carries the product: part of setting up a dashboard, open to its users.
   app.patch('/api/devices/:id/production-context', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
     const body = z
@@ -555,9 +557,10 @@ export async function createApp(
   });
   app.post('/api/devices/:id/tags', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
-    // Tag scaling rewrites how every future sample is interpreted: master only.
-    // A `user` is a viewer and must not be able to silently falsify telemetry.
-    if (!access.requireMaster(req, reply)) return;
+    // Tag scaling rewrites how every future sample is interpreted: only the master sets or
+    // changes it, so nobody else can silently falsify telemetry. Other users may link a
+    // variable the device publishes (a card from the default model): it is created with
+    // neutral scaling, and an existing tag is returned untouched.
     if (!(await access.requireDevice(req, reply, id))) return;
     const body = z
       .object({
@@ -579,6 +582,15 @@ export async function createApp(
     ]);
     if (!device.rows.length) return reply.code(404).send({ error: 'Device not found' });
     const current = access.principal(req);
+    if (current.role !== 'master') {
+      if (body.scaleMultiplier !== 1 || body.scaleOffset !== 0)
+        return reply.code(403).send({ error: 'Master access required' });
+      const existing = await db.query(
+        'SELECT * FROM tags WHERE tenant_id=$1 AND device_id=$2 AND key=$3',
+        [current.tenantId, id, body.key],
+      );
+      if (existing.rows[0]) return existing.rows[0];
+    }
     return db.transaction(async (sql) => {
       const saved = await sql.query<{ id: string }>(
         `INSERT INTO tags(tenant_id,device_id,key,name,data_type,unit,scale_multiplier,scale_offset)
@@ -688,6 +700,8 @@ export async function createApp(
           `Painel operacional de ${body.name.trim()}`,
         ],
       );
+      // The tenant's model cards, without variables: each one is linked from its pencil.
+      await applyDashboardTemplate(sql, current.tenantId, dashboardId, id);
       await recordAudit(sql, req, current, {
         action: 'device.create',
         targetType: 'device',
@@ -1454,6 +1468,8 @@ export async function createApp(
         title: z.string().min(1).max(120).optional(),
         width: z.enum(['small', 'medium', 'large', 'full']).optional(),
         config: z.record(z.string(), z.unknown()).optional(),
+        // The card's variable: set from the pencil (cards from the default model start empty).
+        tagId: uuid.nullable().optional(),
       })
       .parse(req.body);
     const view = await dashboardView(
@@ -1465,6 +1481,13 @@ export async function createApp(
     if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
     const index = view.widgets.findIndex((widget) => widget.id === widgetId);
     if (index < 0) return reply.code(404).send({ error: 'Widget not found' });
+    if (body.tagId) {
+      const tag = await db.query(
+        'SELECT 1 FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+        [current.tenantId, view.widgets[index].device_id, body.tagId],
+      );
+      if (!tag.rows.length) return reply.code(400).send({ error: 'Tag does not belong to this device' });
+    }
     const updated = {
       ...view.widgets[index],
       ...(body.title ? { title: body.title } : {}),
@@ -1475,7 +1498,8 @@ export async function createApp(
     // other keys of this one, are never overwritten by a stale copy of the dashboard.
     await db.query(
       `UPDATE dashboard_widgets SET title=COALESCE($4,title),width=COALESCE($5,width),
-         config=config || $6::jsonb,updated_at=now()
+         config=config || $6::jsonb,
+         tag_id=CASE WHEN $7::boolean THEN $8::uuid ELSE tag_id END,updated_at=now()
        WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3`,
       [
         current.tenantId,
@@ -1484,6 +1508,8 @@ export async function createApp(
         body.title ?? null,
         body.width ?? null,
         JSON.stringify(body.config ?? {}),
+        body.tagId !== undefined,
+        body.tagId ?? null,
       ],
     );
     const fresh = await dashboardView(

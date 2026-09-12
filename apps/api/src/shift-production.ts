@@ -1092,8 +1092,9 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     return config;
   });
 
+  // Any user of the device may set its production parameters (dashboards can be restored from
+  // a snapshot); what deletes or rewrites stored data stays with the master.
   app.patch('/api/devices/:id/production-config', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
     const body = z
@@ -1180,7 +1181,6 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   // The target alone, edited from the production board's "Meta" card: a fixed value or an HMI
   // variable (with the fixed value as fallback). Closed shifts keep the target they had.
   app.patch('/api/devices/:id/production-target', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
     const body = z
@@ -1435,7 +1435,6 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   // "Gerar parcial agora": a snapshot of the running shift up to this moment, kept as a manual
   // row. The target is prorated to the planned time elapsed so the percentage stays fair.
   app.post('/api/devices/:id/shift-reports/snapshot', async (req, reply) => {
-    if (!access.requireMaster(req, reply)) return;
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
     const current = access.principal(req);

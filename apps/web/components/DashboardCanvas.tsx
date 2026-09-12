@@ -32,6 +32,7 @@ import { DashboardChrome } from './DashboardChrome';
 import { ShiftBoard } from './ShiftBoard';
 import { ProductionConfigModal } from './ProductionConfigModal';
 import { HmiCheckModal } from './HmiCheckModal';
+import { SnapshotModal } from './SnapshotModal';
 import { ClearHistoryModal } from './ClearHistoryModal';
 import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
@@ -275,6 +276,9 @@ function SixDots() {
   );
 }
 
+// Cards that read no single variable; every other card needs one to show anything.
+const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto']);
+
 function Widget({
   widget,
   latest,
@@ -492,7 +496,7 @@ function Widget({
       onDragEnter={dragEnter}
       onDragEnd={dragEnd}
       onDrop={drop}
-      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${dropTarget ? 'drop-target' : ''} ${currentRange && !missing ? 'alarm-active' : ''} ${missing ? 'variable-missing' : ''}`}
+      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${dropTarget ? 'drop-target' : ''} ${currentRange && !missing ? 'alarm-active' : ''} ${missing ? 'variable-missing' : ''} ${!variableFreeTypes.has(widget.widget_type) && !widget.tag_id ? 'variable-unbound' : ''}`}
       style={
         {
           '--accent': activeColor,
@@ -527,6 +531,13 @@ function Widget({
             “{widget.key ?? widget.tag_name ?? widget.title}” não está nas publicações mais recentes
             do equipamento. Confira a IHM ou edite este indicador.
           </small>
+        </div>
+      )}
+      {!variableFreeTypes.has(widget.widget_type) && !widget.tag_id && (
+        <div className="widget-missing widget-unbound">
+          <span aria-hidden="true">✎</span>
+          <strong>Sem variável vinculada</strong>
+          <small>Clique no lápis e escolha a variável que este indicador vai ler.</small>
         </div>
       )}
       {currentRange && currentRange.priority > 0 && (
@@ -1001,6 +1012,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     deviceId: string;
     name: string;
   } | null>(null);
+  // Snapshots of this dashboard (Ações → Snapshot).
+  const [snapshotOpen, setSnapshotOpen] = useState(false);
   // "Conferir com a IHM" for the variable of the card being edited.
   const [checkingHmi, setCheckingHmi] = useState<{ deviceId: string; tagId: string } | null>(
     null,
@@ -1182,6 +1195,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   }
   function startEdit(widget: DashboardWidget) {
     setEditingWidget(widget);
+    setSignalId(widget.tag_id ?? '');
     setTitle(widget.title);
     setWidth(widget.width);
     setColor(widget.config.color ?? '#12b8a6');
@@ -1232,7 +1246,25 @@ export function DashboardCanvas({ id }: { id: string }) {
           fallbackProductCode: fallbackProductCode.trim() || 'ITEM GERAL',
         });
       }
+      // The card's variable (a card from the default model starts without one).
+      let tagId: string | null | undefined;
+      if (!variableFreeTypes.has(editingWidget.widget_type)) {
+        tagId = selectedSignal?.tag_id ?? null;
+        if (selectedSignal && !tagId) {
+          const tag = await mutate<{ id: string }>(`/devices/${deviceId}/tags`, 'POST', {
+            key: selectedSignal.key,
+            name: selectedSignal.name || selectedSignal.key,
+            dataType: selectedSignal.data_type,
+            unit: selectedSignal.unit,
+            scaleMultiplier: 1,
+            scaleOffset: 0,
+          });
+          tagId = tag.id;
+        }
+        if (tagId === editingWidget.tag_id) tagId = undefined;
+      }
       await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', {
+        ...(tagId !== undefined ? { tagId } : {}),
         title,
         width,
         config: {
@@ -1365,7 +1397,18 @@ export function DashboardCanvas({ id }: { id: string }) {
         onPdf={() => void printDashboard()}
         csvHref={`/api/export/telemetry.csv?deviceId=${deviceId}&limit=10000`}
         tvHref={`/dashboards/${id}/tv`}
+        onSnapshot={() => setSnapshotOpen(true)}
       />
+      {snapshotOpen && (
+        <SnapshotModal
+          dashboardId={id}
+          onClose={() => setSnapshotOpen(false)}
+          onRestored={() => {
+            holdServerUntil.current = 0;
+            void Promise.all([dashboard.refresh(), productionContext.refresh()]);
+          }}
+        />
+      )}
       {/* Only on paper and on the in-page TV view: the title of the board. */}
       <div className="dashboard-toolbar">
         <div>
@@ -1578,6 +1621,20 @@ export function DashboardCanvas({ id }: { id: string }) {
                 Título
                 <input required value={title} onChange={(event) => setTitle(event.target.value)} />
               </label>
+              {!variableFreeTypes.has(editingWidget.widget_type) && (
+                <label className="field full-field">
+                  Variável
+                  <select value={signalId} onChange={(event) => setSignalId(event.target.value)}>
+                    <option value="">Sem variável vinculada</option>
+                    {(signals.data ?? []).map((signal) => (
+                      <option key={signal.id} value={signal.tag_id ?? signal.id}>
+                        {signal.key} · {signal.data_type}
+                        {signal.present ? '' : ' · não publicada'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="field">
                 Largura
                 <select
