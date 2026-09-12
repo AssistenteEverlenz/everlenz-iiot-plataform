@@ -5358,19 +5358,25 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+/* The number on one line and its unit or detail on the next, each with its own line height:
+   one tight line used to clip the second one in half. */
 .tv3-kpi b {
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   color: #fff;
   font-size: 2vw;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  text-overflow: ellipsis;
+  line-height: 1.05;
   white-space: nowrap;
 }
 .tv3-kpi b small {
+  margin-top: 0.15vw;
+  overflow: hidden;
   color: #92a2a7;
   font-size: 0.8vw;
   font-weight: 500;
+  line-height: 1.25;
+  text-overflow: ellipsis;
 }
 .tv3-kpi b.muted {
   color: #6b7f86;
