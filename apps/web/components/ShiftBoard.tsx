@@ -99,7 +99,8 @@ export const stateInfo: Record<string, { label: string; color: string }> = {
   manual: { label: 'Manual / parada', color: '#e4572e' },
   offline: { label: 'Sem comunicação', color: '#98a6ab' },
   waiting: { label: 'Aguardando início', color: '#8fb8de' },
-  pause: { label: 'Pausa', color: '#cfd9dc' },
+  // Lilac, far from the grey of "sem comunicação": a lunch break read as an outage.
+  pause: { label: 'Pausa', color: '#cdb9ea' },
   outside: { label: 'Fora de turno', color: '#e6ecee' },
   unknown: { label: 'Sem dados', color: '#98a6ab' },
 };
@@ -463,6 +464,14 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
           <div className="shift-timeline-axis">
             <span>{clock(board.span.start)}</span>
             <span>{clock(board.span.end)}</span>
+          </div>
+          <div className="shift-timeline-legend">
+            {[...new Set(board.timeline.map((segment) => segment.state))].map((state) => (
+              <span key={state}>
+                <i style={{ background: stateInfo[state]?.color }} />
+                {stateInfo[state]?.label ?? state}
+              </span>
+            ))}
           </div>
           {board.products.length > 1 && (
             <div className="shift-products">
