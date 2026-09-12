@@ -46,6 +46,8 @@ interface BoardData {
     idle: number;
     manual: number;
     offline: number;
+    /** Idle before the first production of the window: not counted as idleness. */
+    waiting?: number;
     elapsedProductive: number;
   };
   utilization: number | null;
@@ -96,6 +98,7 @@ export const stateInfo: Record<string, { label: string; color: string }> = {
   idle: { label: 'Ociosa', color: '#f2a93b' },
   manual: { label: 'Manual / parada', color: '#e4572e' },
   offline: { label: 'Sem comunicação', color: '#98a6ab' },
+  waiting: { label: 'Aguardando início', color: '#8fb8de' },
   pause: { label: 'Pausa', color: '#cfd9dc' },
   outside: { label: 'Fora de turno', color: '#e6ecee' },
   unknown: { label: 'Sem dados', color: '#98a6ab' },
@@ -422,16 +425,28 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
               <Gauge value={board.utilization} />
               <small className="shift-gauge-caption">produzindo ÷ (produzindo + ociosa)</small>
               <ul className="shift-states">
-                {(['producing', 'idle', 'manual', 'offline'] as const).map((state) => (
-                  <li key={state}>
-                    <i style={{ background: stateInfo[state].color }} />
-                    <span>{stateInfo[state].label}</span>
-                    <b>{duration(board.time[state])}</b>
-                    <em>
-                      {elapsed > 0 ? `${formatNumber((board.time[state] / elapsed) * 100)}%` : '—'}
-                    </em>
-                  </li>
-                ))}
+                {(['waiting', 'producing', 'idle', 'manual', 'offline'] as const)
+                  .filter((state) => state !== 'waiting' || (board.time.waiting ?? 0) >= 60)
+                  .map((state) => {
+                    const seconds = board.time[state] ?? 0;
+                    return (
+                      <li
+                        key={state}
+                        title={
+                          state === 'waiting'
+                            ? 'Em automático antes da primeira produção do período: não conta como ociosa'
+                            : undefined
+                        }
+                      >
+                        <i style={{ background: stateInfo[state].color }} />
+                        <span>{stateInfo[state].label}</span>
+                        <b>{duration(seconds)}</b>
+                        <em>
+                          {elapsed > 0 ? `${formatNumber((seconds / elapsed) * 100)}%` : '—'}
+                        </em>
+                      </li>
+                    );
+                  })}
               </ul>
             </div>
           </div>

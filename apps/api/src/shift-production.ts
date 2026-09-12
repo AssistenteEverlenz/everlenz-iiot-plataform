@@ -67,8 +67,25 @@ export interface Summary extends Totals {
   idle: number;
   manual: number;
   offline: number;
+  /** In automatic but before the first production of the window (warm-up, first load). */
+  waiting: number;
   elapsedProductive: number;
   products: Array<Totals & { product_code: string }>;
+}
+
+/**
+ * Start of the first 5-minute bucket of the window in which the machine produced. Idle time
+ * before it is "waiting for the start", not idleness: the shift only really begins once pieces
+ * go through the machine.
+ */
+function firstProducingAt(buckets: BucketRow[], span: TimeWindow) {
+  let first: number | null = null;
+  for (const row of buckets) {
+    const at = new Date(row.bucket).getTime();
+    if (at < span.start.getTime() || at >= span.end.getTime()) continue;
+    if (Number(row.producing_s) > 0 && (first == null || at < first)) first = at;
+  }
+  return first;
 }
 
 async function loadConfig(db: Database, tenantId: string, deviceId: string) {
@@ -135,10 +152,12 @@ export function summarize(
     idle: 0,
     manual: 0,
     offline: 0,
+    waiting: 0,
     elapsedProductive: 0,
     products: [],
   };
   const products = new Map<string, Totals>();
+  const started = firstProducingAt(buckets, span);
   for (const row of buckets) {
     const start = new Date(row.bucket);
     if (start < span.start || start >= span.end) continue;
@@ -153,14 +172,20 @@ export function summarize(
     products.set(row.product_code, product);
     const weight = productiveSecondsIn(windows, start, end) / BUCKET_SECONDS;
     summary.producing += Number(row.producing_s) * weight;
-    summary.idle += Number(row.idle_s) * weight;
+    if (started == null || start.getTime() < started)
+      summary.waiting += Number(row.idle_s) * weight;
+    else summary.idle += Number(row.idle_s) * weight;
     summary.manual += Number(row.manual_s) * weight;
   }
   const end = new Date(Math.min(span.end.getTime(), until.getTime()));
   summary.elapsedProductive = productiveSecondsIn(windows, span.start, end);
   summary.offline = Math.max(
     0,
-    summary.elapsedProductive - summary.producing - summary.idle - summary.manual,
+    summary.elapsedProductive -
+      summary.producing -
+      summary.idle -
+      summary.manual -
+      summary.waiting,
   );
   summary.products = [...products.entries()]
     .map(([product_code, totals]) => ({ product_code, ...totals }))
@@ -285,6 +310,7 @@ async function buildBoard(
     statesByBucket.set(at, current);
   }
   const timeline: Array<{ t: string; state: string }> = [];
+  const started = firstProducingAt(buckets, span);
   for (let at = firstBucket; at < until.getTime(); at += BUCKET_MS) {
     const start = new Date(at);
     const end = new Date(Math.min(at + BUCKET_MS, until.getTime()));
@@ -297,7 +323,7 @@ async function buildBoard(
     const offline = Math.max(0, productive - seconds.producing - seconds.idle - seconds.manual);
     const ranked = [
       ['producing', seconds.producing],
-      ['idle', seconds.idle],
+      [started == null || at < started ? 'waiting' : 'idle', seconds.idle],
       ['manual', seconds.manual],
       ['offline', offline],
     ] as const;
@@ -333,6 +359,7 @@ async function buildBoard(
       idle: summary.idle,
       manual: summary.manual,
       offline: summary.offline,
+      waiting: summary.waiting,
       elapsedProductive: summary.elapsedProductive,
     },
     utilization:
