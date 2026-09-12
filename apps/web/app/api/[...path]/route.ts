@@ -3,7 +3,7 @@ import { clientAddressHeaders, sessionCookie } from '../../../lib/session';
 import { originAllowed } from '../../../lib/origin';
 
 const allowed =
-  /^(?:health|overview|tenants|sites(?:\/[0-9a-f-]+\/shifts)?|devices(?:\/[0-9a-f-]+(?:\/(?:tags(?:\/[0-9a-f-]+\/history)?|latest|signals|statistics|mqtt-credential|production-context|production-settings|production-overview|hidden-products|legacy-attempts|legacy-allow|production-config|shift-board|shift-reports))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|counters|widgets(?:\/[0-9a-f-]+(?:\/reset-counter)?)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?)$/;
+  /^(?:health|overview|tenants|sites(?:\/[0-9a-f-]+\/shifts)?|devices(?:\/[0-9a-f-]+(?:\/(?:tags(?:\/[0-9a-f-]+\/history)?|latest|signals|statistics|mqtt-credential|production-context|production-settings|production-overview|hidden-products|legacy-attempts|legacy-allow|production-config|shift-board|shift-reports(?:\/(?:snapshot|recalculate))?))?)?|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|counters|widgets(?:\/[0-9a-f-]+(?:\/reset-counter)?)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?)$/;
 
 async function forward(request: NextRequest, params: Promise<{ path: string[] }>) {
   const path = (await params).path.join('/');

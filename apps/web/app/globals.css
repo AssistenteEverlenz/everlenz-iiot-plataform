@@ -4746,6 +4746,49 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .production-table tr.off-shift td {
   color: #8a9ca2;
 }
+.production-table .source-column,
+.production-table .select-column {
+  width: 28px;
+  text-align: center;
+  padding-inline: 4px;
+}
+.source-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: #9aa9ae;
+}
+.source-dot.auto {
+  background: #22b573;
+}
+.source-dot.manual {
+  background: #f2b632;
+}
+.source-dot.live {
+  background: transparent;
+  border: 2px solid #22b573;
+}
+.production-source-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 4px 0 8px;
+  font-size: 12px;
+  color: #6b7f86;
+}
+.production-source-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@media print {
+  .production-table .select-column,
+  .production-source-legend {
+    display: none;
+  }
+}
 .production-products-row td {
   background: #f8fafb;
 }

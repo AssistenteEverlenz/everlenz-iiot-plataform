@@ -20,6 +20,8 @@ export interface TrackerConfig {
   autoKey: string | null;
   idleSeconds: number;
   weightPerUnitKg: number | null;
+  /** Weight per piece published by the HMI (recipe); overrides weightPerUnitKg when present. */
+  weightKey?: string | null;
 }
 export interface Runtime {
   lastAt: number;
@@ -37,6 +39,8 @@ export interface Observation {
   tons: number | null;
   auto: boolean | null;
   productCode: string;
+  /** Weight per piece (kg) read in this message, if the device publishes it. */
+  weightKg?: number | null;
 }
 export interface BucketDelta {
   bucket: number;
@@ -121,10 +125,14 @@ export function attribute(
 
   const pieces = config.piecesKey ? counterDelta(runtime.lastPieces, observation.pieces) : 0;
   const pallets = config.palletsKey ? counterDelta(runtime.lastPallets, observation.pallets) : 0;
+  const weight =
+    observation.weightKg != null && observation.weightKg > 0
+      ? observation.weightKg
+      : config.weightPerUnitKg;
   const tons = config.tonsKey
     ? counterDelta(runtime.lastTons, observation.tons)
-    : config.weightPerUnitKg
-      ? (pieces * config.weightPerUnitKg) / 1000
+    : weight
+      ? (pieces * weight) / 1000
       : 0;
   if (pieces || pallets || tons) {
     const delta = entry(observation.at, observation.productCode);
@@ -187,8 +195,10 @@ export class ProductionTracker {
       auto_tag_id: string | null;
       idle_seconds: number | null;
       weight_per_unit_kg: number | null;
+      weight_tag_id: string | null;
     }>(
-      `SELECT blocks_tag_id,pallets_tag_id,tons_total_tag_id,auto_tag_id,idle_seconds,weight_per_unit_kg
+      `SELECT blocks_tag_id,pallets_tag_id,tons_total_tag_id,auto_tag_id,idle_seconds,weight_per_unit_kg,
+         weight_tag_id
        FROM production_settings WHERE tenant_id=$1 AND device_id=$2`,
       [device.tenant_id, device.id],
     );
@@ -203,7 +213,8 @@ export class ProductionTracker {
             tonsKey: keyOf(row.tons_total_tag_id),
             autoKey: keyOf(row.auto_tag_id),
             idleSeconds: row.idle_seconds ?? 60,
-            weightPerUnitKg: row.weight_per_unit_kg,
+            weightPerUnitKg: row.weight_per_unit_kg == null ? null : Number(row.weight_per_unit_kg),
+            weightKey: keyOf(row.weight_tag_id),
           }
         : null;
     this.configs.set(device.id, { expiresAt: Date.now() + 15_000, config });
@@ -263,6 +274,7 @@ export class ProductionTracker {
       tons: numberOf(read(config.tonsKey)),
       auto: config.autoKey ? booleanOf(read(config.autoKey)) : null,
       productCode,
+      weightKg: numberOf(read(config.weightKey ?? null)),
     };
     const previous = await this.runtime(device);
     const { runtime, deltas } = attribute(previous, observation, config, this.offlineSeconds);

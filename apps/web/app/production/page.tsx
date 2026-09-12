@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { ActionModal } from '../../components/ActionModal';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, usePoll, type Device } from '../../components/data';
 import {
@@ -29,6 +30,8 @@ interface Report {
   id: string;
   kind: 'shift' | 'off_shift';
   open?: boolean;
+  /** 'auto': written by the shift close; 'manual': a partial someone generated. */
+  source?: 'auto' | 'manual';
   shift_name: string;
   production_date: string;
   planned_start: string;
@@ -53,6 +56,9 @@ interface ReportsResponse {
 }
 interface Row {
   key: string;
+  /** Stored report id; null for the running shift and for day totals. */
+  id: string | null;
+  source: 'auto' | 'manual' | null;
   date: string;
   shift: string;
   start: string | null;
@@ -88,6 +94,7 @@ interface ProductionConfig {
   auto_tag_id: string | null;
   idle_seconds: number | null;
   weight_per_unit_kg: number | null;
+  weight_tag_id: string | null;
   target_metric: ProductionMetric | null;
   target_per_shift: number | null;
 }
@@ -138,6 +145,8 @@ function attainment(row: Row) {
 function toRow(report: Report): Row {
   return {
     key: report.id,
+    id: report.open ? null : report.id,
+    source: report.open ? null : (report.source ?? 'auto'),
     date: report.production_date,
     shift: report.shift_name,
     start: report.kind === 'shift' ? report.planned_start : null,
@@ -165,6 +174,8 @@ function groupByDay(rows: Row[]): Row[] {
     const day = days.get(row.date) ?? {
       ...row,
       key: row.date,
+      id: null,
+      source: null,
       shift: '',
       start: null,
       end: null,
@@ -369,6 +380,12 @@ function ProductionPage() {
   const [choosingColumns, setChoosingColumns] = useState(false);
   const [editingShifts, setEditingShifts] = useState(false);
   const [editingConfig, setEditingConfig] = useState(false);
+  // Row maintenance (master): partial snapshot, rebuild of automatic rows, removal.
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirming, setConfirming] = useState<'delete' | 'recalculate' | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const canMaintain = user.role === 'master';
 
   useEffect(() => {
     try {
@@ -381,6 +398,28 @@ function ProductionPage() {
   useEffect(() => {
     if (!deviceId && devices.data?.[0]) setDeviceId(devices.data[0].id);
   }, [devices.data, deviceId]);
+  async function generateSnapshot() {
+    setGenerating(true);
+    setActionError('');
+    try {
+      await mutate(`/devices/${deviceId}/shift-reports/snapshot`, 'POST');
+      await reports.refresh();
+    } catch (reason) {
+      setActionError(reason instanceof Error ? reason.message : 'Falha ao gerar a parcial.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+  async function recalculate() {
+    await mutate(`/devices/${deviceId}/shift-reports/recalculate`, 'POST', { from, to });
+    setSelected([]);
+    await reports.refresh();
+  }
+  async function deleteSelected() {
+    await mutate(`/devices/${deviceId}/shift-reports`, 'DELETE', { ids: selected });
+    setSelected([]);
+    await reports.refresh();
+  }
   function toggleColumn(id: string) {
     const next = columns.includes(id) ? columns.filter((item) => item !== id) : [...columns, id];
     setColumns(next);
@@ -422,6 +461,7 @@ function ProductionPage() {
     { milheiros: 0, pieces: 0, pallets: 0, tons: 0, producing: 0, idle: 0, target: 0, achieved: 0 },
   );
   const visible = COLUMNS.filter((column) => columns.includes(column.id));
+  const selectable = view === 'shift' ? rows.flatMap((row) => (row.id ? [row.id] : [])) : [];
   const chartRows = [...rows]
     .filter((row) => !row.offShift)
     .reverse()
@@ -640,12 +680,54 @@ function ProductionPage() {
             <button onClick={() => window.print()} disabled={!rows.length}>
               Imprimir / PDF
             </button>
+            {canMaintain && deviceId && (
+              <>
+                <button disabled={generating} onClick={() => void generateSnapshot()}>
+                  {generating ? 'Gerando…' : 'Gerar parcial agora'}
+                </button>
+                <button onClick={() => setConfirming('recalculate')}>Recalcular período</button>
+                {view === 'shift' && (
+                  <button
+                    className="danger-text"
+                    disabled={!selected.length}
+                    onClick={() => setConfirming('delete')}
+                  >
+                    Excluir selecionadas{selected.length ? ` (${selected.length})` : ''}
+                  </button>
+                )}
+              </>
+            )}
           </div>
+        </div>
+        {actionError && <div className="form-error">{actionError}</div>}
+        <div className="production-source-legend">
+          <span>
+            <i className="source-dot auto" /> gerada pelo sistema
+          </span>
+          <span>
+            <i className="source-dot manual" /> gerada manualmente
+          </span>
+          <span>
+            <i className="source-dot live" /> turno em andamento
+          </span>
         </div>
         <div className="table-scroll">
           <table className="production-table">
             <thead>
               <tr>
+                {view === 'shift' && <th className="source-column" aria-label="Origem" />}
+                {view === 'shift' && canMaintain && (
+                  <th className="select-column">
+                    <input
+                      type="checkbox"
+                      aria-label="Selecionar todas"
+                      checked={
+                        selectable.length > 0 && selectable.every((id) => selected.includes(id))
+                      }
+                      onChange={(event) => setSelected(event.target.checked ? selectable : [])}
+                    />
+                  </th>
+                )}
                 {visible.map((column) => (
                   <th key={column.id} className={column.numeric ? 'numeric' : ''}>
                     {column.label}
@@ -662,6 +744,38 @@ function ProductionPage() {
                     onClick={() => setExpanded(expanded === row.key ? null : row.key)}
                     title="Ver produção por produto"
                   >
+                    {view === 'shift' && (
+                      <td className="source-column">
+                        <i
+                          className={`source-dot ${row.source ?? 'live'}`}
+                          title={
+                            row.source === 'manual'
+                              ? 'Gerada manualmente'
+                              : row.source === 'auto'
+                                ? 'Gerada pelo sistema'
+                                : 'Turno em andamento'
+                          }
+                        />
+                      </td>
+                    )}
+                    {view === 'shift' && canMaintain && (
+                      <td className="select-column" onClick={(event) => event.stopPropagation()}>
+                        {row.id && (
+                          <input
+                            type="checkbox"
+                            aria-label="Selecionar linha"
+                            checked={selected.includes(row.id)}
+                            onChange={(event) =>
+                              setSelected((current) =>
+                                event.target.checked
+                                  ? [...current, row.id as string]
+                                  : current.filter((item) => item !== row.id),
+                              )
+                            }
+                          />
+                        )}
+                      </td>
+                    )}
                     {visible.map((column) => (
                       <td key={column.id} className={column.numeric ? 'numeric' : ''}>
                         {column.value(row)}
@@ -670,7 +784,11 @@ function ProductionPage() {
                   </tr>
                   {expanded === row.key && (
                     <tr key={`${row.key}-products`} className="production-products-row">
-                      <td colSpan={visible.length}>
+                      <td
+                        colSpan={
+                          visible.length + (view === 'shift' ? 1 : 0) + (view === 'shift' && canMaintain ? 1 : 0)
+                        }
+                      >
                         {row.products.length ? (
                           <div className="production-products">
                             {row.products.map((product) => (
@@ -710,6 +828,25 @@ function ProductionPage() {
             setEditingShifts(false);
             void reports.refresh();
           }}
+        />
+      )}
+      {confirming === 'delete' && (
+        <ActionModal
+          title="Excluir linhas do histórico"
+          description={`${selected.length} linha(s) selecionada(s) sairão do histórico. Linhas automáticas excluídas não são geradas de novo pelo fechamento; para trazê-las de volta use "Recalcular período".`}
+          confirmLabel="Excluir"
+          danger
+          onConfirm={deleteSelected}
+          onClose={() => setConfirming(null)}
+        />
+      )}
+      {confirming === 'recalculate' && (
+        <ActionModal
+          title="Recalcular período"
+          description={`As linhas automáticas de ${brDate(from)} a ${brDate(to)} serão geradas de novo a partir dos dados registrados (inclusive as que foram excluídas). As parciais manuais não mudam.`}
+          confirmLabel="Recalcular"
+          onConfirm={recalculate}
+          onClose={() => setConfirming(null)}
         />
       )}
       {editingConfig && device && (
@@ -970,6 +1107,7 @@ function ConfigModal({
     auto: string;
     idleSeconds: number;
     weight: string;
+    weightKey: string;
     metric: ProductionMetric | '';
     target: string;
   } | null>(null);
@@ -985,6 +1123,7 @@ function ConfigModal({
       auto: signalFor(config.data.auto_tag_id),
       idleSeconds: config.data.idle_seconds ?? 60,
       weight: config.data.weight_per_unit_kg ? String(config.data.weight_per_unit_kg) : '',
+      weightKey: signalFor(config.data.weight_tag_id),
       metric: config.data.target_metric ?? '',
       target: config.data.target_per_shift ? String(config.data.target_per_shift) : '',
     });
@@ -1020,10 +1159,11 @@ function ConfigModal({
     setSaving(true);
     setError('');
     try {
-      const [piecesTagId, palletsTagId, autoTagId] = await Promise.all([
+      const [piecesTagId, palletsTagId, autoTagId, weightTagId] = await Promise.all([
         tagIdFor(form.pieces),
         tagIdFor(form.pallets),
         tagIdFor(form.auto),
+        tagIdFor(form.weightKey),
       ]);
       await mutate(`/devices/${deviceId}/production-config`, 'PATCH', {
         piecesTagId,
@@ -1031,6 +1171,7 @@ function ConfigModal({
         autoTagId,
         idleSeconds: Number(form.idleSeconds) || 60,
         weightPerUnitKg: form.weight ? Number(form.weight.replace(',', '.')) : null,
+        weightTagId,
         targetMetric: form.metric || null,
         targetPerShift: form.metric && form.target ? Number(form.target.replace(',', '.')) : null,
       });
@@ -1110,7 +1251,21 @@ function ConfigModal({
               />
             </label>
             <label className="field">
-              Peso por peça (kg) — para toneladas
+              Peso por peça (kg) — variável da IHM
+              <select
+                value={form.weightKey}
+                onChange={(event) => setForm({ ...form, weightKey: event.target.value })}
+              >
+                <option value="">Não usar (usa o valor fixo)</option>
+                {numeric.map((signal) => (
+                  <option key={signal.id} value={signal.key}>
+                    {signal.key}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              {form.weightKey ? 'Peso fixo (kg) — se a variável não vier' : 'Peso por peça (kg) — valor fixo'}
               <input
                 inputMode="decimal"
                 value={form.weight}

@@ -39,6 +39,7 @@ interface ProductionConfig {
   auto_tag_id: string | null;
   idle_seconds: number | null;
   weight_per_unit_kg: number | null;
+  weight_tag_id: string | null;
   target_metric: Metric | null;
   target_per_shift: number | null;
 }
@@ -69,7 +70,7 @@ export interface Summary extends Totals {
 async function loadConfig(db: Database, tenantId: string, deviceId: string) {
   const result = await db.query<ProductionConfig>(
     `SELECT d.site_id,ps.blocks_tag_id,ps.pallets_tag_id,ps.tons_total_tag_id,ps.auto_tag_id,
-       ps.idle_seconds,ps.weight_per_unit_kg,ps.target_metric,ps.target_per_shift
+       ps.idle_seconds,ps.weight_per_unit_kg,ps.weight_tag_id,ps.target_metric,ps.target_per_shift
      FROM devices d LEFT JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
      WHERE d.tenant_id=$1 AND d.id=$2 AND d.archived_at IS NULL`,
     [tenantId, deviceId],
@@ -403,12 +404,20 @@ async function trackingSince(db: Database, deviceId: string) {
  * production made outside every shift. A shift that started before tracking began is skipped:
  * a partial shift would be recorded as a bad shift that never happened.
  */
-export async function closeShiftReports(db: Database, now = new Date()) {
+export async function closeShiftReports(
+  db: Database,
+  now = new Date(),
+  // "Recalcular período": one device, an explicit range of production dates.
+  options: { deviceId?: string; fromDate?: string; toDate?: string } = {},
+) {
   const devices = await db.query<ProductionConfig & { id: string; tenant_id: string }>(
     `SELECT d.id,d.tenant_id,d.site_id,ps.blocks_tag_id,ps.pallets_tag_id,ps.tons_total_tag_id,
-       ps.auto_tag_id,ps.idle_seconds,ps.weight_per_unit_kg,ps.target_metric,ps.target_per_shift
+       ps.auto_tag_id,ps.idle_seconds,ps.weight_per_unit_kg,ps.weight_tag_id,ps.target_metric,
+       ps.target_per_shift
      FROM devices d JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
-     WHERE d.archived_at IS NULL AND (ps.blocks_tag_id IS NOT NULL OR ps.pallets_tag_id IS NOT NULL)`,
+     WHERE d.archived_at IS NULL AND (ps.blocks_tag_id IS NOT NULL OR ps.pallets_tag_id IS NOT NULL)
+       AND ($1::uuid IS NULL OR d.id=$1)`,
+    [options.deviceId ?? null],
   );
   let written = 0;
   for (const device of devices.rows) {
@@ -416,15 +425,18 @@ export async function closeShiftReports(db: Database, now = new Date()) {
     if (!since) continue;
     const { shifts } = await loadShifts(db, device.tenant_id, device.site_id);
     const today = plantDate(now);
-    const fromDate = addDays(today, -3);
+    const fromDate = options.fromDate ?? addDays(today, -3);
+    const lastDate = options.toDate && options.toDate < today ? options.toDate : today;
+    // Deleted automatic rows count as done: a row someone removed is not written again.
     const existing = await db.query<{ kind: string; planned_start: Date | string }>(
-      'SELECT kind,planned_start FROM shift_reports WHERE device_id=$1 AND production_date>=$2',
+      `SELECT kind,planned_start FROM shift_reports
+       WHERE device_id=$1 AND production_date>=$2 AND source='auto'`,
       [device.id, fromDate],
     );
     const done = new Set(
       existing.rows.map((row) => `${row.kind}|${new Date(row.planned_start).getTime()}`),
     );
-    const occurrences = expandShifts(shifts, addDays(fromDate, -1), today);
+    const occurrences = expandShifts(shifts, addDays(fromDate, -1), lastDate);
     const insert = async (report: {
       kind: 'shift' | 'off_shift';
       shiftId: string | null;
@@ -440,7 +452,7 @@ export async function closeShiftReports(db: Database, now = new Date()) {
            planned_start,planned_end,planned_seconds,pieces,pallets,tons,producing_s,idle_s,manual_s,
            offline_s,target_metric,target_value,products)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)
-         ON CONFLICT(device_id,kind,planned_start) DO NOTHING`,
+         ON CONFLICT(device_id,kind,planned_start) WHERE source='auto' DO NOTHING`,
         [
           device.tenant_id,
           device.id,
@@ -467,7 +479,7 @@ export async function closeShiftReports(db: Database, now = new Date()) {
       written += 1;
     };
     for (const occurrence of occurrences) {
-      if (occurrence.productionDate < fromDate) continue;
+      if (occurrence.productionDate < fromDate || occurrence.productionDate > lastDate) continue;
       if (occurrence.end.getTime() > now.getTime() - 60_000) continue;
       if (occurrence.start < since) continue;
       if (done.has(`shift|${occurrence.start.getTime()}`)) continue;
@@ -490,7 +502,7 @@ export async function closeShiftReports(db: Database, now = new Date()) {
       });
     }
     // Production outside every shift, one row per finished calendar day.
-    for (let date = fromDate; date < today; date = addDays(date, 1)) {
+    for (let date = fromDate; date < today && date <= lastDate; date = addDays(date, 1)) {
       const dayStart = plantInstant(date, '00:00');
       const dayEnd = plantInstant(addDays(date, 1), '00:00');
       if (dayEnd < since || done.has(`off_shift|${dayStart.getTime()}`)) continue;
@@ -611,6 +623,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         autoTagId: uuid.nullable(),
         idleSeconds: z.number().int().min(5).max(3600),
         weightPerUnitKg: z.number().positive().max(1000).nullable(),
+        // Weight per piece read from the HMI (recipe weight); the fixed value is the fallback.
+        weightTagId: uuid.nullable().default(null),
         targetMetric: z.enum(['milheiros', 'tons', 'blocks', 'pallets']).nullable(),
         targetPerShift: z.number().positive().max(1e9).nullable(),
       })
@@ -619,10 +633,12 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       return reply.code(400).send({ error: 'Escolha o contador de peças ou o de paletes.' });
     if (body.targetMetric && !body.targetPerShift)
       return reply.code(400).send({ error: 'Informe o valor da meta por turno.' });
-    if (body.targetMetric === 'tons' && !body.weightPerUnitKg)
-      return reply.code(400).send({ error: 'Meta em toneladas precisa do peso por peça (kg).' });
+    if (body.targetMetric === 'tons' && !body.weightPerUnitKg && !body.weightTagId)
+      return reply
+        .code(400)
+        .send({ error: 'Meta em toneladas precisa do peso por peça (variável ou valor fixo).' });
     const current = access.principal(req);
-    const tagIds = [body.piecesTagId, body.palletsTagId, body.autoTagId].filter(
+    const tagIds = [body.piecesTagId, body.palletsTagId, body.autoTagId, body.weightTagId].filter(
       (tag): tag is string => Boolean(tag),
     );
     const owned = await db.query<{ count: number }>(
@@ -634,13 +650,13 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     await db.transaction(async (sql) => {
       await sql.query(
         `INSERT INTO production_settings(device_id,tenant_id,blocks_tag_id,pallets_tag_id,auto_tag_id,
-           idle_seconds,weight_per_unit_kg,target_metric,target_per_shift,updated_at)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
+           idle_seconds,weight_per_unit_kg,target_metric,target_per_shift,weight_tag_id,updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())
          ON CONFLICT(device_id) DO UPDATE SET blocks_tag_id=EXCLUDED.blocks_tag_id,
            pallets_tag_id=EXCLUDED.pallets_tag_id,auto_tag_id=EXCLUDED.auto_tag_id,
            idle_seconds=EXCLUDED.idle_seconds,weight_per_unit_kg=EXCLUDED.weight_per_unit_kg,
            target_metric=EXCLUDED.target_metric,target_per_shift=EXCLUDED.target_per_shift,
-           updated_at=now()`,
+           weight_tag_id=EXCLUDED.weight_tag_id,updated_at=now()`,
         [
           id,
           current.tenantId,
@@ -651,6 +667,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
           body.weightPerUnitKg,
           body.targetMetric,
           body.targetMetric ? body.targetPerShift : null,
+          body.weightTagId,
         ],
       );
       await recordAudit(sql, req, current, {
@@ -675,7 +692,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const now = new Date();
     const { shifts, isDefault } = await loadShifts(db, tenantId, config.site_id);
     const today = plantDate(now);
-    const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 1));
+    // A week ahead, so on a weekend the board still shows Monday's shift as the next one.
+    const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 7));
     const running = occurrences.find((item) => item.start <= now && now < item.end) ?? null;
     const next = occurrences.find((item) => item.start > now) ?? null;
     const last =
@@ -751,9 +769,10 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const reports = await db.query(
       `SELECT id,kind,shift_id,shift_name,production_date::text production_date,planned_start,planned_end,
          planned_seconds,pieces,pallets,tons,producing_s,idle_s,manual_s,offline_s,target_metric,
-         target_value,products,closed_at
+         target_value,products,closed_at,source
        FROM shift_reports WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3 AND $4
-       ORDER BY planned_start DESC LIMIT 3000`,
+         AND deleted_at IS NULL
+       ORDER BY planned_start DESC,closed_at DESC LIMIT 3000`,
       [tenantId, id, query.from, query.to],
     );
     const now = new Date();
@@ -794,5 +813,129 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       shiftNames: shifts.map((shift) => shift.name),
       targetMetric: config.target_metric,
     };
+  });
+
+  // "Gerar parcial agora": a snapshot of the running shift up to this moment, kept as a manual
+  // row. The target is prorated to the planned time elapsed so the percentage stays fair.
+  app.post('/api/devices/:id/shift-reports/snapshot', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const current = access.principal(req);
+    const config = await loadConfig(db, current.tenantId, id);
+    if (!config) return reply.code(404).send({ error: 'Device not found' });
+    const now = new Date();
+    const { shifts } = await loadShifts(db, current.tenantId, config.site_id);
+    const today = plantDate(now);
+    const running = expandShifts(shifts, addDays(today, -1), today).find(
+      (item) => item.start <= now && now < item.end,
+    );
+    if (!running)
+      return reply.code(400).send({ error: 'Nenhum turno em andamento agora para gerar a parcial.' });
+    const windows = productiveWindows(running);
+    const buckets = await loadBuckets(db, current.tenantId, id, running.start, now);
+    const summary = summarize(buckets, running, windows, now);
+    const planned = Math.round(productiveSecondsIn(windows, running.start, now));
+    const clockNow = now.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Sao_Paulo',
+    });
+    const target =
+      config.target_metric && config.target_per_shift && running.plannedSeconds > 0
+        ? (config.target_per_shift * planned) / running.plannedSeconds
+        : null;
+    const inserted = await db.transaction(async (sql) => {
+      const row = await sql.query<{ id: string }>(
+        `INSERT INTO shift_reports(tenant_id,device_id,site_id,kind,source,shift_id,shift_name,
+           production_date,planned_start,planned_end,planned_seconds,pieces,pallets,tons,
+           producing_s,idle_s,manual_s,offline_s,target_metric,target_value,products)
+         VALUES($1,$2,$3,'shift','manual',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb)
+         RETURNING id`,
+        [
+          current.tenantId,
+          id,
+          config.site_id,
+          running.shiftId,
+          `${running.name} (parcial até ${clockNow})`,
+          running.productionDate,
+          running.start,
+          now,
+          planned,
+          summary.pieces,
+          summary.pallets,
+          summary.tons,
+          summary.producing,
+          summary.idle,
+          summary.manual,
+          summary.offline,
+          target == null ? null : config.target_metric,
+          target,
+          JSON.stringify(summary.products),
+        ],
+      );
+      await recordAudit(sql, req, current, {
+        action: 'shift_report.snapshot',
+        targetType: 'device',
+        targetId: id,
+        summary: { shift: running.name, until: now.toISOString(), pieces: summary.pieces },
+      });
+      return row.rows[0].id;
+    });
+    return { id: inserted };
+  });
+
+  // "Recalcular período": rebuilds the automatic rows of a range from the production buckets,
+  // for instance after wrong readings were wiped. Deleted automatic rows come back too.
+  app.post('/api/devices/:id/shift-reports/recalculate', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const body = z.object({ from: z.iso.date(), to: z.iso.date() }).parse(req.body);
+    if (body.to < body.from) return reply.code(400).send({ error: 'Período inválido' });
+    if (addDays(body.from, 62) < body.to)
+      return reply.code(400).send({ error: 'Recalcule no máximo 62 dias por vez' });
+    const current = access.principal(req);
+    await db.query(
+      `DELETE FROM shift_reports WHERE tenant_id=$1 AND device_id=$2 AND source='auto'
+       AND production_date BETWEEN $3 AND $4`,
+      [current.tenantId, id, body.from, body.to],
+    );
+    const written = await closeShiftReports(db, new Date(), {
+      deviceId: id,
+      fromDate: body.from,
+      toDate: body.to,
+    });
+    await recordAudit(db, req, current, {
+      action: 'shift_report.recalculate',
+      targetType: 'device',
+      targetId: id,
+      summary: { ...body, written },
+    });
+    return { written };
+  });
+
+  // Removing rows hides them (automatic ones are then not written again by the close).
+  app.delete('/api/devices/:id/shift-reports', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const body = z.object({ ids: z.array(uuid).min(1).max(500) }).parse(req.body);
+    const current = access.principal(req);
+    const removed = await db.transaction(async (sql) => {
+      const result = await sql.query(
+        `UPDATE shift_reports SET deleted_at=now()
+         WHERE tenant_id=$1 AND device_id=$2 AND id=ANY($3::uuid[]) AND deleted_at IS NULL`,
+        [current.tenantId, id, body.ids],
+      );
+      await recordAudit(sql, req, current, {
+        action: 'shift_report.delete',
+        targetType: 'device',
+        targetId: id,
+        summary: { ids: body.ids, removed: result.rowCount ?? 0 },
+      });
+      return result.rowCount ?? 0;
+    });
+    return { removed };
   });
 }
