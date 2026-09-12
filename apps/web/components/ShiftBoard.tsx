@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -159,6 +159,8 @@ function Gauge({ value }: { value: number | null }) {
 
 export function ShiftBoard({ deviceId }: { deviceId: string }) {
   const [mode, setMode] = useState<'shift' | 'day'>('shift');
+  // Unique gradient id per board: several boards can share one dashboard.
+  const reactId = useId();
   const response = usePoll<ShiftBoardResponse>(
     `/devices/${deviceId}/shift-board?mode=${mode}`,
     30000,
@@ -215,6 +217,21 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
           ? 'bad'
           : 'none';
   const chart = (board?.curve ?? []).map((point) => ({ ...point, label: clock(point.t) }));
+  // The area under "realizado" is painted with the machine state of each 5-minute stretch:
+  // the segment between curve points k and k+1 is timeline[k]. Hard stops over the area's own
+  // width (first point to the last actual one), which is what objectBoundingBox measures.
+  const gradientId = `shift-state-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const lastActual = chart.reduce((last, point, index) => (point.actual != null ? index : last), -1);
+  const stateStops =
+    board && lastActual > 0
+      ? board.timeline.slice(0, lastActual).flatMap((segment, index) => {
+          const color = stateInfo[segment.state]?.color ?? stateInfo.unknown.color;
+          return [
+            { offset: index / lastActual, color },
+            { offset: (index + 1) / lastActual, color },
+          ];
+        })
+      : [];
   const elapsed = board?.time.elapsedProductive ?? 0;
   const secondaries = board
     ? [
@@ -321,13 +338,26 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
               <div className="shift-section-title">
                 Curva S · {info.name} acumulados
                 <span className="shift-legend">
-                  <i className="planned" /> planejado <i className="actual" /> realizado{' '}
+                  <i className="planned" /> planejado{' '}
+                  <i className="actual" />{' '}
+                  <span title="A área abaixo do realizado tem a cor do estado da máquina em cada trecho, como a linha do tempo">
+                    realizado (área = estado da máquina)
+                  </span>{' '}
                   <i className="projected" /> projeção
                 </span>
               </div>
               <div className="shift-chart">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={chart} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                    {stateStops.length > 0 && (
+                      <defs>
+                        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+                          {stateStops.map((stop, index) => (
+                            <stop key={index} offset={stop.offset} stopColor={stop.color} />
+                          ))}
+                        </linearGradient>
+                      </defs>
+                    )}
                     <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
                     <XAxis
                       dataKey="label"
@@ -358,8 +388,8 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
                       dataKey="actual"
                       name="Realizado"
                       stroke="var(--accent, #12b8a6)"
-                      fill="var(--accent, #12b8a6)"
-                      fillOpacity={0.14}
+                      fill={stateStops.length ? `url(#${gradientId})` : 'var(--accent, #12b8a6)'}
+                      fillOpacity={stateStops.length ? 0.45 : 0.14}
                       strokeWidth={2.5}
                       isAnimationActive={false}
                       connectNulls={false}
