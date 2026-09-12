@@ -4705,6 +4705,17 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   border-radius: 3px;
   background: var(--goal);
 }
+.goal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+}
+.goal-loading .detail-spinner {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
+}
 .goal-days {
   display: flex;
   flex-wrap: wrap;

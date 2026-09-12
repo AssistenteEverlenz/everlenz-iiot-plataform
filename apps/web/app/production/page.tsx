@@ -696,7 +696,7 @@ function ProductionPage() {
         </div>
       </section>
 
-      {goalDays.length > 0 && reports.data && (
+      {deviceId && (
         <section className={`card goal-calendar ${goalSize}`}>
           <div className="goal-calendar-head">
             <span className="shift-section-title">Meta por dia</span>
@@ -709,6 +709,12 @@ function ProductionPage() {
               ))}
             </span>
           </div>
+          {/* A new period is loading: keep the strip in place with a spinner. */}
+          {!reports.data ? (
+            <div className="goal-loading">
+              <span className="detail-spinner" aria-label="Carregando" />
+            </div>
+          ) : (
           <div className="goal-days">
             {Array.from({ length: goalLead }, (_, index) => (
               <span key={`blank-${index}`} className="goal-day blank" />
@@ -749,6 +755,7 @@ function ProductionPage() {
               );
             })}
           </div>
+          )}
         </section>
       )}
 
