@@ -39,7 +39,6 @@ type Tone = 'good' | 'warn' | 'bad';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const PALETTE = ['#12b8a6', '#3b82f6', '#f2a93b', '#e4572e', '#a78bfa', '#2bb3e6', '#8aa29e', '#d65db1'];
-const BUCKET_MS = 5 * 60 * 1000;
 
 function plantToday() {
   return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -224,12 +223,6 @@ export function ShiftTv({ id }: { id: string }) {
           ? 'bad'
           : '';
   const elapsed = current?.time.elapsedProductive ?? 0;
-  const totalBuckets = current
-    ? Math.max(
-        current.timeline.length,
-        Math.round((new Date(current.span.end).getTime() - new Date(current.span.start).getTime()) / BUCKET_MS),
-      )
-    : 0;
 
   return (
     <div className="tv3">
@@ -293,7 +286,8 @@ export function ShiftTv({ id }: { id: string }) {
           {board.error ?? dashboard.error ?? <span className="detail-spinner" aria-label="Carregando" />}
         </div>
       ) : (
-        <main className="tv3-main">
+        // A div, not <main>: the platform shell offsets every <main> by the sidebar width.
+        <div className="tv3-main">
           <section className="tv3-kpis">
             <div className="tv3-kpi">
               <span>Produzido</span>
@@ -369,6 +363,16 @@ export function ShiftTv({ id }: { id: string }) {
                     <i className="projected" /> projeção
                   </span>
                 </div>
+                {/* The colours under "realizado" are the machine states: their legend lives
+                    here, the separate timeline strip was dropped from the wall (confusing). */}
+                <div className="tv3-legend tv3-curve-states">
+                  {[...new Set(current.timeline.map((segment) => segment.state))].map((item) => (
+                    <span key={item}>
+                      <i style={{ background: stateInfo[item]?.color }} />
+                      {stateInfo[item]?.label ?? item}
+                    </span>
+                  ))}
+                </div>
                 <div className="tv3-chart">
                   <ShiftCurve board={current} fontSize={13} />
                 </div>
@@ -402,35 +406,6 @@ export function ShiftTv({ id }: { id: string }) {
                         );
                       })}
                   </ul>
-                </div>
-              </section>
-              <section className="tv3-card tv3-timeline">
-                <div className="tv3-timeline-bar">
-                  {current.timeline.map((segment) => (
-                    <span
-                      key={segment.t}
-                      style={{ background: stateInfo[segment.state]?.color }}
-                      title={`${clock(segment.t)} · ${stateInfo[segment.state]?.label ?? segment.state}`}
-                    />
-                  ))}
-                  {totalBuckets > current.timeline.length && (
-                    <span
-                      className="tv3-timeline-rest"
-                      style={{ flex: totalBuckets - current.timeline.length }}
-                    />
-                  )}
-                </div>
-                <div className="tv3-timeline-foot">
-                  <span>{clock(current.span.start)}</span>
-                  <div className="tv3-legend">
-                    {[...new Set(current.timeline.map((segment) => segment.state))].map((item) => (
-                      <span key={item}>
-                        <i style={{ background: stateInfo[item]?.color }} />
-                        {stateInfo[item]?.label ?? item}
-                      </span>
-                    ))}
-                  </div>
-                  <span>{clock(current.span.end)}</span>
                 </div>
               </section>
             </>
@@ -527,7 +502,7 @@ export function ShiftTv({ id }: { id: string }) {
               <p className="tv3-empty">Sem produção nos últimos 7 dias.</p>
             )}
           </section>
-        </main>
+        </div>
       )}
     </div>
   );

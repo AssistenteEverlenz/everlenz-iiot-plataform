@@ -5292,7 +5292,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3-main {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-template-rows: auto minmax(0, 1.35fr) auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1.6fr) minmax(0, 1fr);
   gap: 0.6vw;
   min-height: 0;
 }
@@ -5434,12 +5434,18 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   flex: 1;
   min-height: 0;
 }
+.tv3-curve-states {
+  justify-content: flex-start;
+  margin-bottom: 0.3vw;
+  color: #92a2a7;
+  font-size: 0.72vw;
+}
 .tv3-avail {
   grid-column: 9 / -1;
 }
 .tv3-avail-body {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.6fr);
   align-items: center;
   gap: 0.8vw;
   flex: 1;
@@ -5467,6 +5473,11 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   width: 0.65vw;
   height: 0.65vw;
   border-radius: 2px;
+}
+.tv3-states span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tv3-states b {
   color: #fff;
@@ -5522,7 +5533,6 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .tv3-empty-shift {
   grid-column: 1 / -1;
-  grid-row: span 2;
   align-items: center;
   justify-content: center;
   gap: 0.4vw;

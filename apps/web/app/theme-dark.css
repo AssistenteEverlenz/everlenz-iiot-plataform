@@ -1555,6 +1555,9 @@
   :root[data-theme='dark'] .tv3-curve-legend i.projected {
     background: repeating-linear-gradient(90deg, #12b8a6 0 4px, transparent 4px 7px);
   }
+  :root[data-theme='dark'] .tv3-curve-states {
+    color: #92a2a7;
+  }
   :root[data-theme='dark'] .tv3-states b {
     color: #fff;
   }
