@@ -730,8 +730,9 @@ function ProductionPage() {
                     <input
                       type="checkbox"
                       aria-label="Selecionar todas"
+                      // With a single removable row, ticking it must not read as "everything".
                       checked={
-                        selectable.length > 0 && selectable.every((id) => selected.includes(id))
+                        selectable.length > 1 && selectable.every((id) => selected.includes(id))
                       }
                       onChange={(event) => setSelected(event.target.checked ? selectable : [])}
                     />
@@ -791,26 +792,6 @@ function ProductionPage() {
                       </td>
                     ))}
                   </tr>
-                  {row.products.length > 1 && (
-                    <tr key={`${row.key}-products`} className="production-products-row">
-                      <td
-                        colSpan={
-                          visible.length + (view === 'shift' ? 1 : 0) + (view === 'shift' && canMaintain ? 1 : 0)
-                        }
-                      >
-                        <div className="production-products">
-                          {row.products.map((product) => (
-                            <span key={product.product_code}>
-                              <b>{product.product_code}</b>
-                              {formatNumber(product.pieces / 1000, 2)} mil ·{' '}
-                              {formatNumber(product.pieces)} peças ·{' '}
-                              {formatNumber(product.pallets)} paletes
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
                 </>
               ))}
             </tbody>
@@ -1156,6 +1137,12 @@ function DetailModal({
             ×
           </button>
         </div>
+        {!detail.data ? (
+          <div className="production-detail-loading">
+            {detail.error ? <p>{detail.error}</p> : <span className="detail-spinner" aria-label="Carregando" />}
+          </div>
+        ) : (
+          <>
         <div className="production-detail-summary">
           <div>
             <span>Milheiros</span>
@@ -1229,10 +1216,8 @@ function DetailModal({
             produzido fora dos turnos.
           </p>
         )}
-        {detail.data ? (
-          <ShiftBoardView data={detail.data} deviceId={deviceId} historical />
-        ) : (
-          <p>{detail.error ?? 'Carregando o quadro…'}</p>
+        <ShiftBoardView data={detail.data} deviceId={deviceId} historical />
+          </>
         )}
       </div>
     </div>
