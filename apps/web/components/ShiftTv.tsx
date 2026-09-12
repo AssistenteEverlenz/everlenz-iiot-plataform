@@ -181,18 +181,20 @@ export function ShiftTv({ id }: { id: string }) {
               aria-label="Tela da TV"
               title="As telas trocam sozinhas; as setas do controle remoto também trocam"
             >
+              {/* The current screen by name and one dot per screen: stays small with many screens. */}
+              <b className="tv3-pages-name">{screens[shown]?.name}</b>
               {screens.map((item, index) => (
                 <button
                   key={`${item.name}-${index}`}
                   type="button"
-                  className={shown === index ? 'active' : ''}
+                  className={`tv3-dot ${shown === index ? 'active' : ''}`}
+                  title={item.name}
+                  aria-label={item.name}
                   onClick={() => {
                     setPage(index);
                     setHoldUntil(Date.now() + HOLD_MS);
                   }}
-                >
-                  {item.name}
-                </button>
+                />
               ))}
             </span>
           )}

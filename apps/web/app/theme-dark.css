@@ -1777,6 +1777,24 @@
   :root[data-theme='dark'] .tv-editor-hint {
     color: #92a2a8;
   }
+  :root[data-theme='dark'] .tv3-pages .tv3-pages-name {
+    color: #d6dfe2;
+  }
+  :root[data-theme='dark'] .tv3-pages .tv3-dot {
+    background: #3a4b50;
+  }
+  :root[data-theme='dark'] .tv3-pages .tv3-dot.active {
+    background: #12b8a6;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-pages .tv3-pages-name {
+    color: #cfd8db;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-pages .tv3-dot {
+    background: #2e4248;
+  }
+  :root[data-theme='dark'] .tv3.light .tv3-pages .tv3-dot.active {
+    background: #12b8a6;
+  }
   :root[data-theme='dark'] .tv3-pages {
     border: 1px solid #2a3a3f;
   }

@@ -37,7 +37,7 @@ import { ClearHistoryModal } from './ClearHistoryModal';
 import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
-type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
+export type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
 
 const periodOptions: Array<[ProductionPeriod, string]> = [
   ['today', 'Hoje'],
@@ -138,7 +138,7 @@ interface CounterValue {
   reset_at: string;
 }
 
-interface Statistic {
+export interface Statistic {
   widget_id: string;
   tag_id: string;
   period_minutes: number;
@@ -342,7 +342,6 @@ function Widget({
   const { user } = usePlatform();
   const hiddenProducts = statistics?.hidden_products ?? [];
   const [hidingProduct, setHidingProduct] = useState<string | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
   async function toggleProduct(productCode: string, hidden: boolean) {
     await mutate(`/devices/${widget.device_id}/hidden-products`, 'POST', { productCode, hidden });
     await productionStats.refresh();
@@ -688,236 +687,14 @@ function Widget({
         </>
       )}
       {widget.widget_type === 'production' && (
-        <div className="production-insight">
-          {periodChips}
-          <div className="production-kpis">
-            <div>
-              <span className="metric-label">
-                {statistics?.metric_kind === 'counter_delta'
-                  ? 'Produção no período'
-                  : 'Média operacional'}
-              </span>
-              <div className="hero-value">
-                {number(
-                  statistics?.metric_kind === 'counter_delta'
-                    ? statistics.current_period_value
-                    : statistics?.average,
-                  widget.config.decimals ?? 1,
-                )}
-                <span>{widget.unit}</span>
-              </div>
-            </div>
-            <div
-              className={`period-comparison ${(statistics?.change_percent ?? 0) < 0 ? 'negative' : ''}`}
-            >
-              <span>vs. período anterior</span>
-              <strong>
-                {statistics?.change_percent == null
-                  ? '—'
-                  : `${statistics.change_percent >= 0 ? '+' : ''}${number(statistics.change_percent, 1)}%`}
-              </strong>
-              <small>
-                {number(statistics?.previous_period_value, widget.config.decimals ?? 1)}{' '}
-                {widget.unit}
-              </small>
-            </div>
-          </div>
-          <div className="production-history">
-            <div className="production-history-title">
-              <strong>Desempenho: {periodLabel(period, statistics?.trend_days ?? 7)}</strong>
-              <span>
-                Melhor {statistics?.bucket_granularity === 'month' ? 'mês' : 'dia'}:{' '}
-                {statistics?.best_day
-                  ? new Date(
-                      `${statistics.best_day}${statistics.best_day.length === 7 ? '-01' : ''}T12:00:00`,
-                    ).toLocaleDateString('pt-BR', {
-                      ...(statistics.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
-                      month: 'short',
-                      ...(statistics.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
-                    })
-                  : '—'}{' '}
-                · {number(statistics?.best_value, widget.config.decimals ?? 1)} {widget.unit}
-              </span>
-            </div>
-            <div className="production-chart">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={statistics?.daily_series ?? []}
-                  margin={{ top: 24, right: 4, bottom: 0, left: 0 }}
-                >
-                  <CartesianGrid stroke="#dfe8ea" strokeDasharray="3 5" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(item) =>
-                      new Date(
-                        `${item}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
-                      ).toLocaleDateString('pt-BR', {
-                        ...(statistics?.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
-                        month: 'short',
-                        ...(statistics?.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
-                      })
-                    }
-                    tick={{ fontSize: 10, fill: '#71868d' }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 10, fill: '#71868d' }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={42}
-                  />
-                  <Tooltip
-                    labelFormatter={(item) =>
-                      new Date(
-                        `${String(item)}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
-                      ).toLocaleDateString('pt-BR', {
-                        month: 'long',
-                        year: 'numeric',
-                        ...(String(item).length === 10 ? { day: '2-digit' } : {}),
-                      })
-                    }
-                    formatter={(item) => [
-                      `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
-                      widget.title,
-                    ]}
-                  />
-                  <Bar
-                    dataKey="value"
-                    fill={color}
-                    radius={[5, 5, 0, 0]}
-                    maxBarSize={44}
-                    isAnimationActive={false}
-                  >
-                    {/* Past two weeks of columns the labels would only crowd the chart. */}
-                    {(statistics?.daily_series?.length ?? 0) <= 14 && (
-                      <LabelList
-                        dataKey="value"
-                        content={valueLabel((value) => number(value, widget.config.decimals ?? 1))}
-                      />
-                    )}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="product-ranking">
-            <div className="production-history-title">
-              <strong>Produção por produto</strong>
-              <span>{statistics?.product_breakdown?.length ?? 0} receitas</span>
-            </div>
-            <ScrollHint>
-              <div className="product-ranking-list">
-                {(statistics?.product_breakdown ?? []).map((product, index) => (
-                  <div className="product-ranking-row" key={product.product_code}>
-                    <span className="product-rank">{index + 1}</span>
-                    <div>
-                      <strong>{product.product_code}</strong>
-                      <i>
-                        <span
-                          style={{
-                            width: `${Math.max(3, product.share_percent)}%`,
-                            background: color,
-                          }}
-                        />
-                      </i>
-                    </div>
-                    <b>
-                      {number(product.value, widget.config.decimals ?? 1)} {widget.unit}
-                      <small>{number(product.share_percent, 1)}%</small>
-                    </b>
-                    {user.role === 'master' && (
-                      <button
-                        type="button"
-                        className="product-hide"
-                        title="Ocultar produto"
-                        aria-label={`Ocultar ${product.product_code}`}
-                        onClick={() => setHidingProduct(product.product_code)}
-                      >
-                        <EyeOff />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                {!statistics?.product_breakdown?.length && (
-                  <div className="product-ranking-empty">Aguardando produção no período.</div>
-                )}
-              </div>
-            </ScrollHint>
-            {hiddenProducts.length > 0 && (
-              <div className="hidden-products">
-                <button
-                  type="button"
-                  className="hidden-products-toggle"
-                  onClick={() => setShowHidden(!showHidden)}
-                >
-                  {hiddenProducts.length} oculto{hiddenProducts.length > 1 ? 's' : ''} ·{' '}
-                  {showHidden ? 'fechar' : 'mostrar'}
-                </button>
-                {showHidden && (
-                  <div className="hidden-products-list">
-                    {hiddenProducts.map((code) => (
-                      <span key={code}>
-                        {code}
-                        {user.role === 'master' && (
-                          <button type="button" onClick={() => void toggleProduct(code, false)}>
-                            restaurar
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          {/* A counter answers management questions; raw counter extremes and sample
-              counts meant nothing to a plant owner. A rate keeps its operating range. */}
-          {statistics?.metric_kind === 'counter_delta' ? (
-            <div className="three-metrics">
-              <span>
-                <b>
-                  {number(
-                    statistics.current_period_value == null
-                      ? null
-                      : statistics.current_period_value / Math.max(1, statistics.trend_days),
-                    widget.config.decimals ?? 1,
-                  )}
-                </b>
-                média por dia
-              </span>
-              <span>
-                <b>{number(statistics.best_value, widget.config.decimals ?? 1)}</b>
-                melhor {statistics.bucket_granularity === 'month' ? 'mês' : 'dia'}
-              </span>
-              <span>
-                <b>{statistics.product_breakdown.length}</b>
-                receitas produzidas
-              </span>
-            </div>
-          ) : (
-            <>
-              <div className="three-metrics">
-                <span>
-                  <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>
-                  mínimo operacional
-                </span>
-                <span>
-                  <b>{number(statistics?.average, widget.config.decimals ?? 1)}</b>
-                  média
-                </span>
-                <span>
-                  <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>
-                  pico
-                </span>
-              </div>
-              <small className="production-note">
-                Leitura: {periodLabel(period, statistics?.trend_days ?? 7)} · valores abaixo de{' '}
-                {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorados
-              </small>
-            </>
-          )}
-        </div>
+        <ProductionInsight
+          widget={widget}
+          statistics={statistics}
+          period={period}
+          periodChips={periodChips}
+          onHideProduct={user.role === 'master' ? (code) => setHidingProduct(code) : undefined}
+          onRestoreProduct={user.role === 'master' ? (code) => void toggleProduct(code, false) : undefined}
+        />
       )}
       {(widget.widget_type === 'donut' ||
         widget.widget_type === 'bar_vertical' ||
@@ -2189,6 +1966,263 @@ export function DashboardCanvas({ id }: { id: string }) {
             Sair da TV
           </button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Body of a production card: the period total or average against the previous period, the
+ * history chart, the ranking per product and the three figures. Shared by the dashboard card
+ * and the TV, which passes no period chips and no hide/restore actions.
+ */
+export function ProductionInsight({
+  widget,
+  statistics,
+  period,
+  periodChips,
+  onHideProduct,
+  onRestoreProduct,
+}: {
+  widget: DashboardWidget;
+  statistics: Statistic | undefined;
+  period: ProductionPeriod;
+  periodChips: React.ReactNode;
+  onHideProduct?: (productCode: string) => void;
+  onRestoreProduct?: (productCode: string) => void;
+}) {
+  const color = widget.config.color ?? '#12b8a6';
+  const hiddenProducts = statistics?.hidden_products ?? [];
+  const [showHidden, setShowHidden] = useState(false);
+  return (
+    <div className="production-insight">
+      {periodChips}
+      <div className="production-kpis">
+        <div>
+          <span className="metric-label">
+            {statistics?.metric_kind === 'counter_delta'
+              ? 'Produção no período'
+              : 'Média operacional'}
+          </span>
+          <div className="hero-value">
+            {number(
+              statistics?.metric_kind === 'counter_delta'
+                ? statistics.current_period_value
+                : statistics?.average,
+              widget.config.decimals ?? 1,
+            )}
+            <span>{widget.unit}</span>
+          </div>
+        </div>
+        <div
+          className={`period-comparison ${(statistics?.change_percent ?? 0) < 0 ? 'negative' : ''}`}
+        >
+          <span>vs. período anterior</span>
+          <strong>
+            {statistics?.change_percent == null
+              ? '—'
+              : `${statistics.change_percent >= 0 ? '+' : ''}${number(statistics.change_percent, 1)}%`}
+          </strong>
+          <small>
+            {number(statistics?.previous_period_value, widget.config.decimals ?? 1)}{' '}
+            {widget.unit}
+          </small>
+        </div>
+      </div>
+      <div className="production-history">
+        <div className="production-history-title">
+          <strong>Desempenho: {periodLabel(period, statistics?.trend_days ?? 7)}</strong>
+          <span>
+            Melhor {statistics?.bucket_granularity === 'month' ? 'mês' : 'dia'}:{' '}
+            {statistics?.best_day
+              ? new Date(
+                  `${statistics.best_day}${statistics.best_day.length === 7 ? '-01' : ''}T12:00:00`,
+                ).toLocaleDateString('pt-BR', {
+                  ...(statistics.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
+                  month: 'short',
+                  ...(statistics.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
+                })
+              : '—'}{' '}
+            · {number(statistics?.best_value, widget.config.decimals ?? 1)} {widget.unit}
+          </span>
+        </div>
+        <div className="production-chart">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={statistics?.daily_series ?? []}
+              margin={{ top: 24, right: 4, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid stroke="#dfe8ea" strokeDasharray="3 5" vertical={false} />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(item) =>
+                  new Date(
+                    `${item}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
+                  ).toLocaleDateString('pt-BR', {
+                    ...(statistics?.bucket_granularity === 'day' ? { day: '2-digit' } : {}),
+                    month: 'short',
+                    ...(statistics?.bucket_granularity === 'month' ? { year: '2-digit' } : {}),
+                  })
+                }
+                tick={{ fontSize: 10, fill: '#71868d' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: '#71868d' }}
+                axisLine={false}
+                tickLine={false}
+                width={42}
+              />
+              <Tooltip
+                labelFormatter={(item) =>
+                  new Date(
+                    `${String(item)}${String(item).length === 7 ? '-01' : ''}T12:00:00`,
+                  ).toLocaleDateString('pt-BR', {
+                    month: 'long',
+                    year: 'numeric',
+                    ...(String(item).length === 10 ? { day: '2-digit' } : {}),
+                  })
+                }
+                formatter={(item) => [
+                  `${number(Number(item), widget.config.decimals ?? 1)} ${widget.unit ?? ''}`,
+                  widget.title,
+                ]}
+              />
+              <Bar
+                dataKey="value"
+                fill={color}
+                radius={[5, 5, 0, 0]}
+                maxBarSize={44}
+                isAnimationActive={false}
+              >
+                {/* Past two weeks of columns the labels would only crowd the chart. */}
+                {(statistics?.daily_series?.length ?? 0) <= 14 && (
+                  <LabelList
+                    dataKey="value"
+                    content={valueLabel((value) => number(value, widget.config.decimals ?? 1))}
+                  />
+                )}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+      <div className="product-ranking">
+        <div className="production-history-title">
+          <strong>Produção por produto</strong>
+          <span>{statistics?.product_breakdown?.length ?? 0} receitas</span>
+        </div>
+        <ScrollHint>
+          <div className="product-ranking-list">
+            {(statistics?.product_breakdown ?? []).map((product, index) => (
+              <div className="product-ranking-row" key={product.product_code}>
+                <span className="product-rank">{index + 1}</span>
+                <div>
+                  <strong>{product.product_code}</strong>
+                  <i>
+                    <span
+                      style={{
+                        width: `${Math.max(3, product.share_percent)}%`,
+                        background: color,
+                      }}
+                    />
+                  </i>
+                </div>
+                <b>
+                  {number(product.value, widget.config.decimals ?? 1)} {widget.unit}
+                  <small>{number(product.share_percent, 1)}%</small>
+                </b>
+                {onHideProduct && (
+                  <button
+                    type="button"
+                    className="product-hide"
+                    title="Ocultar produto"
+                    aria-label={`Ocultar ${product.product_code}`}
+                    onClick={() => onHideProduct?.(product.product_code)}
+                  >
+                    <EyeOff />
+                  </button>
+                )}
+              </div>
+            ))}
+            {!statistics?.product_breakdown?.length && (
+              <div className="product-ranking-empty">Aguardando produção no período.</div>
+            )}
+          </div>
+        </ScrollHint>
+        {hiddenProducts.length > 0 && (
+          <div className="hidden-products">
+            <button
+              type="button"
+              className="hidden-products-toggle"
+              onClick={() => setShowHidden(!showHidden)}
+            >
+              {hiddenProducts.length} oculto{hiddenProducts.length > 1 ? 's' : ''} ·{' '}
+              {showHidden ? 'fechar' : 'mostrar'}
+            </button>
+            {showHidden && (
+              <div className="hidden-products-list">
+                {hiddenProducts.map((code) => (
+                  <span key={code}>
+                    {code}
+                    {onRestoreProduct && (
+                      <button type="button" onClick={() => onRestoreProduct?.(code)}>
+                        restaurar
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* A counter answers management questions; raw counter extremes and sample
+          counts meant nothing to a plant owner. A rate keeps its operating range. */}
+      {statistics?.metric_kind === 'counter_delta' ? (
+        <div className="three-metrics">
+          <span>
+            <b>
+              {number(
+                statistics.current_period_value == null
+                  ? null
+                  : statistics.current_period_value / Math.max(1, statistics.trend_days),
+                widget.config.decimals ?? 1,
+              )}
+            </b>
+            média por dia
+          </span>
+          <span>
+            <b>{number(statistics.best_value, widget.config.decimals ?? 1)}</b>
+            melhor {statistics.bucket_granularity === 'month' ? 'mês' : 'dia'}
+          </span>
+          <span>
+            <b>{statistics.product_breakdown.length}</b>
+            receitas produzidas
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="three-metrics">
+            <span>
+              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>
+              mínimo operacional
+            </span>
+            <span>
+              <b>{number(statistics?.average, widget.config.decimals ?? 1)}</b>
+              média
+            </span>
+            <span>
+              <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>
+              pico
+            </span>
+          </div>
+          <small className="production-note">
+            Leitura: {periodLabel(period, statistics?.trend_days ?? 7)} · valores abaixo de{' '}
+            {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorados
+          </small>
+        </>
       )}
     </div>
   );

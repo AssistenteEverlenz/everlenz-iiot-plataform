@@ -5944,6 +5944,26 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3-embedded-board {
   overflow: hidden;
 }
+/* The dashboard production card on the TV: its history chart takes the room left. */
+.tv3-production .production-insight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6vw;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.tv3-production .production-history {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.tv3-production .production-chart {
+  flex: 1;
+  height: auto;
+  min-height: 120px;
+}
 .tv3.light .tv3-value-body b,
 .tv3.light .tv3-status-body b,
 .tv3.light .tv3-statecard-label {
@@ -6063,6 +6083,43 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .tv-editor-body {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Compact screen indicator: current screen name plus a dot per screen. */
+.tv3-title {
+  min-width: 14vw;
+}
+.tv3-pages .tv3-pages-name {
+  max-width: 10vw;
+  margin: 0 0.3vw 0 0.2vw;
+  overflow: hidden;
+  color: #d6dfe2;
+  font-size: 0.8vw;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv3-pages .tv3-dot {
+  width: 0.6vw;
+  height: 0.6vw;
+  min-width: 8px;
+  min-height: 8px;
+  padding: 0;
+  border-radius: 50%;
+  background: #3a4b50;
+}
+.tv3-pages .tv3-dot.active {
+  background: #12b8a6;
+  transform: scale(1.35);
+}
+.tv3.light .tv3-pages .tv3-pages-name {
+  color: #20343b;
+}
+.tv3.light .tv3-pages .tv3-dot {
+  background: #c9d5d8;
+}
+.tv3.light .tv3-pages .tv3-dot.active {
+  background: #12b8a6;
 }
 
 /* TV page selector (Turno / Produtos) in the header. */

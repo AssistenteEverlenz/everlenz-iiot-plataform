@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { usePoll, type Dashboard, type DashboardWidget, type Device, type Sample } from './data';
 import { TvQuick } from './TvProductsPage';
+import { ProductionInsight, type ProductionPeriod, type Statistic } from './DashboardCanvas';
 import type { TvScreen } from './tvConfig';
 import {
   clock,
@@ -526,6 +527,47 @@ function TvLine({ widget, deviceId, minutes }: { widget: DashboardWidget; device
   );
 }
 
+const PERIOD_TEXT: Record<string, string> = {
+  today: 'hoje',
+  '7d': 'últimos 7 dias',
+  week: 'esta semana',
+  month: 'este mês',
+  year: 'este ano',
+  '30d': 'últimos 30 dias',
+};
+
+/** A "production" card of the dashboard, the same body the dashboard shows, at its default period. */
+function TvProduction({ dashboardId, widget }: { dashboardId: string; widget: DashboardWidget }) {
+  const configured = widget.config.productionDefaultPeriod;
+  const period: ProductionPeriod = configured && configured !== 'custom' ? configured : '7d';
+  const statistics = usePoll<Statistic[]>(
+    `/dashboards/${dashboardId}/statistics?widgetId=${widget.id}&period=${period}`,
+    60000,
+  );
+  return (
+    <section className="tv3-card tv3-production">
+      <div className="tv3-card-title">
+        <strong>{widget.title}</strong>
+        <span>{PERIOD_TEXT[period] ?? 'últimos 7 dias'}</span>
+      </div>
+      <div className="tv3-quick-body">
+        {statistics.data ? (
+          <ProductionInsight
+            widget={widget}
+            statistics={statistics.data[0]}
+            period={period}
+            periodChips={null}
+          />
+        ) : (
+          <div className="tv3-loading">
+            {statistics.error ?? <span className="detail-spinner" aria-label="Carregando" />}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** A dashboard card on the TV, drawn at wall size with the dashboard's own configuration. */
 function TvWidgetCard({ widget, data, dashboardId }: { widget: DashboardWidget; data: TvData; dashboardId: string }) {
   const sample = widget.tag_id ? data.latest.data?.find((item) => item.tag_id === widget.tag_id) : undefined;
@@ -573,7 +615,7 @@ function TvWidgetCard({ widget, data, dashboardId }: { widget: DashboardWidget; 
     case 'bar_horizontal':
       return <TvQuick dashboardId={dashboardId} widget={widget} />;
     case 'production':
-      return <TvQuick dashboardId={dashboardId} widget={{ ...widget, widget_type: 'bar_vertical' }} />;
+      return <TvProduction dashboardId={dashboardId} widget={widget} />;
     case 'line':
       return <TvLine widget={widget} deviceId={data.deviceId} minutes={data.dashboard.data?.time_window_minutes ?? 60} />;
     case 'shift_board':
