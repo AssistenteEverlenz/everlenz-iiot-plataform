@@ -640,12 +640,13 @@ function TvPanelCard({
   const text = PERIOD_TEXT[period] ?? 'últimos 7 dias';
   return (
     <PanelScale columns={columns} color={widget.config.color ?? '#12b8a6'}>
-      <div className="widget-head">
+      <div className="widget-head has-period">
         <span />
         <div>
           <span className="widget-kicker">{widget.widget_type.toUpperCase()}</span>
           <h2>{widget.title}</h2>
         </div>
+        <div className="widget-head-period">{chip}</div>
         <span />
       </div>
       {!statistics.data ? (
@@ -657,10 +658,10 @@ function TvPanelCard({
           widget={widget}
           statistics={statistics.data[0]}
           period={period}
-          periodChips={chip}
+          periodChips={null}
         />
       ) : (
-        <QuickChart widget={widget} statistics={statistics.data[0]} periodChips={chip} periodText={text} />
+        <QuickChart widget={widget} statistics={statistics.data[0]} periodChips={null} periodText={text} />
       )}
     </PanelScale>
   );

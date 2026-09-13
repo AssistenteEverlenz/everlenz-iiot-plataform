@@ -3607,10 +3607,56 @@ footer {
   height: auto;
   min-height: 90px;
 }
+/* Without the total block above and the three figures below, the chart and the ranking take
+   the whole card. */
 .dashboard-widget.sized .production-insight {
   flex: 1;
   min-height: 0;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+/* Card header with period chips: grab handle, title, chips, actions on one row; a narrow card
+   moves the chips to a second row under the title. */
+.widget-head.has-period {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto auto;
+  align-items: start;
+}
+.widget-head-period .widget-period {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin: 0;
+}
+@container (max-width: 720px) {
+  .widget-head.has-period {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .widget-head.has-period > .widget-head-period {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+  .widget-head-period .widget-period {
+    justify-content: flex-start;
+  }
+}
+.production-history-title strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.production-total {
+  color: #18333c;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.production-change {
+  color: #1f8f63;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+}
+.production-change.negative {
+  color: #c2412d;
 }
 .dashboard-widget.sized .production-insight .production-history,
 .dashboard-widget.sized .production-insight .product-ranking {

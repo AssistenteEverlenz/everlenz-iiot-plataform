@@ -1070,6 +1070,15 @@
   :root[data-theme='dark'] .quick-kpi {
     border-left-color: var(--kpi-accent, #12b8a6);
   }
+  :root[data-theme='dark'] .production-total {
+    color: #d2dbde;
+  }
+  :root[data-theme='dark'] .production-change {
+    color: #89dcbb;
+  }
+  :root[data-theme='dark'] .production-change.negative {
+    color: #db958a;
+  }
   :root[data-theme='dark'] .resize-handle {
     background: linear-gradient(
     135deg,

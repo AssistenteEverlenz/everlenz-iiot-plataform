@@ -505,7 +505,7 @@ function Widget({
         } as React.CSSProperties
       }
     >
-      <div className="widget-head">
+      <div className={`widget-head ${analyticTypes.has(widget.widget_type) ? 'has-period' : ''}`}>
         <button className="drag-handle" title="Arrastar para reorganizar">
           <SixDots />
         </button>
@@ -513,6 +513,8 @@ function Widget({
           <span className="widget-kicker">{widget.widget_type.toUpperCase()}</span>
           <h2>{widget.title}</h2>
         </div>
+        {/* The period chips sit beside the title; a narrow card puts them under it. */}
+        {analyticTypes.has(widget.widget_type) && <div className="widget-head-period">{periodChips}</div>}
         <div className="widget-actions">
           <button className="icon-button" title="Editar indicador" onClick={edit}>
             ✎
@@ -691,7 +693,7 @@ function Widget({
           widget={widget}
           statistics={statistics}
           period={period}
-          periodChips={periodChips}
+          periodChips={null}
           onHideProduct={user.role === 'master' ? (code) => setHidingProduct(code) : undefined}
           onRestoreProduct={user.role === 'master' ? (code) => void toggleProduct(code, false) : undefined}
         />
@@ -702,7 +704,7 @@ function Widget({
         <QuickChart
           widget={widget}
           statistics={statistics}
-          periodChips={periodChips}
+          periodChips={null}
           periodText={periodLabel(period, statistics?.trend_days ?? 7)}
         />
       )}
@@ -1997,41 +1999,32 @@ export function ProductionInsight({
   return (
     <div className="production-insight">
       {periodChips}
-      <div className="production-kpis">
-        <div>
-          <span className="metric-label">
-            {statistics?.metric_kind === 'counter_delta'
-              ? 'Produção no período'
-              : 'Média operacional'}
-          </span>
-          <div className="hero-value">
-            {number(
-              statistics?.metric_kind === 'counter_delta'
-                ? statistics.current_period_value
-                : statistics?.average,
-              widget.config.decimals ?? 1,
-            )}
-            <span>{widget.unit}</span>
-          </div>
-        </div>
-        <div
-          className={`period-comparison ${(statistics?.change_percent ?? 0) < 0 ? 'negative' : ''}`}
-        >
-          <span>vs. período anterior</span>
-          <strong>
-            {statistics?.change_percent == null
-              ? '—'
-              : `${statistics.change_percent >= 0 ? '+' : ''}${number(statistics.change_percent, 1)}%`}
-          </strong>
-          <small>
-            {number(statistics?.previous_period_value, widget.config.decimals ?? 1)}{' '}
-            {widget.unit}
-          </small>
-        </div>
-      </div>
       <div className="production-history">
+        {/* The period total lives here once (it used to repeat in a large block above), with
+            the comparison to the previous period next to it. */}
         <div className="production-history-title">
-          <strong>Desempenho: {periodLabel(period, statistics?.trend_days ?? 7)}</strong>
+          <strong>
+            {statistics?.metric_kind === 'counter_delta' ? 'Produção' : 'Média'} ·{' '}
+            {periodLabel(period, statistics?.trend_days ?? 7)}:{' '}
+            <b className="production-total">
+              {number(
+                statistics?.metric_kind === 'counter_delta'
+                  ? statistics.current_period_value
+                  : statistics?.average,
+                widget.config.decimals ?? 1,
+              )}{' '}
+              {widget.unit}
+            </b>
+            <em
+              className={`production-change ${(statistics?.change_percent ?? 0) < 0 ? 'negative' : ''}`}
+              title={`Período anterior: ${number(statistics?.previous_period_value, widget.config.decimals ?? 1)} ${widget.unit ?? ''}`}
+            >
+              vs. anterior{' '}
+              {statistics?.change_percent == null
+                ? '—'
+                : `${statistics.change_percent >= 0 ? '+' : ''}${number(statistics.change_percent, 1)}%`}
+            </em>
+          </strong>
           <span>
             Melhor {statistics?.bucket_granularity === 'month' ? 'mês' : 'dia'}:{' '}
             {statistics?.best_day
@@ -2178,52 +2171,6 @@ export function ProductionInsight({
           </div>
         )}
       </div>
-      {/* A counter answers management questions; raw counter extremes and sample
-          counts meant nothing to a plant owner. A rate keeps its operating range. */}
-      {statistics?.metric_kind === 'counter_delta' ? (
-        <div className="three-metrics">
-          <span>
-            <b>
-              {number(
-                statistics.current_period_value == null
-                  ? null
-                  : statistics.current_period_value / Math.max(1, statistics.trend_days),
-                widget.config.decimals ?? 1,
-              )}
-            </b>
-            média por dia
-          </span>
-          <span>
-            <b>{number(statistics.best_value, widget.config.decimals ?? 1)}</b>
-            melhor {statistics.bucket_granularity === 'month' ? 'mês' : 'dia'}
-          </span>
-          <span>
-            <b>{statistics.product_breakdown.length}</b>
-            receitas produzidas
-          </span>
-        </div>
-      ) : (
-        <>
-          <div className="three-metrics">
-            <span>
-              <b>{number(statistics?.minimum, widget.config.decimals ?? 1)}</b>
-              mínimo operacional
-            </span>
-            <span>
-              <b>{number(statistics?.average, widget.config.decimals ?? 1)}</b>
-              média
-            </span>
-            <span>
-              <b>{number(statistics?.maximum, widget.config.decimals ?? 1)}</b>
-              pico
-            </span>
-          </div>
-          <small className="production-note">
-            Leitura: {periodLabel(period, statistics?.trend_days ?? 7)} · valores abaixo de{' '}
-            {number(statistics?.minimum_value ?? 0.1, widget.config.decimals ?? 1)} ignorados
-          </small>
-        </>
-      )}
     </div>
   );
 }
