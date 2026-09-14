@@ -4700,28 +4700,22 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 [data-goal='met'] {
   --goal: #1fbf7a;
-  --goal-soft: #e3f7ee;
 }
 [data-goal='near'] {
   --goal: #f2a93b;
-  --goal-soft: #fdf1dc;
 }
 [data-goal='missed'] {
   --goal: #e4572e;
-  --goal-soft: #fce6df;
 }
 [data-goal='running'] {
   /* Blue, clearly apart from the green of a met target. */
   --goal: #3b82f6;
-  --goal-soft: #e8f0fe;
 }
 [data-goal='no-target'] {
   --goal: #b8c4c8;
-  --goal-soft: #eef2f3;
 }
 [data-goal='none'] {
   --goal: #dfe6e8;
-  --goal-soft: #f6f8f9;
 }
 .goal-calendar {
   padding-block: 12px;
@@ -4833,7 +4827,8 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   padding: 8px 10px;
   border-left: 4px solid var(--goal);
   border-radius: 10px;
-  background: var(--goal-soft);
+  /* A tint of the goal colour reads on the light and the dark theme alike. */
+  background: color-mix(in srgb, var(--goal) 14%, transparent);
 }
 .goal-calendar.large .goal-date {
   font-size: 11px;

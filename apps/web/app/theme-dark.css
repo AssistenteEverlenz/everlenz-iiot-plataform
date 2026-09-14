@@ -1325,7 +1325,7 @@
   }
   :root[data-theme='dark'] .goal-calendar.large .goal-day {
     border-left: 4px solid var(--goal);
-    background: var(--goal-soft);
+    background: color-mix(in srgb, var(--goal) 14%, transparent);
   }
   :root[data-theme='dark'] .goal-calendar.large .goal-date {
     color: #92a2a8;

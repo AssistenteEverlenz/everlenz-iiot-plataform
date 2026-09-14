@@ -931,8 +931,16 @@ export async function closeShiftReports(
     const fromDate = options.fromDate ?? addDays(today, -3);
     const lastDate = options.toDate && options.toDate < today ? options.toDate : today;
     // Deleted automatic rows count as done: a row someone removed is not written again.
-    const existing = await db.query<{ kind: string; planned_start: Date | string }>(
-      `SELECT kind,planned_start FROM shift_reports
+    const existing = await db.query<{
+      id: number;
+      kind: string;
+      planned_start: Date | string;
+      planned_end: Date | string;
+      deleted_at: Date | string | null;
+      target_metric: string | null;
+      target_value: string | number | null;
+    }>(
+      `SELECT id,kind,planned_start,planned_end,deleted_at,target_metric,target_value FROM shift_reports
        WHERE device_id=$1 AND production_date>=$2 AND source='auto'`,
       [device.id, fromDate],
     );
@@ -940,6 +948,21 @@ export async function closeShiftReports(
       existing.rows.map((row) => `${row.kind}|${new Date(row.planned_start).getTime()}`),
     );
     const occurrences = expandShifts(shifts, addDays(fromDate, -1), lastDate);
+    // A shift whose end was moved after it closed is reopened: its report goes away (the running
+    // shift, or a rewrite once the new end passed, takes its place) and keeps its target.
+    const reopened = new Map<number, { metric: string | null; value: number | null }>();
+    for (const row of existing.rows) {
+      if (row.kind !== 'shift' || row.deleted_at) continue;
+      const start = new Date(row.planned_start).getTime();
+      const occurrence = occurrences.find((item) => item.start.getTime() === start);
+      if (!occurrence || occurrence.end.getTime() === new Date(row.planned_end).getTime()) continue;
+      await db.query('DELETE FROM shift_reports WHERE id=$1', [row.id]);
+      done.delete(`shift|${start}`);
+      reopened.set(start, {
+        metric: row.target_metric,
+        value: row.target_value === null ? null : Number(row.target_value),
+      });
+    }
     const insert = async (report: {
       kind: 'shift' | 'off_shift';
       shiftId: string | null;
@@ -1002,7 +1025,8 @@ export async function closeShiftReports(
         start: occurrence.start,
         end: occurrence.end,
         // The target this shift had (kept on a recount), else its target at the end of it.
-        target: options.targets?.get(occurrence.start.getTime()) ?? {
+        target: options.targets?.get(occurrence.start.getTime()) ??
+          reopened.get(occurrence.start.getTime()) ?? {
           metric: device.target_metric,
           value:
             (await targetFor(db, device.tenant_id, device.id, device, occurrence.end))?.value ??
@@ -1462,8 +1486,19 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         products: summary.products,
       };
     }
+    // A closed report of the running shift (its end was moved later) is the same shift: only the
+    // running row counts until the closer reopens it.
+    const startOfOpen = open ? open.planned_start.getTime() : null;
+    const closed = reports.rows.filter(
+      (row) =>
+        !(
+          row.source === 'auto' &&
+          row.kind === 'shift' &&
+          new Date(row.planned_start as Date | string).getTime() === startOfOpen
+        ),
+    );
     return {
-      reports: open ? [open, ...reports.rows] : reports.rows,
+      reports: open ? [open, ...closed] : closed,
       defaultShifts: isDefault,
       shiftNames: shifts.map((shift) => shift.name),
       targetMetric: config.target_metric,
