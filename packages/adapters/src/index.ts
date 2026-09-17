@@ -35,15 +35,13 @@ export class GenericJsonAdapter implements MqttAdapter {
 // the project's MQTT settings (both captured from a real A7):
 //   - cloud layout: { "_terminalTime": "...", "_groupName": "group1", "<var>": "12.1", ... }
 //   - plain layout: { "<var>": "12.1", ..., "TimeStamp": "2026-09-11T10:20:43-03:00" }
-// Changing the settings on the HMI switches the layout, so both are read.
+// Changing the settings on the HMI switches the layout, so both are read. A data group without
+// a time field (seen in the field: { "StatusMachine": false }) is read too, at arrival time: the
+// adapter only runs for a device registered as Haiwell, so it never has to guess the brand.
 const HAIWELL_METADATA = new Set(['TimeStamp']);
 const haiwellSchema = z
   .record(z.string(), scalar)
-  .refine(
-    (v) =>
-      (typeof v._terminalTime === 'string' && typeof v._groupName === 'string') ||
-      typeof v.TimeStamp === 'string',
-  );
+  .refine((v) => Object.keys(v).some((key) => !key.startsWith('_') && !HAIWELL_METADATA.has(key)));
 export class HaiwellAdapter implements MqttAdapter {
   name = 'HaiwellAdapter';
   canHandle(message: MqttMessage) {

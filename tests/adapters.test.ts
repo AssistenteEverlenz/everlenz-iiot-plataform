@@ -167,8 +167,17 @@ describe('HaiwellAdapter / HAIWELL_FORMAT_HYPOTHESIS', () => {
     expect(samples[0].timestamp.toISOString()).toBe('2026-09-11T13:20:43.000Z');
     expect(samples[0].quality).toBe('good');
   });
-  it('does not guess arbitrary JSON', () =>
-    expect(adapter.canHandle(message({ foo: 'bar' }))).toBe(false));
+  it('reads a data group without a time field at arrival time', () => {
+    const m = message({ StatusMachine: false });
+    expect(adapter.canHandle(m)).toBe(true);
+    expect(adapter.parse(m)).toEqual([
+      { key: 'StatusMachine', value: false, timestamp: m.receivedAt, quality: 'timestamp_fallback' },
+    ]);
+  });
+  it('rejects payloads with no value', () => {
+    expect(adapter.canHandle(message({ _terminalTime: '2026-01-01T10:00:00Z', _groupName: 'g' }))).toBe(false);
+    expect(adapter.canHandle(message({ values: { nested: 1 } }))).toBe(false);
+  });
   it('unknown fallback returns no telemetry', () =>
     expect(new UnknownAdapter().parse()).toEqual([]));
 });
