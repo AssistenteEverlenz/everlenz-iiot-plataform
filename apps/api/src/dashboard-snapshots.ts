@@ -285,6 +285,52 @@ export async function applyDashboardTemplate(
 }
 
 /**
+ * "Carregar o modelo neste painel": this dashboard's cards become the model's, and its TV the
+ * model's TV. A model card keeps the variable of this dashboard's card of the same type in the
+ * same order (its 2nd gauge reads what the 2nd gauge read here); the others start without one.
+ */
+export async function applyTemplateToDashboard(
+  sql: Executor,
+  tenantId: string,
+  dashboardId: string,
+  deviceId: string,
+) {
+  const template = await loadTemplate(sql, tenantId);
+  if (!template?.widgets.length) return null;
+  const own = (
+    await sql.query<{ widget_type: string; tag_id: string | null }>(
+      `SELECT widget_type,tag_id FROM dashboard_widgets
+       WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
+      [tenantId, dashboardId],
+    )
+  ).rows;
+  const seen = new Map<string, number>();
+  const tagFor = template.widgets.map((widget) => {
+    const index = seen.get(widget.widget_type) ?? 0;
+    seen.set(widget.widget_type, index + 1);
+    return own.filter((item) => item.widget_type === widget.widget_type)[index]?.tag_id ?? null;
+  });
+  // Deleting the cards also drops the TV cards that showed them; the model's TV replaces it.
+  await sql.query('DELETE FROM dashboard_widgets WHERE tenant_id=$1 AND dashboard_id=$2', [
+    tenantId,
+    dashboardId,
+  ]);
+  const cardFor = new Map<string, string>();
+  for (const [position, widget] of template.widgets.entries())
+    cardFor.set(
+      widget.id,
+      await insertModelCard(sql, tenantId, dashboardId, deviceId, widget, position, tagFor[position]),
+    );
+  const screens = template.tv?.length ?? 0;
+  if (screens) await saveTv(sql, tenantId, dashboardId, remapTv(template.tv!, cardFor));
+  return {
+    cards: template.widgets.length,
+    withVariable: tagFor.filter(Boolean).length,
+    screens,
+  };
+}
+
+/**
  * Gives an existing dashboard the model's TV. Each TV card of a model card goes to this
  * dashboard's card of the same type in the same order (the 2nd gauge to the 2nd gauge). A model
  * card this dashboard lacks is created, with the variable of a card beside it on the same TV
@@ -489,6 +535,46 @@ export function registerDashboardSnapshotRoutes(
       });
     });
     return { widgets: content?.widgets.length ?? 0 };
+  });
+
+  // "Carregar o modelo neste painel": cards and TV from the model. Kept undoable by a snapshot.
+  app.post('/api/dashboards/:id/template/apply', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const dashboard = await dashboardOf(req, reply, id);
+    if (!dashboard) return;
+    if (!dashboard.device_id)
+      return reply.code(400).send({ error: 'Este painel não é de um equipamento.' });
+    const current = access.principal(req);
+    const result = await db.transaction(async (sql) => {
+      const before = await capture(sql, current.tenantId, id);
+      await sql.query(
+        `INSERT INTO dashboard_snapshots(tenant_id,dashboard_id,name,content,created_by,created_by_email)
+         VALUES($1,$2,$3,$4::jsonb,$5,$6)`,
+        [
+          current.tenantId,
+          id,
+          snapshotName('Antes de carregar o modelo'),
+          JSON.stringify(before),
+          current.id,
+          current.email,
+        ],
+      );
+      const applied = await applyTemplateToDashboard(sql, current.tenantId, id, dashboard.device_id!);
+      if (applied)
+        await recordAudit(sql, req, current, {
+          action: 'dashboard.template.apply',
+          targetType: 'dashboard',
+          targetId: id,
+          summary: applied,
+        });
+      return applied;
+    });
+    if (!result)
+      return reply.code(409).send({
+        error: 'Ainda não há modelo. Abra o painel que deve servir de modelo e use “Usar este painel como modelo”.',
+      });
+    return result;
   });
 
   // "Usar TV do modelo": this dashboard's TV becomes the model's. Kept undoable by a snapshot.

@@ -41,13 +41,13 @@ export function SnapshotModal({
   const [name, setName] = useState('');
   const [chosen, setChosen] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState<'save' | 'restore' | 'template' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'restore' | 'template' | 'load' | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const selected = chosen || list.data?.[0]?.id || '';
   const selectedSnapshot = list.data?.find((snapshot) => snapshot.id === selected);
 
-  async function run(kind: 'save' | 'restore' | 'template', action: () => Promise<unknown>, done: string) {
+  async function run(kind: 'save' | 'restore' | 'template' | 'load', action: () => Promise<unknown>, done: string) {
     setBusy(kind);
     setError('');
     setMessage('');
@@ -177,7 +177,7 @@ export function SnapshotModal({
 
         {user.role === 'master' && (
           <section className="snapshot-section">
-            <strong>Modelo para novos equipamentos</strong>
+            <strong>Modelo de painel</strong>
             <p className="shifts-help">
               Os próximos equipamentos cadastrados começam com os cards deste painel, sem
               variável: cada card recebe a variável pelo lápis.
@@ -195,6 +195,33 @@ export function SnapshotModal({
             >
               {busy === 'template' && <span className="button-spinner dark" />}
               Usar este painel como modelo
+            </button>
+            <p className="shifts-help">
+              Ou traga o modelo para este painel: os cards e a TV passam a ser os do modelo. Cada
+              card mantém a variável do card do mesmo tipo que já estava aqui; os outros recebem a
+              variável pelo lápis. Um snapshot do painel é salvo antes.
+            </p>
+            <button
+              type="button"
+              disabled={Boolean(busy)}
+              onClick={() => {
+                if (!window.confirm('Trocar os cards e a TV deste painel pelos do modelo?')) return;
+                void run(
+                  'load',
+                  async () => {
+                    const result = await mutate<{ cards: number; withVariable: number; screens: number }>(
+                      `/dashboards/${dashboardId}/template/apply`,
+                      'POST',
+                    );
+                    onRestored();
+                    return result;
+                  },
+                  'Modelo carregado. O estado anterior foi guardado como snapshot.',
+                );
+              }}
+            >
+              {busy === 'load' && <span className="button-spinner dark" />}
+              Carregar o modelo neste painel
             </button>
           </section>
         )}

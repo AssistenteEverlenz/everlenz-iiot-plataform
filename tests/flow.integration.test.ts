@@ -1464,6 +1464,27 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(created.rows[0]).toEqual({ widget_type: 'production', tag_id: targetPallets, position: 10 });
       const snapshots = await db.query('SELECT 1 FROM dashboard_snapshots WHERE dashboard_id=$1', [target]);
       expect(snapshots.rows).toHaveLength(1);
+
+      // "Carregar o modelo neste painel": the model's cards and TV, keeping this dashboard's
+      // variables card by card (production and bar charts read the pallets counter here).
+      const loaded = await api.inject({ method: 'POST', url: `/api/dashboards/${target}/template/apply` });
+      expect(loaded.statusCode).toBe(200);
+      expect(loaded.json()).toEqual({ cards: 4, withVariable: 2, screens: 2 });
+      const cards = await db.query<{ widget_type: string; tag_id: string | null; position: number }>(
+        'SELECT widget_type,tag_id,position FROM dashboard_widgets WHERE dashboard_id=$1 ORDER BY position',
+        [target],
+      );
+      expect(cards.rows).toEqual([
+        { widget_type: 'gauge', tag_id: null, position: 0 },
+        { widget_type: 'gauge', tag_id: null, position: 1 },
+        { widget_type: 'production', tag_id: targetPallets, position: 2 },
+        { widget_type: 'bar_vertical', tag_id: targetPallets, position: 3 },
+      ]);
+      const reloaded = (await api.inject(`/api/dashboards/${target}/tv`)).json().screens;
+      expect(reloaded.flatMap((screen: { cards: unknown[] }) => screen.cards)).toHaveLength(5);
+      expect(
+        (await db.query('SELECT 1 FROM dashboard_snapshots WHERE dashboard_id=$1', [target])).rows,
+      ).toHaveLength(2);
     } finally {
       await api.close();
       await db.query('DELETE FROM dashboard_templates WHERE tenant_id=$1', [TENANT]);
