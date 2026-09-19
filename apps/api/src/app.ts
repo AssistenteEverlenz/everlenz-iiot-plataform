@@ -358,7 +358,14 @@ export async function createApp(
     if (!(await access.requireDevice(req, reply, id))) return;
     return (
       await db.query(
-        `SELECT DISTINCT ON (t.id) t.id tag_id,t.key,t.unit,t.data_type,s.timestamp,s.value_number,s.value_text,s.value_boolean,s.quality FROM tags t LEFT JOIN telemetry_samples s ON s.tag_id=t.id AND s.tenant_id=t.tenant_id WHERE t.tenant_id=$1 AND t.device_id=$2 AND t.enabled=true ORDER BY t.id,s.timestamp DESC NULLS LAST,s.id DESC`,
+        // One index lookup per tag (samples_tag_time): joining every sample and keeping the
+        // newest took 4.7 s on a device with months of history, on every dashboard poll.
+        `SELECT t.id tag_id,t.key,t.unit,t.data_type,s.timestamp,s.value_number,s.value_text,s.value_boolean,s.quality
+         FROM tags t LEFT JOIN LATERAL (
+           SELECT timestamp,value_number,value_text,value_boolean,quality FROM telemetry_samples x
+           WHERE x.tag_id=t.id AND x.tenant_id=t.tenant_id ORDER BY x.timestamp DESC,x.id DESC LIMIT 1
+         ) s ON true
+         WHERE t.tenant_id=$1 AND t.device_id=$2 AND t.enabled=true ORDER BY t.id`,
         [access.principal(req).tenantId, id],
       )
     ).rows;
