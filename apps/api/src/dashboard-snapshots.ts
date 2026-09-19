@@ -299,8 +299,8 @@ export async function applyTemplateTv(
   const template = await loadTemplate(sql, tenantId);
   if (!template?.tv?.length) return null;
   const own = (
-    await sql.query<{ id: string; widget_type: string; tag_id: string | null }>(
-      `SELECT id,widget_type,tag_id FROM dashboard_widgets
+    await sql.query<{ id: string; widget_type: string; tag_id: string | null; position: number }>(
+      `SELECT id,widget_type,tag_id,position FROM dashboard_widgets
        WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
       [tenantId, dashboardId],
     )
@@ -315,7 +315,8 @@ export async function applyTemplateTv(
       if (ours[index]) cardFor.set(widget.id, ours[index].id);
     });
   }
-  let position = own.length;
+  // After the last card: positions have gaps where cards were removed, and are unique.
+  let position = Math.max(-1, ...own.map((widget) => Number(widget.position))) + 1;
   let created = 0;
   for (const screen of template.tv)
     for (const card of screen.cards) {

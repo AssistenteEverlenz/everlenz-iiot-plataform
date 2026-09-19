@@ -1394,6 +1394,83 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await db.query('DELETE FROM tags WHERE id=$1', [tagId]);
     }
   });
+  it('gives an existing dashboard the model TV, creating the cards it lacks', async () => {
+    const model = '66666666-6666-4666-8666-666666666661';
+    const target = '66666666-6666-4666-8666-666666666662';
+    const dashboard = (id: string, device: string, slug: string) =>
+      db.query(
+        `INSERT INTO dashboards(id,tenant_id,device_id,name,slug,refresh_ms,time_window_minutes,is_default)
+         VALUES($1,$2,$3,$4,$4,5000,60,false)`,
+        [id, TENANT, device, slug],
+      );
+    const tag = async (device: string, key: string) =>
+      (
+        await db.query<{ id: string }>(
+          `INSERT INTO tags(tenant_id,device_id,key,name,data_type) VALUES($1,$2,$3,$3,'number') RETURNING id`,
+          [TENANT, device, key],
+        )
+      ).rows[0].id;
+    const card = async (dash: string, device: string, type: string, position: number, tagId: string | null) =>
+      (
+        await db.query<{ id: string }>(
+          `INSERT INTO dashboard_widgets(tenant_id,dashboard_id,device_id,tag_id,widget_type,title,position,width,config)
+           VALUES($1,$2,$3,$4,$5,$5,$6,'medium','{}'::jsonb) RETURNING id`,
+          [TENANT, dash, device, tagId, type, position],
+        )
+      ).rows[0].id;
+    await dashboard(model, HAIWELL, 'modelo-tv');
+    await dashboard(target, GENERIC, 'destino-tv');
+    const modelPallets = await tag(HAIWELL, 'tv_pallets_model');
+    const targetPallets = await tag(GENERIC, 'tv_pallets_target');
+    const gaugeA = await card(model, HAIWELL, 'gauge', 0, null);
+    const gaugeB = await card(model, HAIWELL, 'gauge', 1, null);
+    const production = await card(model, HAIWELL, 'production', 2, modelPallets);
+    const bar = await card(model, HAIWELL, 'bar_vertical', 3, modelPallets);
+    // The target has gaps in its positions (cards removed) and no production chart. With 3
+    // cards, position 3 is taken: counting the cards to place the new one collided with it.
+    const ourGaugeA = await card(target, GENERIC, 'gauge', 2, null);
+    const ourGaugeB = await card(target, GENERIC, 'gauge', 3, null);
+    const ourBar = await card(target, GENERIC, 'bar_vertical', 9, targetPallets);
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+    try {
+      const at = (kind: string, widget: string | null, x: number, y: number) => ({
+        kind, widget_id: widget, x, y, w: 2, h: 4, config: {},
+      });
+      const saved = await api.inject({
+        method: 'PUT',
+        url: `/api/dashboards/${model}/tv`,
+        payload: {
+          screens: [
+            { name: 'Produção', duration_seconds: 20, rows: 12, cards: [at('tv_kpis', null, 1, 1), at('widget', gaugeA, 9, 1), at('widget', gaugeB, 11, 1)] },
+            { name: 'Paletes', duration_seconds: 20, rows: 12, cards: [at('widget', production, 1, 1), at('widget', bar, 7, 1)] },
+          ],
+        },
+      });
+      expect(saved.statusCode).toBe(200);
+      expect((await api.inject({ method: 'POST', url: `/api/dashboards/${model}/template` })).statusCode).toBe(200);
+      const applied = await api.inject({ method: 'POST', url: `/api/dashboards/${target}/tv/apply-template` });
+      expect(applied.statusCode).toBe(200);
+      expect(applied.json()).toEqual({ screens: 2, cards: 5, created: 1 });
+      const tv = (await api.inject(`/api/dashboards/${target}/tv`)).json().screens;
+      expect(tv.map((screen: { name: string }) => screen.name)).toEqual(['Produção', 'Paletes']);
+      expect(tv[0].cards.map((c: { widget_id: string | null }) => c.widget_id)).toEqual([null, ourGaugeA, ourGaugeB]);
+      const [createdId, barId] = tv[1].cards.map((c: { widget_id: string }) => c.widget_id);
+      expect(barId).toBe(ourBar);
+      const created = await db.query<{ widget_type: string; tag_id: string; position: number }>(
+        'SELECT widget_type,tag_id,position FROM dashboard_widgets WHERE id=$1',
+        [createdId],
+      );
+      // Created after the last position, reading the variable of the bar chart beside it.
+      expect(created.rows[0]).toEqual({ widget_type: 'production', tag_id: targetPallets, position: 10 });
+      const snapshots = await db.query('SELECT 1 FROM dashboard_snapshots WHERE dashboard_id=$1', [target]);
+      expect(snapshots.rows).toHaveLength(1);
+    } finally {
+      await api.close();
+      await db.query('DELETE FROM dashboard_templates WHERE tenant_id=$1', [TENANT]);
+      await db.query('DELETE FROM dashboards WHERE id=ANY($1::uuid[])', [[model, target]]);
+      await db.query('DELETE FROM tags WHERE id=ANY($1::uuid[])', [[modelPallets, targetPallets]]);
+    }
+  });
   it('keeps simultaneous card edits instead of letting the last write erase the others', async () => {
     // Regression: every card edit used to rewrite the whole dashboard from a copy read a
     // moment earlier, so resizing one card while another change was saving undid it.
