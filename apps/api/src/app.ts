@@ -370,6 +370,7 @@ export async function createApp(
       await db.query(
         `SELECT COALESCE(c.id,t.id) id,COALESCE(c.key,t.key) key,
           COALESCE(t.data_type,c.inferred_type) data_type,t.name,t.unit,t.id tag_id,
+          t.scale_multiplier,
           c.sample_value,c.first_seen_at,c.last_seen_at,COALESCE(c.occurrences,0)::int occurrences,
           (t.id IS NOT NULL) configured,
           -- The catalog keeps every key ever published. A key is still published when it was

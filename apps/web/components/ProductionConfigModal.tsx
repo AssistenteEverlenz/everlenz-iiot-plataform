@@ -15,8 +15,24 @@ interface Signal {
   tag_id: string | null;
   name: string | null;
   unit: string | null;
+  scale_multiplier: number | string | null;
   present: boolean;
 }
+// The HMI publishes the recipe weight in the unit its own project uses: a Delta sends kilograms,
+// the Haiwell of Cerâmica Oliveira sends grams. The platform works in kilograms, so the choice is
+// stored as the variable's scale and applied to every sample as it arrives.
+const WEIGHT_UNITS = [
+  { value: 'kg', label: 'Quilos (kg)', multiplier: 1 },
+  { value: 'g', label: 'Gramas (g)', multiplier: 0.001 },
+  { value: 't', label: 'Toneladas (t)', multiplier: 1000 },
+] as const;
+type WeightUnit = (typeof WEIGHT_UNITS)[number]['value'];
+const multiplierOf = (unit: WeightUnit) =>
+  WEIGHT_UNITS.find((item) => item.value === unit)?.multiplier ?? 1;
+const unitOfMultiplier = (multiplier: number | string | null): WeightUnit => {
+  const value = multiplier == null ? 1 : Number(multiplier);
+  return WEIGHT_UNITS.find((item) => item.multiplier === value)?.value ?? 'kg';
+};
 interface ProductionConfig {
   site_id: string;
   blocks_tag_id: string | null;
@@ -53,6 +69,7 @@ export function ProductionConfigModal({
     closingMinutes: number;
     weight: string;
     weightKey: string;
+    weightUnit: WeightUnit;
     metric: ProductionMetric | '';
     target: string;
     targetFromHmi: boolean;
@@ -72,6 +89,10 @@ export function ProductionConfigModal({
       closingMinutes: config.data.closing_minutes ?? 30,
       weight: config.data.weight_per_unit_kg ? String(config.data.weight_per_unit_kg) : '',
       weightKey: signalFor(config.data.weight_tag_id),
+      weightUnit: unitOfMultiplier(
+        signals.data?.find((signal) => signal.tag_id === config.data?.weight_tag_id)
+          ?.scale_multiplier ?? null,
+      ),
       metric: config.data.target_metric ?? '',
       target: config.data.target_per_shift ? String(config.data.target_per_shift) : '',
       targetFromHmi: Boolean(signalFor(config.data.target_tag_id)),
@@ -89,17 +110,21 @@ export function ProductionConfigModal({
         (signal.present || signal.tag_id),
     ) ?? [];
 
-  async function tagIdFor(key: string) {
+  // `scaleMultiplier` is written only when the chosen unit differs from what the variable
+  // already has, so saving the form never rewrites a scale someone set on purpose.
+  async function tagIdFor(key: string, scaleMultiplier?: number) {
     if (!key) return null;
     const signal = signals.data?.find((item) => item.key === key);
     if (!signal) return null;
-    if (signal.tag_id) return signal.tag_id;
+    const multiplier = scaleMultiplier ?? 1;
+    if (signal.tag_id && (scaleMultiplier == null || Number(signal.scale_multiplier) === multiplier))
+      return signal.tag_id;
     const tag = await mutate<{ id: string }>(`/devices/${deviceId}/tags`, 'POST', {
       key: signal.key,
       name: signal.name || signal.key,
       dataType: signal.data_type,
       unit: signal.unit,
-      scaleMultiplier: 1,
+      scaleMultiplier: multiplier,
       scaleOffset: 0,
     });
     return tag.id;
@@ -117,7 +142,7 @@ export function ProductionConfigModal({
         tagIdFor(form.pieces),
         tagIdFor(form.pallets),
         tagIdFor(form.auto),
-        tagIdFor(form.weightKey),
+        tagIdFor(form.weightKey, multiplierOf(form.weightUnit)),
         tagIdFor(form.metric && form.targetFromHmi ? form.targetKey : ''),
       ]);
       await mutate(`/devices/${deviceId}/production-config`, 'PATCH', {
@@ -240,8 +265,25 @@ export function ProductionConfigModal({
                 ))}
               </select>
             </label>
+            {form.weightKey && (
+              <label className="field">
+                A variável de peso vem em
+                <select
+                  value={form.weightUnit}
+                  onChange={(event) =>
+                    setForm({ ...form, weightUnit: event.target.value as WeightUnit })
+                  }
+                >
+                  {WEIGHT_UNITS.map((unit) => (
+                    <option key={unit.value} value={unit.value}>
+                      {unit.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="field">
-              {form.weightKey ? 'Peso fixo (kg) — se a variável não vier' : 'Peso por peça (kg) — valor fixo'}
+              {form.weightKey ?'Peso fixo (kg) — se a variável não vier' : 'Peso por peça (kg) — valor fixo'}
               <input
                 inputMode="decimal"
                 value={form.weight}
