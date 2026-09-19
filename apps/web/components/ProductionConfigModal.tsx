@@ -252,7 +252,7 @@ export function ProductionConfigModal({
               />
             </label>
             <label className="field">
-              Peso por peça (kg) — variável da IHM
+              Peso por peça — variável da IHM
               <select
                 value={form.weightKey}
                 onChange={(event) => setForm({ ...form, weightKey: event.target.value })}
