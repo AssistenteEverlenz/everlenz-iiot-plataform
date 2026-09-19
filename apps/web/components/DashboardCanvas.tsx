@@ -296,8 +296,11 @@ function Widget({
   dragEnd,
   missing = false,
   order = 0,
+  dataVersion = 0,
 }: {
   widget: DashboardWidget;
+  /** Bumped when a variable's history is deleted, so charts refetch at once. */
+  dataVersion?: number;
   /** Position on phones: the order the desktop grid shows (see visualOrder). */
   order?: number;
   latest?: Sample;
@@ -335,7 +338,7 @@ function Widget({
     analyticTypes.has(widget.widget_type) &&
     widget.tag_id &&
     (period !== 'custom' || (customFrom && customTo))
-      ? `/dashboards/${dashboardId}/statistics?widgetId=${widget.id}&period=${period}${customRange}&v=${fingerprint}`
+      ? `/dashboards/${dashboardId}/statistics?widgetId=${widget.id}&period=${period}${customRange}&v=${fingerprint}&d=${dataVersion}`
       : null;
   const productionStats = usePoll<Statistic[]>(productionPath, 30000);
   const statistics = productionStats.data?.[0];
@@ -1078,6 +1081,8 @@ export function DashboardCanvas({ id }: { id: string }) {
       setSavingModal(false);
     }
   }
+  // Charts read their own statistics every 30 s; a deleted history must disappear now.
+  const [dataVersion, setDataVersion] = useState(0);
   async function removeWidget(widget: DashboardWidget) {
     await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE');
     setEditingWidget(null);
@@ -1097,6 +1102,7 @@ export function DashboardCanvas({ id }: { id: string }) {
       : '';
     await mutate(`/devices/${widget.device_id}/tags/${widget.tag_id}/history${query}`, 'DELETE');
     setEditingWidget(null);
+    setDataVersion((version) => version + 1);
     await Promise.all([dashboard.refresh(), history.refresh(), latest.refresh()]);
   }
   async function resizeWidget(widget: DashboardWidget, cols: number, rows: number) {
@@ -1223,6 +1229,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             history={history.data ?? []}
             dashboardId={id}
             counter={counters.data?.find((item) => item.widget_id === widget.id)}
+            dataVersion={dataVersion}
             edit={() => startEdit(widget)}
             remove={() => setRemovingWidget(widget)}
             reset={() => setResettingWidget(widget)}

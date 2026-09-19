@@ -160,6 +160,38 @@ export function TvEditor({ id }: { id: string }) {
     }
   }
 
+  // The model dashboard's TV, with its cards pointed at this dashboard's cards. The server
+  // snapshots the dashboard first, so Ações → Snapshot undoes it.
+  async function applyModel() {
+    if (
+      !window.confirm(
+        'Trocar a TV deste painel pela TV do modelo? Cards que faltarem no painel são criados. Um snapshot do painel é salvo antes.',
+      )
+    )
+      return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await mutate<{ screens: number; cards: number; created: number }>(
+        `/dashboards/${id}/tv/apply-template`,
+        'POST',
+      );
+      await Promise.all([dashboard.refresh(), saved.refresh()]);
+      setScreens(null);
+      setDirty(false);
+      setCurrent(0);
+      setSelected(null);
+      setMessage(
+        `TV do modelo aplicada: ${result.screens} telas, ${result.cards} cards` +
+          (result.created ? `, ${result.created} card(s) criados no painel.` : '.'),
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Não foi possível aplicar a TV do modelo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (user.role !== 'master')
     return <div className="notice">Somente o master configura a TV. Abra a TV pelo painel, em Ações → Modo TV.</div>;
 
@@ -188,6 +220,9 @@ export function TvEditor({ id }: { id: string }) {
             }}
           >
             Restaurar padrão
+          </button>
+          <button type="button" disabled={saving} onClick={() => void applyModel()}>
+            Usar TV do modelo
           </button>
           <button type="button" className="primary-button" disabled={!dirty || saving} onClick={() => void save()}>
             {saving && <span className="button-spinner" />}

@@ -213,39 +213,132 @@ async function restore(
   return productionRestored;
 }
 
-/** A new device's dashboard starts with the tenant's model cards, without variables. */
+async function loadTemplate(sql: Executor, tenantId: string) {
+  const template = await sql.query<{ content: SnapshotContent }>(
+    'SELECT content FROM dashboard_templates WHERE tenant_id=$1',
+    [tenantId],
+  );
+  return template.rows[0]?.content ?? null;
+}
+
+async function insertModelCard(
+  sql: Executor,
+  tenantId: string,
+  dashboardId: string,
+  deviceId: string,
+  widget: SnapshotWidget,
+  position: number,
+  tagId: string | null,
+) {
+  const config = { ...(widget.config ?? {}) };
+  for (const key of DEVICE_SPECIFIC_CONFIG) delete config[key];
+  const id = randomUUID();
+  await sql.query(
+    `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,
+       position,width,config)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+    [
+      id,
+      tenantId,
+      dashboardId,
+      deviceId,
+      tagId,
+      widget.widget_type,
+      widget.title,
+      position,
+      widget.width,
+      JSON.stringify(config),
+    ],
+  );
+  return id;
+}
+
+/** The model's TV with its cards pointed at this dashboard's cards (`cardFor` maps them). */
+function remapTv(tv: TvScreen[], cardFor: Map<string, string>): TvScreen[] {
+  return tv.map((screen) => ({
+    ...screen,
+    cards: screen.cards
+      .filter((card) => card.kind !== 'widget' || (card.widget_id && cardFor.has(card.widget_id)))
+      .map((card) =>
+        card.kind === 'widget' ? { ...card, widget_id: cardFor.get(card.widget_id!)! } : card,
+      ),
+  }));
+}
+
+/** A new device's dashboard starts with the tenant's model cards, without variables, and its TV. */
 export async function applyDashboardTemplate(
   sql: Executor,
   tenantId: string,
   dashboardId: string,
   deviceId: string,
 ) {
-  const template = await sql.query<{ content: SnapshotContent }>(
-    'SELECT content FROM dashboard_templates WHERE tenant_id=$1',
-    [tenantId],
-  );
-  const widgets = template.rows[0]?.content.widgets ?? [];
-  for (const [position, widget] of widgets.entries()) {
-    const config = { ...(widget.config ?? {}) };
-    for (const key of DEVICE_SPECIFIC_CONFIG) delete config[key];
-    await sql.query(
-      `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,
-         position,width,config)
-       VALUES($1,$2,$3,$4,NULL,$5,$6,$7,$8,$9::jsonb)`,
-      [
-        randomUUID(),
-        tenantId,
-        dashboardId,
-        deviceId,
-        widget.widget_type,
-        widget.title,
-        position,
-        widget.width,
-        JSON.stringify(config),
-      ],
+  const template = await loadTemplate(sql, tenantId);
+  const widgets = template?.widgets ?? [];
+  const cardFor = new Map<string, string>();
+  for (const [position, widget] of widgets.entries())
+    cardFor.set(
+      widget.id,
+      await insertModelCard(sql, tenantId, dashboardId, deviceId, widget, position, null),
     );
-  }
+  if (template?.tv?.length) await saveTv(sql, tenantId, dashboardId, remapTv(template.tv, cardFor));
   return widgets.length;
+}
+
+/**
+ * Gives an existing dashboard the model's TV. Each TV card of a model card goes to this
+ * dashboard's card of the same type in the same order (the 2nd gauge to the 2nd gauge). A model
+ * card this dashboard lacks is created, with the variable of a card beside it on the same TV
+ * screen that read the same variable in the model (a production chart next to its bar chart).
+ */
+export async function applyTemplateTv(
+  sql: Executor,
+  tenantId: string,
+  dashboardId: string,
+  deviceId: string,
+) {
+  const template = await loadTemplate(sql, tenantId);
+  if (!template?.tv?.length) return null;
+  const own = (
+    await sql.query<{ id: string; widget_type: string; tag_id: string | null }>(
+      `SELECT id,widget_type,tag_id FROM dashboard_widgets
+       WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
+      [tenantId, dashboardId],
+    )
+  ).rows;
+  const modelCards = new Map(template.widgets.map((widget) => [widget.id, widget]));
+  const cardFor = new Map<string, string>();
+  const tagOf = new Map(own.map((widget) => [widget.id, widget.tag_id]));
+  for (const type of new Set(template.widgets.map((widget) => widget.widget_type))) {
+    const theirs = template.widgets.filter((widget) => widget.widget_type === type);
+    const ours = own.filter((widget) => widget.widget_type === type);
+    theirs.forEach((widget, index) => {
+      if (ours[index]) cardFor.set(widget.id, ours[index].id);
+    });
+  }
+  let position = own.length;
+  let created = 0;
+  for (const screen of template.tv)
+    for (const card of screen.cards) {
+      if (card.kind !== 'widget' || !card.widget_id || cardFor.has(card.widget_id)) continue;
+      const model = modelCards.get(card.widget_id);
+      if (!model) continue;
+      const sibling = screen.cards.find(
+        (other) =>
+          other.widget_id &&
+          other.widget_id !== card.widget_id &&
+          cardFor.has(other.widget_id) &&
+          model.tag_id &&
+          modelCards.get(other.widget_id)?.tag_id === model.tag_id,
+      );
+      const tagId = sibling ? (tagOf.get(cardFor.get(sibling.widget_id!)!) ?? null) : null;
+      const id = await insertModelCard(sql, tenantId, dashboardId, deviceId, model, position, tagId);
+      cardFor.set(card.widget_id, id);
+      tagOf.set(id, tagId);
+      position += 1;
+      created += 1;
+    }
+  const cards = await saveTv(sql, tenantId, dashboardId, remapTv(template.tv, cardFor));
+  return { screens: template.tv.length, cards, created };
 }
 
 function snapshotName(prefix: string) {
@@ -395,5 +488,45 @@ export function registerDashboardSnapshotRoutes(
       });
     });
     return { widgets: content?.widgets.length ?? 0 };
+  });
+
+  // "Usar TV do modelo": this dashboard's TV becomes the model's. Kept undoable by a snapshot.
+  app.post('/api/dashboards/:id/tv/apply-template', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const dashboard = await dashboardOf(req, reply, id);
+    if (!dashboard) return;
+    if (!dashboard.device_id)
+      return reply.code(400).send({ error: 'Este painel não é de um equipamento.' });
+    const current = access.principal(req);
+    const result = await db.transaction(async (sql) => {
+      const before = await capture(sql, current.tenantId, id);
+      await sql.query(
+        `INSERT INTO dashboard_snapshots(tenant_id,dashboard_id,name,content,created_by,created_by_email)
+         VALUES($1,$2,$3,$4::jsonb,$5,$6)`,
+        [
+          current.tenantId,
+          id,
+          snapshotName('Antes da TV do modelo'),
+          JSON.stringify(before),
+          current.id,
+          current.email,
+        ],
+      );
+      const applied = await applyTemplateTv(sql, current.tenantId, id, dashboard.device_id!);
+      if (applied)
+        await recordAudit(sql, req, current, {
+          action: 'dashboard.tv.apply_template',
+          targetType: 'dashboard',
+          targetId: id,
+          summary: applied,
+        });
+      return applied;
+    });
+    if (!result)
+      return reply.code(409).send({
+        error: 'O modelo ainda não tem TV. Configure a TV do painel modelo e use-o como modelo de novo.',
+      });
+    return result;
   });
 }
