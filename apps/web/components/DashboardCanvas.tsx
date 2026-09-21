@@ -826,6 +826,9 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [minimum, setMinimum] = useState(0);
   const [maximum, setMaximum] = useState(100);
   const [decimals, setDecimals] = useState(1);
+  // Two different things: where the HMI's number has its comma (the variable's scale) and how
+  // many decimal places this card shows.
+  const [commaPlaces, setCommaPlaces] = useState(0);
   const [colSpanInput, setColSpanInput] = useState(4);
   const [rowSpanInput, setRowSpanInput] = useState(4);
   const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
@@ -991,9 +994,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     setColor(widget.config.color ?? '#12b8a6');
     setMinimum(widget.config.min ?? 0);
     setMaximum(widget.config.max ?? 100);
-    setDecimals(
-      widget.tag_id ? placesOfScale(widget.scale_multiplier) : (widget.config.decimals ?? 1),
-    );
+    setDecimals(widget.config.decimals ?? 1);
+    setCommaPlaces(placesOfScale(widget.scale_multiplier));
     setColSpanInput(spansOf(widget).cols);
     setRowSpanInput(spansOf(widget).rows);
     setGaugeStyle(widget.config.gaugeStyle ?? 'top');
@@ -1057,9 +1059,9 @@ export function DashboardCanvas({ id }: { id: string }) {
       }
       // The comma is a property of the variable: written once, every card that reads it agrees.
       const currentTagId = tagId === undefined ? editingWidget.tag_id : tagId;
-      if (currentTagId && decimals !== placesOfScale(editingWidget.scale_multiplier))
+      if (currentTagId && commaPlaces !== placesOfScale(editingWidget.scale_multiplier))
         await mutate(`/devices/${editingWidget.device_id}/tags/${currentTagId}/decimals`, 'PATCH', {
-          places: decimals,
+          places: commaPlaces,
           adjustHistory: true,
         });
       await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', {
@@ -1108,7 +1110,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setError('');
     try {
       await mutate(`/devices/${editingWidget.device_id}/tags/${editingWidget.tag_id}/decimals`, 'PATCH', {
-        places: decimals,
+        places: commaPlaces,
         adjustHistory: true,
       });
       setDataVersion((version) => version + 1);
@@ -1495,8 +1497,24 @@ export function DashboardCanvas({ id }: { id: string }) {
                 />
               </label>
               <label className="field">
-                Onde fica a vírgula
-                <select value={decimals} onChange={(event) => setDecimals(Number(event.target.value))}>
+                Casas decimais mostradas
+                <input
+                  type="number"
+                  min="0"
+                  max="6"
+                  value={decimals}
+                  onChange={(event) => setDecimals(Number(event.target.value))}
+                />
+                <small className="shifts-help">
+                  Só muda como o número aparece no card: 73 ou 73,0.
+                </small>
+              </label>
+              <label className="field">
+                Onde fica a vírgula na IHM
+                <select
+                  value={commaPlaces}
+                  onChange={(event) => setCommaPlaces(Number(event.target.value))}
+                >
                   {COMMA_OPTIONS.map((option, places) => (
                     <option key={option} value={places}>
                       {option}
@@ -1505,8 +1523,8 @@ export function DashboardCanvas({ id }: { id: string }) {
                 </select>
                 <small className="shifts-help">
                   {editingWidget.tag_id
-                    ? 'A IHM manda 139 e o painel mostra 13,9. Vale para esta variável em todos os cards, e as leituras já gravadas são ajustadas.'
-                    : 'Quantas casas o valor mostra.'}
+                    ? 'Quanto vale o número que a IHM manda: com 0,0 o 139 vira 13,9. Vale para a variável em todos os cards, e as leituras já gravadas são ajustadas.'
+                    : 'Escolha a variável do card para configurar isto.'}
                 </small>
               </label>
               {editingWidget.tag_id && (
