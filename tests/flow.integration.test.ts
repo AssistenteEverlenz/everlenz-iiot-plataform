@@ -1394,23 +1394,22 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       await db.query('DELETE FROM tags WHERE id=$1', [tagId]);
     }
   });
-  it('moves the comma of a variable and rescales what is already stored', async () => {
+  it('moves the comma of a variable, rescaling and recounting what is already stored', async () => {
     const tagId = (
       await db.query<{ id: string }>(
         `INSERT INTO tags(tenant_id,device_id,key,name,data_type) VALUES($1,$2,'ton_acum','Ton','number') RETURNING id`,
         [TENANT, HAIWELL],
       )
     ).rows[0].id;
-    await db.query(
-      `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality)
-       VALUES($1,'22222222-2222-4222-8222-222222222222',$2,$3,now(),now(),139,'good')`,
-      [TENANT, HAIWELL, tagId],
-    );
-    await db.query(
-      `INSERT INTO telemetry_hourly_rollups(tenant_id,site_id,device_id,tag_id,bucket,product_code,sample_count,value_sum,value_min,value_max,first_value,first_at,last_value,last_at,positive_delta)
-       VALUES($1,'22222222-2222-4222-8222-222222222222',$2,$3,date_trunc('hour',now()),'9x19x19',1,139,139,139,66,now(),139,now(),73)`,
-      [TENANT, HAIWELL, tagId],
-    );
+    // Two readings of an accumulated counter, an hour apart, as the HMI writes them: 6,6 → 13,9.
+    const reading = (hoursAgo: number, value: number) =>
+      db.query(
+        `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality,product_code)
+         VALUES($1,'22222222-2222-4222-8222-222222222222',$2,$3,now()-($4::int*interval '1 hour'),now(),$5,'good','9x19x19')`,
+        [TENANT, HAIWELL, tagId, hoursAgo, value],
+      );
+    await reading(2, 66);
+    await reading(1, 139);
     const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
     try {
       const moved = await api.inject({
@@ -1419,20 +1418,29 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
         payload: { places: 1, adjustHistory: true },
       });
       expect(moved.statusCode).toBe(200);
-      expect(moved.json()).toEqual({ places: 1, rescaled: 1 });
+      expect(moved.json()).toEqual({ places: 1, rescaled: 2 });
       const stored = await db.query<{ value_number: string }>(
-        'SELECT value_number FROM telemetry_samples WHERE tag_id=$1',
+        'SELECT value_number FROM telemetry_samples WHERE tag_id=$1 ORDER BY timestamp',
         [tagId],
       );
-      expect(Number(stored.rows[0].value_number)).toBeCloseTo(13.9, 6);
-      const rollup = await db.query<{ positive_delta: string; value_max: string }>(
-        'SELECT positive_delta,value_max FROM telemetry_hourly_rollups WHERE tag_id=$1 AND product_code=$2',
-        [tagId, '9x19x19'],
+      stored.rows.map((row) => Number(row.value_number)).forEach((value, index) => {
+        expect(value).toBeCloseTo([6.6, 13.9][index], 6);
+      });
+      // The increment is 7,3 and not 13,9: the drop from 139 to 13,9 is the comma moving, not a
+      // counter the HMI zeroed, so the rollups are rebuilt from the readings.
+      const total = await db.query<{ delta: string }>(
+        'SELECT sum(positive_delta) delta FROM telemetry_hourly_rollups WHERE tag_id=$1',
+        [tagId],
       );
-      expect(Number(rollup.rows[0].positive_delta)).toBeCloseTo(7.3, 6);
-      expect(Number(rollup.rows[0].value_max)).toBeCloseTo(13.9, 6);
+      expect(Number(total.rows[0].delta)).toBeCloseTo(7.3, 6);
+      const baseline = await db.query<{ last_value: string }>(
+        'SELECT last_value FROM telemetry_numeric_state WHERE tag_id=$1',
+        [tagId],
+      );
+      expect(Number(baseline.rows[0].last_value)).toBeCloseTo(13.9, 6);
     } finally {
       await api.close();
+      await db.query('DELETE FROM telemetry_numeric_state WHERE tag_id=$1', [tagId]);
       await db.query('DELETE FROM telemetry_hourly_rollups WHERE tag_id=$1', [tagId]);
       await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [tagId]);
       await db.query('DELETE FROM tags WHERE id=$1', [tagId]);

@@ -10,7 +10,7 @@ import { createAccessControl, registerAuthRoutes, type Principal } from './auth.
 import { recordAudit } from './audit.js';
 import { publishCommand, type CommandPublisher } from './commands.js';
 import { registerProductionRoutes } from './production.js';
-import { registerShiftProductionRoutes } from './shift-production.js';
+import { registerShiftProductionRoutes, scheduleProductionRebuild } from './shift-production.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 import { registerTvRoutes } from './tv-screens.js';
@@ -370,6 +370,47 @@ export async function createApp(
       )
     ).rows;
   });
+  /** Rebuilds a variable's hourly rollups from its readings (migrations 010/011 arithmetic). */
+  async function rebuildTagRollups(
+    sql: { query: Database['query'] },
+    tenantId: string,
+    deviceId: string,
+    tagId: string,
+  ) {
+    const scope = [tenantId, deviceId, tagId];
+    await sql.query(
+      'DELETE FROM telemetry_hourly_rollups WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+      scope,
+    );
+    await sql.query(
+      `WITH ordered AS (
+         SELECT tenant_id,site_id,device_id,tag_id,product_code,timestamp,value_number,
+           lag(value_number) OVER (ORDER BY timestamp,id) previous_value
+         FROM telemetry_samples
+         WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL
+       ), grouped AS (
+         SELECT tenant_id,site_id,device_id,tag_id,product_code,
+           date_trunc('hour',timestamp) bucket,count(*) sample_count,
+           sum(value_number) value_sum,min(value_number) value_min,max(value_number) value_max,
+           (array_agg(value_number ORDER BY timestamp))[1] first_value,min(timestamp) first_at,
+           (array_agg(value_number ORDER BY timestamp DESC))[1] last_value,max(timestamp) last_at,
+           sum(CASE WHEN previous_value IS NULL THEN 0
+             WHEN value_number >= previous_value THEN value_number-previous_value
+             ELSE greatest(value_number,0) END) positive_delta
+         FROM ordered
+         GROUP BY tenant_id,site_id,device_id,tag_id,product_code,date_trunc('hour',timestamp)
+       )
+       INSERT INTO telemetry_hourly_rollups(
+         tenant_id,site_id,device_id,tag_id,product_code,bucket,sample_count,value_sum,
+         value_min,value_max,first_value,first_at,last_value,last_at,positive_delta
+       )
+       SELECT tenant_id,site_id,device_id,tag_id,product_code,bucket,sample_count,value_sum,
+         value_min,value_max,first_value,first_at,last_value,last_at,positive_delta
+       FROM grouped`,
+      scope,
+    );
+  }
+
   // "Onde fica a vírgula" of one variable: 0 keeps whole numbers, 0,0 divides by 10, and so on.
   // The readings already stored are rescaled by the same factor unless asked otherwise, so the
   // charts and totals of the past match what arrives from now on.
@@ -391,7 +432,7 @@ export async function createApp(
     if (!tag.rows.length) return reply.code(404).send({ error: 'Variable not found' });
     const before = Number(tag.rows[0].scale_multiplier);
     const after = scaleForDecimals(body.places);
-    if (before === after) return { places: body.places, rescaled: 0 };
+    if (before === after && !body.adjustHistory) return { places: body.places, rescaled: 0 };
     const ratio = after / before;
     return db.transaction(async (sql) => {
       await sql.query(
@@ -408,14 +449,24 @@ export async function createApp(
               [current.tenantId, id, tagId, ratio],
             )
           ).rowCount ?? 0;
-        await sql.query(
-          `UPDATE telemetry_hourly_rollups
-           SET value_sum=value_sum*$4,value_min=value_min*$4,value_max=value_max*$4,
-             first_value=first_value*$4,last_value=last_value*$4,positive_delta=positive_delta*$4
-           WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3`,
-          [current.tenantId, id, tagId, ratio],
-        );
+        // The hourly rollups are rebuilt from the readings, never multiplied: the hour the comma
+        // moved in holds a fake "counter went back" (139 then 13,9) that would count a whole
+        // day twice.
+        await rebuildTagRollups(sql, current.tenantId, id, tagId);
       }
+      // The counter baseline the ingestor compares the next reading against lives in the old
+      // scale, and would read as a reset: it follows the newest stored reading.
+      await sql.query(
+        'DELETE FROM telemetry_numeric_state WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+        [current.tenantId, id, tagId],
+      );
+      await sql.query(
+        `INSERT INTO telemetry_numeric_state(tenant_id,site_id,device_id,tag_id,last_timestamp,last_value)
+         SELECT tenant_id,site_id,device_id,tag_id,timestamp,value_number FROM telemetry_samples
+         WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL
+         ORDER BY timestamp DESC,id DESC LIMIT 1`,
+        [current.tenantId, id, tagId],
+      );
       await recordAudit(sql, req, current, {
         action: 'tag.decimals',
         targetType: 'tag',
@@ -423,6 +474,10 @@ export async function createApp(
         summary: { key: tag.rows[0].key, places: body.places, scale: after, rescaled },
       });
       return { places: body.places, rescaled };
+    }).then(async (result) => {
+      // Production is counted from the readings: with a new scale it has to be counted again.
+      scheduleProductionRebuild(db, current.tenantId, id, req.log);
+      return result;
     });
   });
 
