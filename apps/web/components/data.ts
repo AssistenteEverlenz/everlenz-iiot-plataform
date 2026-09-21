@@ -75,6 +75,8 @@ export interface DashboardWidget {
   id: string;
   device_id: string;
   tag_id: string | null;
+  /** Scale of the variable: 0.1 means the HMI omits one decimal place. */
+  scale_multiplier?: number | string | null;
   widget_type:
     | 'value'
     | 'line'

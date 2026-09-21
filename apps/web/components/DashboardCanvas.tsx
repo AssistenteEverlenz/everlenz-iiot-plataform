@@ -276,6 +276,14 @@ function SixDots() {
   );
 }
 
+// "Onde fica a vírgula" of a variable: the HMI publishes 139 for 13,9 tons, or 3630 for 3,630 kg.
+const COMMA_OPTIONS = ['0', '0,0', '0,00', '0,000', '0,0000'];
+const DECIMAL_SCALES = [1, 0.1, 0.01, 0.001, 0.0001];
+function placesOfScale(multiplier: number | string | null | undefined) {
+  const index = DECIMAL_SCALES.indexOf(Number(multiplier));
+  return index > 0 ? index : 0;
+}
+
 // Cards that read no single variable; every other card needs one to show anything.
 const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto']);
 
@@ -983,7 +991,9 @@ export function DashboardCanvas({ id }: { id: string }) {
     setColor(widget.config.color ?? '#12b8a6');
     setMinimum(widget.config.min ?? 0);
     setMaximum(widget.config.max ?? 100);
-    setDecimals(widget.config.decimals ?? 1);
+    setDecimals(
+      widget.tag_id ? placesOfScale(widget.scale_multiplier) : (widget.config.decimals ?? 1),
+    );
     setColSpanInput(spansOf(widget).cols);
     setRowSpanInput(spansOf(widget).rows);
     setGaugeStyle(widget.config.gaugeStyle ?? 'top');
@@ -1045,6 +1055,13 @@ export function DashboardCanvas({ id }: { id: string }) {
         }
         if (tagId === editingWidget.tag_id) tagId = undefined;
       }
+      // The comma is a property of the variable: written once, every card that reads it agrees.
+      const currentTagId = tagId === undefined ? editingWidget.tag_id : tagId;
+      if (currentTagId && decimals !== placesOfScale(editingWidget.scale_multiplier))
+        await mutate(`/devices/${editingWidget.device_id}/tags/${currentTagId}/decimals`, 'PATCH', {
+          places: decimals,
+          adjustHistory: true,
+        });
       await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', {
         ...(tagId !== undefined ? { tagId } : {}),
         title,
@@ -1458,14 +1475,19 @@ export function DashboardCanvas({ id }: { id: string }) {
                 />
               </label>
               <label className="field">
-                Casas decimais
-                <input
-                  type="number"
-                  min="0"
-                  max="6"
-                  value={decimals}
-                  onChange={(event) => setDecimals(Number(event.target.value))}
-                />
+                Onde fica a vírgula
+                <select value={decimals} onChange={(event) => setDecimals(Number(event.target.value))}>
+                  {COMMA_OPTIONS.map((option, places) => (
+                    <option key={option} value={places}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <small className="shifts-help">
+                  {editingWidget.tag_id
+                    ? 'A IHM manda 139 e o painel mostra 13,9. Vale para esta variável em todos os cards, e as leituras já gravadas são ajustadas.'
+                    : 'Quantas casas o valor mostra.'}
+                </small>
               </label>
               <label className="field">
                 Cor

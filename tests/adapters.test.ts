@@ -195,6 +195,13 @@ describe('Tag conversion', () => {
     'rejects invalid numeric %j',
     (v) => expect(() => convertTag(v, tag('number'))).toThrow(),
   );
+  // "Onde fica a vírgula": the HMI sends 139 for 13,9 t, or already sends 2,55 kg.
+  it('reads a whole number as the HMI writing it without the comma', () =>
+    expect(convertTag(139, { ...tag('number'), scale_multiplier: 0.1, scale_offset: 0 })).toBe(13.9));
+  it('takes a value that already has decimals as it is', () =>
+    expect(convertTag('2.55', { ...tag('number'), scale_multiplier: 0.001, scale_offset: 0 })).toBe(2.55));
+  it('still scales a decimal value when the scale is not a comma position', () =>
+    expect(convertTag('2.5', { ...tag('number'), scale_multiplier: 2, scale_offset: 0 })).toBe(5));
   it('keeps boolean false', () => expect(convertTag('0', tag('boolean'))).toBe(false));
   it('rejects ambiguous boolean', () => expect(() => convertTag('yes', tag('boolean'))).toThrow());
   it('preserves binary and JSON', () => {

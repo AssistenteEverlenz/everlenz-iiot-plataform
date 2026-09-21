@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z, ZodError } from 'zod';
-import { deviceSecret, env } from '@iiot/shared';
+import { deviceSecret, env, scaleForDecimals } from '@iiot/shared';
 import { database, type Database } from '@iiot/database';
 import { randomUUID } from 'node:crypto';
 import { access as accessFile, mkdir, rename, writeFile } from 'node:fs/promises';
@@ -370,6 +370,62 @@ export async function createApp(
       )
     ).rows;
   });
+  // "Onde fica a vírgula" of one variable: 0 keeps whole numbers, 0,0 divides by 10, and so on.
+  // The readings already stored are rescaled by the same factor unless asked otherwise, so the
+  // charts and totals of the past match what arrives from now on.
+  app.patch('/api/devices/:id/tags/:tagId/decimals', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id, tagId } = z.object({ id: uuid, tagId: uuid }).parse(req.params);
+    const body = z
+      .object({
+        places: z.number().int().min(0).max(6),
+        adjustHistory: z.boolean().default(true),
+      })
+      .parse(req.body);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const current = access.principal(req);
+    const tag = await db.query<{ key: string; scale_multiplier: string | number }>(
+      'SELECT key,scale_multiplier FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+      [current.tenantId, id, tagId],
+    );
+    if (!tag.rows.length) return reply.code(404).send({ error: 'Variable not found' });
+    const before = Number(tag.rows[0].scale_multiplier);
+    const after = scaleForDecimals(body.places);
+    if (before === after) return { places: body.places, rescaled: 0 };
+    const ratio = after / before;
+    return db.transaction(async (sql) => {
+      await sql.query(
+        'UPDATE tags SET scale_multiplier=$4 WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+        [current.tenantId, id, tagId, after],
+      );
+      let rescaled = 0;
+      if (body.adjustHistory) {
+        rescaled =
+          (
+            await sql.query(
+              `UPDATE telemetry_samples SET value_number=value_number*$4
+               WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL`,
+              [current.tenantId, id, tagId, ratio],
+            )
+          ).rowCount ?? 0;
+        await sql.query(
+          `UPDATE telemetry_hourly_rollups
+           SET value_sum=value_sum*$4,value_min=value_min*$4,value_max=value_max*$4,
+             first_value=first_value*$4,last_value=last_value*$4,positive_delta=positive_delta*$4
+           WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3`,
+          [current.tenantId, id, tagId, ratio],
+        );
+      }
+      await recordAudit(sql, req, current, {
+        action: 'tag.decimals',
+        targetType: 'tag',
+        targetId: tagId,
+        summary: { key: tag.rows[0].key, places: body.places, scale: after, rescaled },
+      });
+      return { places: body.places, rescaled };
+    });
+  });
+
   app.get('/api/devices/:id/signals', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
@@ -1881,7 +1937,7 @@ async function dashboardView(
   );
   if (!dashboard.rows.length) return null;
   const widgets = await db.query<DashboardWidgetRecord>(
-    `SELECT w.*,t.key,t.name tag_name,t.unit,t.data_type FROM dashboard_widgets w
+    `SELECT w.*,t.key,t.name tag_name,t.unit,t.data_type,t.scale_multiplier FROM dashboard_widgets w
      LEFT JOIN tags t ON t.id=w.tag_id AND t.tenant_id=w.tenant_id
      WHERE w.tenant_id=$1 AND w.dashboard_id=$2 ORDER BY w.position,w.created_at`,
     [current.tenantId, dashboardId],

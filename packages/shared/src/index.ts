@@ -208,6 +208,16 @@ export function decodePayload(payload: Buffer) {
   }
   return { text, hex: payload.toString('hex'), json };
 }
+/** Where the comma sits: 0.1 → 1 decimal place, 0.001 → 3. Any other scale returns 0. */
+export const DECIMAL_SCALES = [1, 0.1, 0.01, 0.001, 0.0001, 0.00001, 0.000001] as const;
+export function decimalPlacesOf(multiplier: number | string | null | undefined) {
+  const index = DECIMAL_SCALES.indexOf(Number(multiplier) as (typeof DECIMAL_SCALES)[number]);
+  return index > 0 ? index : 0;
+}
+export function scaleForDecimals(places: number) {
+  return DECIMAL_SCALES[Math.max(0, Math.min(DECIMAL_SCALES.length - 1, Math.round(places)))];
+}
+
 export function convertTag(value: unknown, tag: TagConfig): number | boolean | string {
   if (tag.data_type === 'string') {
     if (!['string', 'number', 'boolean'].includes(typeof value))
@@ -224,7 +234,15 @@ export function convertTag(value: unknown, tag: TagConfig): number | boolean | s
     (typeof value !== 'string' || !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim()))
   )
     throw new Error(`Invalid number: ${tag.key}`);
-  const n = Number(value) * Number(tag.scale_multiplier) + Number(tag.scale_offset);
+  const raw = Number(value);
+  const multiplier = Number(tag.scale_multiplier);
+  // "Onde fica a vírgula": a scale of 0.1, 0.01, … says the HMI publishes the number without its
+  // decimal point (139 for 13,9). A value that already carries decimals (2,55 kg) is the real
+  // reading and is taken as it is, so both HMI styles land on the same unit.
+  const n =
+    decimalPlacesOf(multiplier) && !Number.isInteger(raw)
+      ? raw + Number(tag.scale_offset)
+      : raw * multiplier + Number(tag.scale_offset);
   if (!Number.isFinite(n)) throw new Error(`Non-finite number: ${tag.key}`);
   return n;
 }

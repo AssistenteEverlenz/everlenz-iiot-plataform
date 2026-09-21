@@ -18,13 +18,15 @@ interface Signal {
   scale_multiplier: number | string | null;
   present: boolean;
 }
-// The HMI publishes the recipe weight in the unit its own project uses: a Delta sends kilograms,
-// the Haiwell of Cerâmica Oliveira sends grams. The platform works in kilograms, so the choice is
-// stored as the variable's scale and applied to every sample as it arrives.
+// The HMI publishes the recipe weight without its decimal point: a Delta sends 2.55 for 2,55 kg
+// and the Haiwell of Cerâmica Oliveira sends 3630 for 3,630 kg. Saying where the comma sits is
+// stored as the variable's scale and applied to every reading as it arrives. The platform works
+// in kilograms, so 3630 with three decimal places becomes 3,63 kg.
 const WEIGHT_UNITS = [
-  { value: 'kg', label: 'Quilos (kg)', multiplier: 1 },
-  { value: 'g', label: 'Gramas (g)', multiplier: 0.001 },
-  { value: 't', label: 'Toneladas (t)', multiplier: 1000 },
+  { value: 'kg', label: '0 · já vem em quilos', multiplier: 1 },
+  { value: 'd', label: '0,0 · uma casa (36 → 3,6 kg)', multiplier: 0.1 },
+  { value: 'c', label: '0,00 · duas casas (363 → 3,63 kg)', multiplier: 0.01 },
+  { value: 'g', label: '0,000 · três casas (3630 → 3,63 kg)', multiplier: 0.001 },
 ] as const;
 type WeightUnit = (typeof WEIGHT_UNITS)[number]['value'];
 const multiplierOf = (unit: WeightUnit) =>
@@ -267,7 +269,7 @@ export function ProductionConfigModal({
             </label>
             {form.weightKey && (
               <label className="field">
-                A variável de peso vem em
+                Onde fica a vírgula do peso
                 <select
                   value={form.weightUnit}
                   onChange={(event) =>
