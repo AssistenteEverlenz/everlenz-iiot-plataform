@@ -1100,6 +1100,26 @@ export function DashboardCanvas({ id }: { id: string }) {
   }
   // Charts read their own statistics every 30 s; a deleted history must disappear now.
   const [dataVersion, setDataVersion] = useState(0);
+  // Rebuilds the hourly totals of one variable from its readings: a scale change or an HMI
+  // reset can leave an hour counting a whole day at once.
+  async function recount() {
+    if (!editingWidget?.tag_id) return;
+    setSavingModal(true);
+    setError('');
+    try {
+      await mutate(`/devices/${editingWidget.device_id}/tags/${editingWidget.tag_id}/decimals`, 'PATCH', {
+        places: decimals,
+        adjustHistory: true,
+      });
+      setDataVersion((version) => version + 1);
+      setEditingWidget(null);
+      await Promise.all([dashboard.refresh(), history.refresh(), latest.refresh()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Não foi possível recalcular.');
+    } finally {
+      setSavingModal(false);
+    }
+  }
   async function removeWidget(widget: DashboardWidget) {
     await mutate(`/dashboards/${id}/widgets/${widget.id}`, 'DELETE');
     setEditingWidget(null);
@@ -1489,6 +1509,18 @@ export function DashboardCanvas({ id }: { id: string }) {
                     : 'Quantas casas o valor mostra.'}
                 </small>
               </label>
+              {editingWidget.tag_id && (
+                <label className="field">
+                  Contagem desta variável
+                  <button type="button" disabled={savingModal} onClick={() => void recount()}>
+                    Recalcular do histórico
+                  </button>
+                  <small className="shifts-help">
+                    Refaz os totais por hora a partir das leituras gravadas. Use quando um total
+                    parecer alto demais, por exemplo depois de mexer na vírgula.
+                  </small>
+                </label>
+              )}
               <label className="field">
                 Cor
                 <input
