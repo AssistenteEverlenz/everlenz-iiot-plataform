@@ -6614,3 +6614,92 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* Behind each number of the production board: the shift hour by hour and pallet by pallet. */
+.shift-kpi.clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.shift-kpi.clickable:hover,
+.shift-kpi.clickable:focus-visible {
+  border-color: #12b8a6;
+  transform: translateY(-1px);
+}
+.detail-modal {
+  --detail-grid: #e3ebed;
+  --detail-axis: #6b7f86;
+  width: min(980px, 96vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 16px;
+}
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.detail-summary div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid #e3ebed;
+  border-radius: 10px;
+}
+.detail-summary span {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7f86;
+}
+.detail-summary b {
+  font-size: 22px;
+  font-weight: 600;
+}
+.detail-summary b small {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6b7f86;
+}
+.detail-summary b.good {
+  color: #1d8a5f;
+}
+.detail-summary b.bad {
+  color: #e4572e;
+}
+.detail-section {
+  display: grid;
+  gap: 8px;
+}
+.detail-section > strong {
+  font-size: 14px;
+}
+.detail-chart {
+  height: 220px;
+}
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.detail-table th,
+.detail-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #eef3f4;
+  text-align: left;
+}
+.detail-table th {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7f86;
+}
+.detail-table td.n,
+.detail-table th.n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.detail-modal .scroll {
+  max-height: 320px;
+  overflow: auto;
+}

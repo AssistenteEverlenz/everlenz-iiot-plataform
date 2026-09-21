@@ -346,6 +346,54 @@ async function palletTiming(
   };
 }
 
+/** Each pallet of a window: when the counter moved and the time since the pallet before it. */
+async function palletEvents(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  tagId: string,
+  from: Date,
+  to: Date,
+) {
+  const rows = await db.query<{ at: Date | string; value: number | null; product: string | null }>(
+    `(SELECT received_at at,value_number value,product_code product FROM telemetry_samples
+      WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at<$4
+      ORDER BY received_at DESC LIMIT 1)
+     UNION ALL
+     (SELECT received_at,value_number,product_code FROM telemetry_samples
+      WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at>=$4 AND received_at<$5
+      ORDER BY received_at)`,
+    [tenantId, deviceId, tagId, from, to],
+  );
+  const ordered = rows.rows
+    .map((row) => ({
+      at: new Date(row.at).getTime(),
+      value: row.value == null ? null : Number(row.value),
+      product: row.product,
+    }))
+    .sort((a, b) => a.at - b.at);
+  let reading: number | null = null;
+  let previousAt: number | null = null;
+  const events: { at: string; seconds: number | null; pallets: number; product: string | null }[] = [];
+  for (const row of ordered) {
+    const step = counterStep(reading, row.value);
+    reading = step.reading;
+    if (step.delta <= 0) continue;
+    if (row.at < from.getTime()) {
+      previousAt = row.at;
+      continue;
+    }
+    events.push({
+      at: new Date(row.at).toISOString(),
+      seconds: previousAt == null ? null : (row.at - previousAt) / 1000,
+      pallets: step.delta,
+      product: row.product,
+    });
+    previousAt = row.at;
+  }
+  return events;
+}
+
 /** Live numbers of one window (a shift, or all the shifts of a day). */
 async function buildBoard(
   db: Database,
@@ -1294,6 +1342,61 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       });
     });
     return loadConfig(db, current.tenantId, id);
+  });
+
+  /**
+   * What is behind each number of the board: production hour by hour, the machine's time in
+   * each hour and every pallet with how long it took. Same window as the board.
+   */
+  app.get('/api/devices/:id/shift-detail', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const { mode } = z.object({ mode: z.enum(['shift', 'day']).default('shift') }).parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const config = await loadConfig(db, tenantId, id);
+    if (!config) return reply.code(404).send({ error: 'Device not found' });
+    const now = new Date();
+    const { shifts } = await loadShifts(db, tenantId, config.site_id);
+    const today = plantDate(now);
+    const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 1));
+    const running = occurrences.find((item) => item.start <= now && now < item.end) ?? null;
+    const date = running?.productionDate ?? today;
+    const chosen =
+      mode === 'day'
+        ? occurrences.filter((item) => item.productionDate === date)
+        : running
+          ? [running]
+          : [...occurrences].reverse().filter((item) => item.end <= now).slice(0, 1);
+    if (!chosen.length) return { span: null, hours: [], pallets: [], metric: config.target_metric };
+    const span = spanOf(chosen);
+    const until = new Date(Math.min(span.end.getTime(), now.getTime()));
+    const buckets = await loadBuckets(db, tenantId, id, span.start, until);
+    const byHour = new Map<
+      string,
+      { pieces: number; pallets: number; tons: number; producing: number; idle: number; manual: number }
+    >();
+    for (const row of buckets) {
+      const hour = new Date(Math.floor(new Date(row.bucket).getTime() / 3600_000) * 3600_000).toISOString();
+      const entry = byHour.get(hour) ?? { pieces: 0, pallets: 0, tons: 0, producing: 0, idle: 0, manual: 0 };
+      entry.pieces += Number(row.pieces);
+      entry.pallets += Number(row.pallets);
+      entry.tons += Number(row.tons);
+      entry.producing += Number(row.producing_s);
+      entry.idle += Number(row.idle_s);
+      entry.manual += Number(row.manual_s);
+      byHour.set(hour, entry);
+    }
+    return {
+      span: { start: span.start.toISOString(), end: span.end.toISOString(), until: until.toISOString() },
+      shiftName: chosen.map((item) => item.name).join(' + '),
+      metric: config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets'),
+      hours: [...byHour.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([hour, entry]) => ({ hour, ...entry })),
+      pallets: config.pallets_tag_id
+        ? await palletEvents(db, tenantId, id, config.pallets_tag_id, span.start, until)
+        : [],
+    };
   });
 
   // The live shift board. mode=shift follows the running shift (or the last / next one);

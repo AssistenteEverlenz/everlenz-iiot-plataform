@@ -1927,4 +1927,30 @@
   :root[data-theme='dark'] .clear-history-warning {
     color: #e29683;
   }
+  :root[data-theme='dark'] .shift-kpi.clickable:hover,
+  :root[data-theme='dark'] .shift-kpi.clickable:focus-visible {
+    border-color: #12b8a6;
+  }
+  :root[data-theme='dark'] .detail-summary div {
+    border: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .detail-summary span {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .detail-summary b small {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .detail-summary b.good {
+    color: #88ddbb;
+  }
+  :root[data-theme='dark'] .detail-summary b.bad {
+    color: #e38f77;
+  }
+  :root[data-theme='dark'] .detail-table th,
+  :root[data-theme='dark'] .detail-table td {
+    border-bottom: 1px solid #1a2629;
+  }
+  :root[data-theme='dark'] .detail-table th {
+    color: #92a2a8;
+  }
 }

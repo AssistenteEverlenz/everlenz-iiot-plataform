@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { usePoll } from './data';
 import { TargetModal } from './TargetModal';
+import { ShiftDetailModal, type DetailFocus } from './ShiftDetailModal';
 
 // "Quadro de produção": one card that answers how the shift (or the day) is going. Produced
 // against the target, where the pace leads by the end (S-curve and projection), what is needed
@@ -323,6 +324,20 @@ export function ShiftBoardView({
   historical?: boolean;
 }) {
   const [editingTarget, setEditingTarget] = useState(false);
+  // Each number of the board opens what is behind it: the shift hour by hour, pallet by pallet.
+  const [detail, setDetail] = useState<DetailFocus | null>(null);
+  const opens = (focus: DetailFocus) =>
+    historical
+      ? {}
+      : {
+          role: 'button' as const,
+          tabIndex: 0,
+          onClick: () => setDetail(focus),
+          onKeyDown: (event: React.KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') setDetail(focus);
+          },
+          title: 'Ver como foi durante o turno',
+        };
   if (!data.configured)
     return (
       <div className="shift-board-empty">
@@ -420,14 +435,14 @@ export function ShiftBoardView({
       ) : (
         <>
           <div className="shift-kpis">
-            <div className="shift-kpi hero">
+            <div className={`shift-kpi hero ${historical ? '' : 'clickable'}`} {...opens('produced')}>
               <span>Produzido</span>
               <b>
                 {formatNumber(board.totals.milheiros, 1)} <small>milheiros</small>
               </b>
               <em>{secondaries.join(' · ') || 'nenhuma peça ainda'}</em>
             </div>
-            <div className="shift-kpi">
+            <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('target')}>
               <span className="shift-kpi-title">
                 Meta
                 {!historical && (
@@ -460,7 +475,7 @@ export function ShiftBoardView({
                 </>
               )}
             </div>
-            <div className="shift-kpi">
+            <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('projection')}>
               <span>Projeção de fechamento</span>
               <b>
                 {formatNumber(
@@ -475,7 +490,7 @@ export function ShiftBoardView({
                   : 'no ritmo da última hora'}
               </em>
             </div>
-            <div className="shift-kpi">
+            <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('pace')}>
               <span>Ritmo</span>
               <b>
                 {formatNumber(board.pacePerHour, info.decimals)} <small>{info.unit}/h</small>
@@ -488,8 +503,9 @@ export function ShiftBoardView({
             </div>
             {board.palletTiming && board.palletTiming.count > 0 && (
               <div
-                className="shift-kpi"
-                title="Média: tempo produzindo dividido pelos paletes do período (paradas não entram). Último: tempo entre os dois últimos paletes."
+                className={`shift-kpi ${historical ? '' : 'clickable'}`}
+                {...opens('pallets')}
+                title="Média: tempo produzindo dividido pelos paletes do período (paradas não entram). Último: tempo entre os dois últimos paletes. Clique para ver o ranking do turno."
               >
                 <span>Tempo por palete</span>
                 <b>
@@ -601,6 +617,14 @@ export function ShiftBoardView({
             </small>
           )}
         </>
+      )}
+      {detail && (
+        <ShiftDetailModal
+          deviceId={deviceId}
+          mode={mode}
+          focus={detail}
+          onClose={() => setDetail(null)}
+        />
       )}
       {editingTarget && (
         <TargetModal
