@@ -272,9 +272,14 @@ button {
 button:hover {
   background: #edf6f4;
 }
-button:disabled {
-  opacity: 0.4;
+/* A faded button is unreadable: a disabled one keeps its shape and loses its colour instead. */
+button:disabled,
+button:disabled:hover {
   cursor: default;
+  background: #eef2f3;
+  border-color: #dde7e9;
+  color: #90a5ad;
+  box-shadow: none;
 }
 input {
   min-width: 200px;
@@ -359,14 +364,24 @@ footer {
   text-decoration: none;
 }
 .primary-button {
-  background: #0d8f82;
-  border-color: #0d8f82;
-  color: white;
-  box-shadow: 0 5px 16px rgba(13, 143, 130, 0.18);
+  background: var(--brand-accent, #0d8f82);
+  border-color: var(--brand-accent, #0d8f82);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 5px 16px color-mix(in srgb, var(--brand-accent, #0d8f82) 22%, transparent);
 }
 .primary-button:hover {
-  background: #08786f;
-  color: white;
+  background: color-mix(in srgb, var(--brand-accent, #0d8f82) 85%, #000);
+  border-color: color-mix(in srgb, var(--brand-accent, #0d8f82) 85%, #000);
+  color: #fff;
+}
+button:focus-visible,
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--brand-accent, #0d8f82);
+  outline-offset: 1px;
 }
 .secondary-button {
   background: #fff;
@@ -452,8 +467,14 @@ footer {
   font-size: 20px;
 }
 .danger-button {
-  color: #b94141;
-  border-color: #f0cece;
+  color: #a3272f;
+  border-color: #e0a9ad;
+  background: #fff7f7;
+  font-weight: 600;
+}
+.danger-button:hover {
+  background: #fdeceb;
+  color: #8d1f27;
 }
 .form-grid {
   display: grid;
@@ -2280,6 +2301,13 @@ footer {
 .danger-button-solid {
   background: #bd363d;
   border-color: #bd363d;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 5px 16px rgba(189, 54, 61, 0.2);
+}
+.danger-button-solid:hover {
+  background: #a02830;
+  border-color: #a02830;
   color: #fff;
 }
 .bottom-navigation svg {
@@ -6702,4 +6730,205 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .detail-modal .scroll {
   max-height: 320px;
   overflow: auto;
+}
+
+/* Modals: fields on one grid that adapts to the space, a quiet footer and help that only
+   appears when asked for, through the "i" beside the label. */
+.modal-card .form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px 18px;
+}
+.modal-card .field {
+  gap: 6px;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+.modal-card .field > input,
+.modal-card .field > select,
+.modal-card .field > button {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.modal-card .field.full-field,
+.modal-card .check-field.full-field {
+  grid-column: 1 / -1;
+}
+.modal-card .modal-actions {
+  position: sticky;
+  bottom: -24px;
+  margin-top: 26px;
+  padding: 14px 0 2px;
+  border-top: 1px solid #e6eef0;
+  background: inherit;
+  flex-wrap: wrap;
+}
+.field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.hint {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid #c3d3d7;
+  color: #6b8189;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-style: normal;
+  cursor: help;
+  position: relative;
+}
+.hint:hover,
+.hint:focus-visible {
+  border-color: var(--brand-accent, #0d8f82);
+  color: var(--brand-accent, #0d8f82);
+}
+.hint::after {
+  content: attr(data-hint);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  width: max-content;
+  max-width: 260px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #16333c;
+  color: #eaf3f4;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease, transform 0.14s ease;
+  z-index: 5;
+}
+.hint::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #16333c;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+  z-index: 5;
+}
+.hint:hover::after,
+.hint:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.hint:hover::before,
+.hint:focus-visible::before {
+  opacity: 1;
+}
+/* Near the right edge the balloon would leave the modal: it opens to the left instead. */
+.hint.left::after {
+  left: auto;
+  right: -4px;
+  transform: translateY(4px);
+}
+.hint.left:hover::after,
+.hint.left:focus-visible::after {
+  transform: translateY(0);
+}
+
+/* The S curve can be zoomed and dragged; its tooltip speaks the machine's state. */
+.shift-curve-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y;
+}
+.chart-zoom {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
+}
+.shift-curve-frame:hover .chart-zoom,
+.chart-zoom:focus-within {
+  opacity: 1;
+}
+.chart-zoom button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 6px;
+}
+.chart-zoom-hint {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  z-index: 2;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #7d9299;
+  pointer-events: none;
+}
+.curve-tooltip {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #0f2a31;
+  color: #e7f1f2;
+  font-size: 11.5px;
+  line-height: 1.4;
+  box-shadow: 0 8px 22px rgba(6, 26, 31, 0.28);
+}
+.curve-tooltip strong {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9fb4ba;
+}
+.curve-tooltip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.curve-tooltip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.curve-tooltip b {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.curve-tooltip em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: #9fb4ba;
+}
+
+/* The report carries the same analysis the live board opens. */
+.production-detail-charts {
+  --detail-grid: #e3ebed;
+  --detail-axis: #6b7f86;
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #e6eef0;
 }

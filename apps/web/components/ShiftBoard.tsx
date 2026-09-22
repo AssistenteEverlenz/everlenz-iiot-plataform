@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -173,87 +173,210 @@ function statusLine(data: ShiftBoardResponse) {
  * timeline[k]; hard stops over the area's own width, which objectBoundingBox measures). It
  * fills its parent, so the board and the TV size it each their own way.
  */
+/**
+ * Cumulative curve of the shift. The filled area carries the machine's state colour along the
+ * shift, and the tooltip names the state at the point under the mouse. The chart zooms with the
+ * wheel or the buttons and can be dragged sideways, so a busy hour can be looked at closely.
+ */
 export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSize?: number }) {
   const reactId = useId();
   const info = metricInfo[board.metric];
-  const chart = board.curve.map((point) => ({ ...point, label: clock(point.t) }));
+  const chart = board.curve.map((point, index) => ({
+    ...point,
+    label: clock(point.t),
+    state: board.timeline[index]?.state ?? 'unknown',
+  }));
   const gradientId = `shift-state-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const lastActual = chart.reduce((last, point, index) => (point.actual != null ? index : last), -1);
+  // Window of points on screen; null is the whole shift.
+  const [view, setView] = useState<{ start: number; end: number } | null>(null);
+  const drag = useRef<{ x: number; start: number; end: number } | null>(null);
+  const frame = useRef<HTMLDivElement>(null);
+  const span = view ?? { start: 0, end: Math.max(0, chart.length - 1) };
+  const visible = chart.slice(span.start, span.end + 1);
+  const MIN_POINTS = 6;
+
+  function zoom(factor: number, anchor = 0.5) {
+    setView((current) => {
+      const now = current ?? { start: 0, end: Math.max(0, chart.length - 1) };
+      const width = now.end - now.start + 1;
+      const wanted = Math.max(MIN_POINTS, Math.min(chart.length, Math.round(width * factor)));
+      if (wanted >= chart.length) return null;
+      const centre = now.start + width * anchor;
+      const from = Math.max(0, Math.min(chart.length - wanted, Math.round(centre - wanted * anchor)));
+      return { start: from, end: from + wanted - 1 };
+    });
+  }
+
+  const lastActual = visible.reduce(
+    (last, point, index) => (point.actual != null ? index : last),
+    -1,
+  );
   const stateStops =
     lastActual > 0
-      ? board.timeline.slice(0, lastActual).flatMap((segment, index) => {
-          const color = stateInfo[segment.state]?.color ?? stateInfo.unknown.color;
+      ? visible.slice(0, lastActual).flatMap((point, index) => {
+          const color = stateInfo[point.state]?.color ?? stateInfo.unknown.color;
           return [
             { offset: index / lastActual, color },
             { offset: (index + 1) / lastActual, color },
           ];
         })
       : [];
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={chart} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-        {stateStops.length > 0 && (
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
-              {stateStops.map((stop, index) => (
-                <stop key={index} offset={stop.offset} stopColor={stop.color} />
-              ))}
-            </linearGradient>
-          </defs>
-        )}
-        <CartesianGrid stroke="#e6eef0" strokeOpacity={0.35} strokeDasharray="3 5" vertical={false} />
-        <XAxis
-          dataKey="label"
-          tick={{ fontSize, fill: '#71868d' }}
-          tickLine={false}
-          axisLine={false}
-          minTickGap={28}
-        />
-        <YAxis
-          width={fontSize * 4.4}
-          tick={{ fontSize, fill: '#71868d' }}
-          tickLine={false}
-          axisLine={false}
-          tickFormatter={(value: number) => formatNumber(value, info.decimals && value < 10 ? 1 : 0)}
-        />
-        <Tooltip
-          formatter={(value) =>
-            value == null ? '—' : `${formatNumber(Number(value), info.decimals)} ${info.unit}`
-          }
-          labelFormatter={(label) => `às ${label}`}
-        />
-        <Area
-          type="monotone"
-          dataKey="actual"
-          name="Realizado"
-          stroke="var(--accent, #12b8a6)"
-          fill={stateStops.length ? `url(#${gradientId})` : 'var(--accent, #12b8a6)'}
-          fillOpacity={stateStops.length ? 0.45 : 0.14}
-          strokeWidth={2.5}
-          isAnimationActive={false}
-          connectNulls={false}
-        />
-        <Line
-          type="monotone"
-          dataKey="planned"
-          name="Planejado"
-          stroke="#8a9ca2"
-          strokeWidth={1.8}
-          dot={false}
-          isAnimationActive={false}
-        />
-        <Line
-          type="monotone"
-          dataKey="projected"
-          name="Projeção"
-          stroke="var(--accent, #12b8a6)"
-          strokeDasharray="5 5"
-          strokeWidth={2}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
+    <div
+      className="shift-curve-frame"
+      ref={frame}
+      onWheel={(event) => {
+        if (!chart.length) return;
+        const box = frame.current?.getBoundingClientRect();
+        const anchor = box ? Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) : 0.5;
+        zoom(event.deltaY < 0 ? 0.75 : 1.35, anchor);
+      }}
+      onPointerDown={(event) => {
+        if (!view) return;
+        drag.current = { x: event.clientX, start: view.start, end: view.end };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        const box = frame.current?.getBoundingClientRect();
+        if (!drag.current || !box) return;
+        const width = drag.current.end - drag.current.start + 1;
+        const moved = Math.round(((drag.current.x - event.clientX) / box.width) * width);
+        const from = Math.max(0, Math.min(chart.length - width, drag.current.start + moved));
+        setView({ start: from, end: from + width - 1 });
+      }}
+      onPointerUp={() => {
+        drag.current = null;
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+      }}
+    >
+      <div className="chart-zoom">
+        <button type="button" title="Aproximar" aria-label="Aproximar" onClick={() => zoom(0.75)}>
+          +
+        </button>
+        <button type="button" title="Afastar" aria-label="Afastar" onClick={() => zoom(1.35)}>
+          −
+        </button>
+        <button
+          type="button"
+          title="Ver o turno inteiro"
+          aria-label="Ver o turno inteiro"
+          disabled={!view}
+          onClick={() => setView(null)}
+        >
+          ⤢
+        </button>
+      </div>
+      {view && <span className="chart-zoom-hint">arraste para andar no turno</span>}
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={visible} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+          {stateStops.length > 0 && (
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+                {stateStops.map((stop, index) => (
+                  <stop key={index} offset={stop.offset} stopColor={stop.color} />
+                ))}
+              </linearGradient>
+            </defs>
+          )}
+          <CartesianGrid
+            stroke="#e6eef0"
+            strokeOpacity={0.35}
+            strokeDasharray="3 5"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize, fill: '#71868d' }}
+            tickLine={false}
+            axisLine={false}
+            minTickGap={28}
+          />
+          <YAxis
+            width={fontSize * 4.4}
+            tick={{ fontSize, fill: '#71868d' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(value: number) =>
+              formatNumber(value, info.decimals && value < 10 ? 1 : 0)
+            }
+          />
+          <Tooltip content={<CurveTooltip info={info} />} />
+          <Area
+            type="monotone"
+            dataKey="actual"
+            name="Realizado"
+            stroke="var(--accent, #12b8a6)"
+            fill={stateStops.length ? `url(#${gradientId})` : 'var(--accent, #12b8a6)'}
+            fillOpacity={stateStops.length ? 0.45 : 0.14}
+            strokeWidth={2.5}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="planned"
+            name="Planejado"
+            stroke="#8a9ca2"
+            strokeWidth={1.8}
+            dot={false}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="projected"
+            name="Projeção"
+            stroke="var(--accent, #12b8a6)"
+            strokeDasharray="5 5"
+            strokeWidth={2}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** The realized value wears the colour of the machine state at that moment, as the area does. */
+function CurveTooltip({
+  info,
+  active,
+  payload,
+  label,
+}: {
+  info: { unit: string; decimals: number };
+  active?: boolean;
+  payload?: { value?: number | string | null; dataKey?: string | number }[];
+  label?: string | number;
+}) {
+  if (!active || !payload?.length) return null;
+  const point = (payload[0] as { payload?: { state?: string } }).payload;
+  const state = stateInfo[point?.state ?? 'unknown'] ?? stateInfo.unknown;
+  const show = (key: string) => payload.find((item) => item.dataKey === key);
+  const value = (item: { value?: number | string | null } | undefined) =>
+    item?.value == null ? '—' : `${formatNumber(Number(item.value), info.decimals)} ${info.unit}`;
+  return (
+    <div className="curve-tooltip">
+      <strong>às {label}</strong>
+      <span>
+        <i style={{ background: '#8a9ca2' }} /> Planejado <b>{value(show('planned'))}</b>
+      </span>
+      {show('actual')?.value != null && (
+        <span style={{ color: state.color }}>
+          <i style={{ background: state.color }} /> Realizado <b>{value(show('actual'))}</b>
+        </span>
+      )}
+      {show('projected')?.value != null && (
+        <span>
+          <i style={{ background: 'var(--accent, #12b8a6)' }} /> Projeção{' '}
+          <b>{value(show('projected'))}</b>
+        </span>
+      )}
+      <em>{state.label}</em>
+    </div>
   );
 }
 

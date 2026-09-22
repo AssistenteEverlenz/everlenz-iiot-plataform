@@ -26,6 +26,7 @@ import {
   type Sample,
   type Signal,
 } from './data';
+import { Hint } from './Hint';
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
@@ -1497,7 +1498,10 @@ export function DashboardCanvas({ id }: { id: string }) {
                 />
               </label>
               <label className="field">
-                Casas decimais mostradas
+                <span className="field-label">
+                  Casas decimais
+                  <Hint text="Só muda como o número aparece neste card: 73 ou 73,0." />
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -1505,12 +1509,12 @@ export function DashboardCanvas({ id }: { id: string }) {
                   value={decimals}
                   onChange={(event) => setDecimals(Number(event.target.value))}
                 />
-                <small className="shifts-help">
-                  Só muda como o número aparece no card: 73 ou 73,0.
-                </small>
               </label>
               <label className="field">
-                Onde fica a vírgula na IHM
+                <span className="field-label">
+                  Vírgula na IHM
+                  <Hint text="Quanto vale o número que a IHM manda: com 0,0 o 139 vira 13,9. Vale para a variável em todos os cards, e as leituras já gravadas são ajustadas." />
+                </span>
                 <select
                   value={commaPlaces}
                   onChange={(event) => setCommaPlaces(Number(event.target.value))}
@@ -1521,22 +1525,19 @@ export function DashboardCanvas({ id }: { id: string }) {
                     </option>
                   ))}
                 </select>
-                <small className="shifts-help">
-                  {editingWidget.tag_id
-                    ? 'Quanto vale o número que a IHM manda: com 0,0 o 139 vira 13,9. Vale para a variável em todos os cards, e as leituras já gravadas são ajustadas.'
-                    : 'Escolha a variável do card para configurar isto.'}
-                </small>
               </label>
               {editingWidget.tag_id && (
                 <label className="field">
-                  Contagem desta variável
+                  <span className="field-label">
+                    Contagem desta variável
+                    <Hint
+                      align="left"
+                      text="Refaz os totais por hora a partir das leituras gravadas. Use quando um total parecer alto demais, por exemplo depois de mexer na vírgula."
+                    />
+                  </span>
                   <button type="button" disabled={savingModal} onClick={() => void recount()}>
                     Recalcular do histórico
                   </button>
-                  <small className="shifts-help">
-                    Refaz os totais por hora a partir das leituras gravadas. Use quando um total
-                    parecer alto demais, por exemplo depois de mexer na vírgula.
-                  </small>
                 </label>
               )}
               <label className="field">

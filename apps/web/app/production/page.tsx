@@ -6,6 +6,7 @@ import { ActionModal } from '../../components/ActionModal';
 import { ProductionConfigModal } from '../../components/ProductionConfigModal';
 import { HmiCheckModal } from '../../components/HmiCheckModal';
 import { ShiftBoardView, type ShiftBoardResponse } from '../../components/ShiftBoard';
+import { ShiftDetailCharts, type DetailData } from '../../components/ShiftDetailModal';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, usePoll, type Device } from '../../components/data';
 import {
@@ -1230,6 +1231,12 @@ function DetailModal({
     `/devices/${deviceId}/production-detail?${params.toString()}`,
     row.open ? 30000 : 600000,
   );
+  // Hour by hour and pallet by pallet of this very shift, the same charts the board opens.
+  const window = row.start && row.end ? `&from=${encodeURIComponent(row.start)}&to=${encodeURIComponent(row.end)}` : '';
+  const charts = usePoll<DetailData>(
+    `/devices/${deviceId}/shift-detail?mode=${view === 'day' ? 'day' : 'shift'}${window}`,
+    row.open ? 60000 : 600000,
+  );
   const reached = attainment(row);
   const machine = utilization(row);
   const products = [...row.products].sort((a, b) => b.pieces - a.pieces || b.pallets - a.pallets);
@@ -1332,6 +1339,10 @@ function DetailModal({
           </p>
         )}
         <ShiftBoardView data={detail.data} deviceId={deviceId} historical />
+        <div className="production-detail-charts">
+          <div className="shift-section-title">Como foi a produção</div>
+          <ShiftDetailCharts data={charts.data} focus="produced" />
+        </div>
           </>
         )}
       </div>

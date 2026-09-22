@@ -1353,7 +1353,15 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   app.get('/api/devices/:id/shift-detail', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
-    const { mode } = z.object({ mode: z.enum(['shift', 'day']).default('shift') }).parse(req.query);
+    const query = z
+      .object({
+        mode: z.enum(['shift', 'day']).default('shift'),
+        // A closed shift of the history asks for its own window.
+        from: z.iso.datetime().optional(),
+        to: z.iso.datetime().optional(),
+      })
+      .parse(req.query);
+    const mode = query.mode;
     const tenantId = access.principal(req).tenantId;
     const config = await loadConfig(db, tenantId, id);
     if (!config) return reply.code(404).send({ error: 'Device not found' });
@@ -1369,8 +1377,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         : running
           ? [running]
           : [...occurrences].reverse().filter((item) => item.end <= now).slice(0, 1);
-    if (!chosen.length) return { span: null, hours: [], pallets: [], metric: config.target_metric };
-    const span = spanOf(chosen);
+    const asked =
+      query.from && query.to ? { start: new Date(query.from), end: new Date(query.to) } : null;
+    if (!asked && !chosen.length)
+      return { span: null, hours: [], pallets: [], metric: config.target_metric };
+    const span = asked ?? spanOf(chosen);
     const until = new Date(Math.min(span.end.getTime(), now.getTime()));
     const buckets = await loadBuckets(db, tenantId, id, span.start, until);
     const byHour = new Map<
@@ -1390,7 +1401,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     }
     return {
       span: { start: span.start.toISOString(), end: span.end.toISOString(), until: until.toISOString() },
-      shiftName: chosen.map((item) => item.name).join(' + '),
+      shiftName: chosen.map((item) => item.name).join(' + ') || 'Período',
       metric: config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets'),
       hours: [...byHour.entries()]
         .sort(([a], [b]) => a.localeCompare(b))

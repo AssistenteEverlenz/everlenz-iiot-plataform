@@ -18,7 +18,8 @@ import { metricInfo, type ProductionMetric } from './ShiftBoard';
 
 // What is behind each number of the production board: clicking a card opens this. It shows the
 // shift hour by hour — how much was produced, how the machine spent the hour — and every pallet
-// with the time it took, ranked, so the ceramist sees where the shift was won or lost.
+// with the time it took, ranked, so the ceramist sees where the shift was won or lost. The
+// production report shows the same charts for a closed shift, through ShiftDetailCharts.
 
 export type DetailFocus = 'produced' | 'target' | 'projection' | 'pace' | 'pallets';
 
@@ -28,7 +29,7 @@ interface PalletEvent {
   pallets: number;
   product: string | null;
 }
-interface DetailData {
+export interface DetailData {
   span: { start: string; end: string; until: string } | null;
   shiftName: string;
   metric: ProductionMetric;
@@ -73,21 +74,15 @@ function minutesSeconds(seconds: number | null | undefined) {
     : `${minutes}:${String(rest).padStart(2, '0')}`;
 }
 
-export function ShiftDetailModal({
-  deviceId,
-  mode,
-  focus,
-  onClose,
+/** The shift's analysis: hour by hour, and every pallet with the time it took. */
+export function ShiftDetailCharts({
+  data,
+  focus = 'produced',
 }: {
-  deviceId: string;
-  mode: 'shift' | 'day';
-  focus: DetailFocus;
-  onClose: () => void;
+  data: DetailData | null;
+  focus?: DetailFocus;
 }) {
-  const detail = usePoll<DetailData>(`/devices/${deviceId}/shift-detail?mode=${mode}`, 60000);
-  const data = detail.data;
   const info = metricInfo[data?.metric ?? 'pallets'];
-
   const hours = useMemo(() => {
     if (!data) return [];
     const valueOf = (hour: DetailData['hours'][number]) =>
@@ -113,25 +108,276 @@ export function ShiftDetailModal({
     });
   }, [data]);
 
-  // Pallets of the shift, best time first: the operator sees which ones dragged.
+  // Pallets of the shift, fastest first: the operator sees which ones dragged.
   const ranking = useMemo(() => {
     const timed = (data?.pallets ?? []).filter((event) => event.seconds != null);
     const sorted = [...timed].sort((a, b) => (a.seconds ?? 0) - (b.seconds ?? 0));
     const times = sorted.map((event) => event.seconds ?? 0);
-    const median = times.length ? times[Math.floor(times.length / 2)] : null;
     return {
       sorted,
+      timed,
       best: sorted[0] ?? null,
       worst: sorted.at(-1) ?? null,
-      median,
-      average: times.length ? times.reduce((sum, item) => sum + item, 0) / times.length : null,
+      median: times.length ? times[Math.floor(times.length / 2)] : null,
       count: data?.pallets.length ?? 0,
     };
   }, [data]);
 
+  if (!data) return null;
+  if (!data.span) return <p className="shifts-help">Nenhum turno para detalhar.</p>;
   const total = hours.at(-1)?.cumulative ?? 0;
   const bestHour = [...hours].sort((a, b) => b.value - a.value)[0] ?? null;
+  const showHours = focus !== 'pallets';
+  const showPallets = focus === 'pallets' || focus === 'produced';
 
+  return (
+    <>
+      {showHours && (
+        <>
+          <div className="detail-summary">
+            <div>
+              <span>Total no período</span>
+              <b>
+                {number(total, info.decimals)} <small>{info.unit}</small>
+              </b>
+            </div>
+            <div>
+              <span>Melhor hora</span>
+              <b>
+                {bestHour ? bestHour.hour : '—'}{' '}
+                <small>{bestHour ? number(bestHour.value, info.decimals) : ''}</small>
+              </b>
+            </div>
+            <div>
+              <span>Horas com produção</span>
+              <b>{hours.filter((hour) => hour.value > 0).length}</b>
+            </div>
+            <div>
+              <span>Paletes</span>
+              <b>{number(ranking.count)}</b>
+            </div>
+          </div>
+
+          <div className="detail-section">
+            <strong>Acumulado ao longo do período</strong>
+            <div className="detail-chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={hours}>
+                  <CartesianGrid
+                    stroke="var(--detail-grid)"
+                    strokeDasharray="3 6"
+                    vertical={false}
+                  />
+                  <XAxis dataKey="hour" stroke="var(--detail-axis)" fontSize={12} />
+                  <YAxis stroke="var(--detail-axis)" fontSize={12} width={48} />
+                  <Tooltip
+                    formatter={(value) => [
+                      `${number(Number(value), info.decimals)} ${info.unit}`,
+                      'acumulado',
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cumulative"
+                    stroke="var(--brand-accent, #12b8a6)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="detail-section">
+            <strong>Produção por hora</strong>
+            <div className="detail-chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={hours}>
+                  <CartesianGrid
+                    stroke="var(--detail-grid)"
+                    strokeDasharray="3 6"
+                    vertical={false}
+                  />
+                  <XAxis dataKey="hour" stroke="var(--detail-axis)" fontSize={12} />
+                  <YAxis stroke="var(--detail-axis)" fontSize={12} width={48} />
+                  <Tooltip
+                    formatter={(value) => [
+                      `${number(Number(value), info.decimals)} ${info.unit}`,
+                      'produzido',
+                    ]}
+                  />
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {hours.map((hour) => (
+                      <Cell
+                        key={hour.hour}
+                        fill={
+                          hour.value === bestHour?.value
+                            ? 'var(--brand-accent, #12b8a6)'
+                            : '#3d7f96'
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="detail-section">
+            <strong>Como a máquina passou cada hora</strong>
+            <div className="scroll">
+              <table className="detail-table">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th className="n">Produzido</th>
+                    <th className="n">Acumulado</th>
+                    <th className="n">Produzindo</th>
+                    <th className="n">Parada</th>
+                    <th className="n">Paletes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hours.map((hour) => (
+                    <tr key={hour.hour}>
+                      <td>{hour.hour}</td>
+                      <td className="n">{number(hour.value, info.decimals)}</td>
+                      <td className="n">{number(hour.cumulative, info.decimals)}</td>
+                      <td className="n">{number(hour.producing)} min</td>
+                      <td className="n">{number(hour.stopped)} min</td>
+                      <td className="n">{number(hour.pallets)}</td>
+                    </tr>
+                  ))}
+                  {!hours.length && (
+                    <tr>
+                      <td colSpan={6}>Sem produção registrada no período.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showPallets && ranking.count > 0 && (
+        <>
+          <div className="detail-summary">
+            <div>
+              <span>Paletes</span>
+              <b>{number(ranking.count)}</b>
+            </div>
+            <div>
+              <span>Mais rápido</span>
+              <b className="good">
+                {minutesSeconds(ranking.best?.seconds)}{' '}
+                <small>{ranking.best ? `às ${clock(ranking.best.at)}` : ''}</small>
+              </b>
+            </div>
+            <div>
+              <span>Mediana</span>
+              <b>{minutesSeconds(ranking.median)}</b>
+            </div>
+            <div>
+              <span>Mais demorado</span>
+              <b className="bad">
+                {minutesSeconds(ranking.worst?.seconds)}{' '}
+                <small>{ranking.worst ? `às ${clock(ranking.worst.at)}` : ''}</small>
+              </b>
+            </div>
+          </div>
+
+          <div className="detail-section">
+            <strong>Tempo de cada palete, na ordem do turno</strong>
+            <div className="detail-chart">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={ranking.timed.map((event) => ({
+                    label: clock(event.at),
+                    minutes: (event.seconds ?? 0) / 60,
+                    slow: ranking.median != null && (event.seconds ?? 0) > ranking.median * 1.5,
+                  }))}
+                >
+                  <CartesianGrid
+                    stroke="var(--detail-grid)"
+                    strokeDasharray="3 6"
+                    vertical={false}
+                  />
+                  <XAxis dataKey="label" stroke="var(--detail-axis)" fontSize={11} />
+                  <YAxis stroke="var(--detail-axis)" fontSize={12} width={48} unit=" min" />
+                  <Tooltip
+                    formatter={(value) => [minutesSeconds(Number(value) * 60), 'tempo do palete']}
+                  />
+                  <Bar dataKey="minutes" radius={[4, 4, 0, 0]}>
+                    {ranking.timed.map((event) => (
+                      <Cell
+                        key={event.at}
+                        fill={
+                          ranking.median != null && (event.seconds ?? 0) > ranking.median * 1.5
+                            ? '#e4572e'
+                            : '#3d7f96'
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="shifts-help">
+              Em vermelho, os paletes que levaram mais de uma vez e meia a mediana do período: são
+              onde a produção travou.
+            </p>
+          </div>
+
+          <div className="detail-section">
+            <strong>Ranking dos paletes</strong>
+            <div className="scroll">
+              <table className="detail-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Fechado às</th>
+                    <th className="n">Tempo</th>
+                    <th>Produto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ranking.sorted.map((event, index) => (
+                    <tr key={event.at}>
+                      <td>{index + 1}º</td>
+                      <td>{clock(event.at)}</td>
+                      <td className="n">{minutesSeconds(event.seconds)}</td>
+                      <td>{event.product ?? '—'}</td>
+                    </tr>
+                  ))}
+                  {!ranking.sorted.length && (
+                    <tr>
+                      <td colSpan={4}>Nenhum palete fechado neste período.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+export function ShiftDetailModal({
+  deviceId,
+  mode,
+  focus,
+  onClose,
+}: {
+  deviceId: string;
+  mode: 'shift' | 'day';
+  focus: DetailFocus;
+  onClose: () => void;
+}) {
+  const detail = usePoll<DetailData>(`/devices/${deviceId}/shift-detail?mode=${mode}`, 60000);
+  const data = detail.data;
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal-card detail-modal" onMouseDown={(event) => event.stopPropagation()}>
@@ -153,222 +399,7 @@ export function ShiftDetailModal({
 
         {detail.loading && <p>Carregando…</p>}
         {detail.error && <div className="form-error">{detail.error}</div>}
-        {data && !data.span && <p className="shifts-help">Nenhum turno para detalhar agora.</p>}
-
-        {data?.span && focus !== 'pallets' && (
-          <>
-            <div className="detail-summary">
-              <div>
-                <span>Total no turno</span>
-                <b>
-                  {number(total, info.decimals)} <small>{info.unit}</small>
-                </b>
-              </div>
-              <div>
-                <span>Melhor hora</span>
-                <b>
-                  {bestHour ? `${bestHour.hour}` : '—'}{' '}
-                  <small>{bestHour ? number(bestHour.value, info.decimals) : ''}</small>
-                </b>
-              </div>
-              <div>
-                <span>Horas com produção</span>
-                <b>{hours.filter((hour) => hour.value > 0).length}</b>
-              </div>
-              <div>
-                <span>Paletes no turno</span>
-                <b>{number(ranking.count)}</b>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <strong>Acumulado ao longo do turno</strong>
-              <div className="detail-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={hours}>
-                    <CartesianGrid stroke="var(--detail-grid)" strokeDasharray="3 6" vertical={false} />
-                    <XAxis dataKey="hour" stroke="var(--detail-axis)" fontSize={12} />
-                    <YAxis stroke="var(--detail-axis)" fontSize={12} width={48} />
-                    <Tooltip
-                      formatter={(value) => [
-                        `${number(Number(value), info.decimals)} ${info.unit}`,
-                        'acumulado',
-                      ]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="cumulative"
-                      stroke="#12b8a6"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <strong>Produção por hora</strong>
-              <div className="detail-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={hours}>
-                    <CartesianGrid stroke="var(--detail-grid)" strokeDasharray="3 6" vertical={false} />
-                    <XAxis dataKey="hour" stroke="var(--detail-axis)" fontSize={12} />
-                    <YAxis stroke="var(--detail-axis)" fontSize={12} width={48} />
-                    <Tooltip
-                      formatter={(value, name) => [
-                        name === 'value'
-                          ? `${number(Number(value), info.decimals)} ${info.unit}`
-                          : `${number(Number(value))} min`,
-                        name === 'value' ? 'produzido' : name === 'producing' ? 'produzindo' : 'parada',
-                      ]}
-                    />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                      {hours.map((hour) => (
-                        <Cell
-                          key={hour.hour}
-                          fill={hour.value === bestHour?.value ? '#12b8a6' : '#3d7f96'}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <strong>Como a máquina passou cada hora</strong>
-              <div className="scroll">
-                <table className="detail-table">
-                  <thead>
-                    <tr>
-                      <th>Hora</th>
-                      <th className="n">Produzido</th>
-                      <th className="n">Acumulado</th>
-                      <th className="n">Produzindo</th>
-                      <th className="n">Parada</th>
-                      <th className="n">Paletes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hours.map((hour) => (
-                      <tr key={hour.hour}>
-                        <td>{hour.hour}</td>
-                        <td className="n">{number(hour.value, info.decimals)}</td>
-                        <td className="n">{number(hour.cumulative, info.decimals)}</td>
-                        <td className="n">{number(hour.producing)} min</td>
-                        <td className="n">{number(hour.stopped)} min</td>
-                        <td className="n">{number(hour.pallets)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
-
-        {data?.span && focus === 'pallets' && (
-          <>
-            <div className="detail-summary">
-              <div>
-                <span>Paletes</span>
-                <b>{number(ranking.count)}</b>
-              </div>
-              <div>
-                <span>Mais rápido</span>
-                <b className="good">
-                  {minutesSeconds(ranking.best?.seconds)}{' '}
-                  <small>{ranking.best ? `às ${clock(ranking.best.at)}` : ''}</small>
-                </b>
-              </div>
-              <div>
-                <span>Mediana</span>
-                <b>{minutesSeconds(ranking.median)}</b>
-              </div>
-              <div>
-                <span>Mais demorado</span>
-                <b className="bad">
-                  {minutesSeconds(ranking.worst?.seconds)}{' '}
-                  <small>{ranking.worst ? `às ${clock(ranking.worst.at)}` : ''}</small>
-                </b>
-              </div>
-            </div>
-
-            <div className="detail-section">
-              <strong>Tempo de cada palete, na ordem do turno</strong>
-              <div className="detail-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={(data.pallets ?? [])
-                      .filter((event) => event.seconds != null)
-                      .map((event, index) => ({
-                        label: clock(event.at),
-                        minutes: (event.seconds ?? 0) / 60,
-                        index,
-                      }))}
-                  >
-                    <CartesianGrid stroke="var(--detail-grid)" strokeDasharray="3 6" vertical={false} />
-                    <XAxis dataKey="label" stroke="var(--detail-axis)" fontSize={11} />
-                    <YAxis stroke="var(--detail-axis)" fontSize={12} width={48} unit=" min" />
-                    <Tooltip
-                      formatter={(value) => [minutesSeconds(Number(value) * 60), 'tempo do palete']}
-                    />
-                    <Bar dataKey="minutes" radius={[4, 4, 0, 0]}>
-                      {(data.pallets ?? [])
-                        .filter((event) => event.seconds != null)
-                        .map((event) => (
-                          <Cell
-                            key={event.at}
-                            fill={
-                              ranking.median != null && (event.seconds ?? 0) > ranking.median * 1.5
-                                ? '#e4572e'
-                                : '#3d7f96'
-                            }
-                          />
-                        ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <p className="shifts-help">
-                Em vermelho, os paletes que levaram mais de uma vez e meia a mediana do turno: são
-                onde a produção travou.
-              </p>
-            </div>
-
-            <div className="detail-section">
-              <strong>Ranking do turno</strong>
-              <div className="scroll">
-                <table className="detail-table">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>Fechado às</th>
-                      <th className="n">Tempo</th>
-                      <th>Produto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ranking.sorted.map((event, index) => (
-                      <tr key={event.at}>
-                        <td>{index + 1}º</td>
-                        <td>{clock(event.at)}</td>
-                        <td className="n">{minutesSeconds(event.seconds)}</td>
-                        <td>{event.product ?? '—'}</td>
-                      </tr>
-                    ))}
-                    {!ranking.sorted.length && (
-                      <tr>
-                        <td colSpan={4}>Nenhum palete fechado neste turno ainda.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
+        <ShiftDetailCharts data={data} focus={focus} />
 
         <div className="modal-actions">
           <button type="button" onClick={onClose}>

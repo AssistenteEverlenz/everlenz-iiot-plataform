@@ -110,6 +110,13 @@
   :root[data-theme='dark'] button:hover {
     background: #1c2725;
   }
+  :root[data-theme='dark'] button:disabled,
+  :root[data-theme='dark'] button:disabled:hover {
+    background: #1b262a;
+    border-color: #233237;
+    color: #90a5ad;
+    box-shadow: none;
+  }
   :root[data-theme='dark'] .controls label {
     color: #8fa2a8;
   }
@@ -132,14 +139,22 @@
     color: #83e2d7;
   }
   :root[data-theme='dark'] .primary-button {
-    background: #0d8f82;
-    border-color: #0d8f82;
-    color: white;
-    box-shadow: 0 5px 16px rgba(13, 143, 130, 0.18);
+    background: var(--brand-accent, #0d8f82);
+    border-color: var(--brand-accent, #0d8f82);
+    color: #fff;
+    box-shadow: 0 5px 16px color-mix(in srgb, var(--brand-accent, #0d8f82) 22%, transparent);
   }
   :root[data-theme='dark'] .primary-button:hover {
-    background: #08786f;
-    color: white;
+    background: color-mix(in srgb, var(--brand-accent, #0d8f82) 85%, #000);
+    border-color: color-mix(in srgb, var(--brand-accent, #0d8f82) 85%, #000);
+    color: #fff;
+  }
+  :root[data-theme='dark'] button:focus-visible,
+  :root[data-theme='dark'] .primary-button:focus-visible,
+  :root[data-theme='dark'] .secondary-button:focus-visible,
+  :root[data-theme='dark'] select:focus-visible,
+  :root[data-theme='dark'] input:focus-visible {
+    outline: 2px solid var(--brand-accent, #0d8f82);
   }
   :root[data-theme='dark'] .secondary-button {
     background: #12191c;
@@ -165,8 +180,13 @@
     box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
   }
   :root[data-theme='dark'] .danger-button {
-    color: #d29393;
-    border-color: #3d2323;
+    color: #da8b90;
+    border-color: #553437;
+    background: #270d0d;
+  }
+  :root[data-theme='dark'] .danger-button:hover {
+    background: #2c1413;
+    color: #dc898f;
   }
   :root[data-theme='dark'] .field {
     color: #a0b2b8;
@@ -728,6 +748,12 @@
   :root[data-theme='dark'] .danger-button-solid {
     background: #bd363d;
     border-color: #bd363d;
+    color: #fff;
+    box-shadow: 0 5px 16px rgba(189, 54, 61, 0.2);
+  }
+  :root[data-theme='dark'] .danger-button-solid:hover {
+    background: #a02830;
+    border-color: #a02830;
     color: #fff;
   }
   :root[data-theme='dark'] .login-page {
@@ -1952,5 +1978,44 @@
   }
   :root[data-theme='dark'] .detail-table th {
     color: #92a2a8;
+  }
+  :root[data-theme='dark'] .modal-card .modal-actions {
+    border-top: 1px solid #1e2b2f;
+    background: inherit;
+  }
+  :root[data-theme='dark'] .hint {
+    border: 1px solid #30454c;
+    color: #90a2a8;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .hint:hover,
+  :root[data-theme='dark'] .hint:focus-visible {
+    border-color: var(--brand-accent, #0d8f82);
+    color: var(--brand-accent, #7ce9de);
+  }
+  :root[data-theme='dark'] .hint::after {
+    background: #16333c;
+    color: #eaf3f4;
+  }
+  :root[data-theme='dark'] .hint::before {
+    border: 5px solid transparent;
+    border-top-color: #16333c;
+  }
+  :root[data-theme='dark'] .chart-zoom-hint {
+    color: #82969d;
+  }
+  :root[data-theme='dark'] .curve-tooltip {
+    background: #0f2a31;
+    color: #e7f1f2;
+    box-shadow: 0 8px 22px rgba(6, 26, 31, 0.28);
+  }
+  :root[data-theme='dark'] .curve-tooltip strong {
+    color: #9fb4ba;
+  }
+  :root[data-theme='dark'] .curve-tooltip em {
+    color: #9fb4ba;
+  }
+  :root[data-theme='dark'] .production-detail-charts {
+    border-top: 1px solid #1e2b2f;
   }
 }

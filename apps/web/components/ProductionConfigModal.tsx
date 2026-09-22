@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { mutate, usePoll } from './data';
+import { Hint } from './Hint';
 import { metricInfo, type ProductionMetric } from './ShiftBoard';
 
 // Production parameters of one device: counters, automatic signal, idle and end-of-shift
@@ -269,7 +270,10 @@ export function ProductionConfigModal({
             </label>
             {form.weightKey && (
               <label className="field">
-                Onde fica a vírgula do peso
+                <span className="field-label">
+                  Vírgula do peso
+                  <Hint text="Quanto vale o número de peso que a IHM manda: 3630 com três casas vira 3,63 kg. Um valor que já vem com vírgula, como 2,55, entra como está." />
+                </span>
                 <select
                   value={form.weightUnit}
                   onChange={(event) =>
