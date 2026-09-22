@@ -473,11 +473,48 @@ export async function createApp(
         targetId: tagId,
         summary: { key: tag.rows[0].key, places: body.places, scale: after, rescaled },
       });
-      return { places: body.places, rescaled };
+      return { places: body.places, rescaled, changedAt: new Date() };
     }).then(async (result) => {
       // Production is counted from the readings: with a new scale it has to be counted again.
       scheduleProductionRebuild(db, current.tenantId, id, req.log);
-      return result;
+      // A reading already on its way when the scale changed lands in the old scale and shows as
+      // a huge jump. Two minutes later, when there is enough history to compare with, such a
+      // reading is brought to the new scale and the totals are rebuilt around it.
+      if (body.adjustHistory && ratio !== 1)
+        setTimeout(
+          () => {
+            void (async () => {
+              try {
+                const fixed = await db.query(
+                  `UPDATE telemetry_samples SET value_number=value_number*$4
+                   WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
+                     AND received_at>=$5 AND received_at<$5+interval '90 seconds'
+                     AND value_number > 5 * (
+                       SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY value_number)
+                       FROM telemetry_samples
+                       WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3
+                         AND received_at>=$5+interval '90 seconds' AND value_number IS NOT NULL
+                     )`,
+                  [current.tenantId, id, tagId, ratio, result.changedAt],
+                );
+                if (!fixed.rowCount) return;
+                await rebuildTagRollups(db, current.tenantId, id, tagId);
+                req.log.info({
+                  event: 'tag_scale_settled',
+                  tagId,
+                  samples: fixed.rowCount,
+                });
+              } catch (error) {
+                req.log.warn({
+                  event: 'tag_scale_settle_failed',
+                  message: error instanceof Error ? error.message : String(error),
+                });
+              }
+            })();
+          },
+          120_000,
+        ).unref();
+      return { places: result.places, rescaled: result.rescaled };
     });
   });
 

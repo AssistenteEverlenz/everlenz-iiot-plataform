@@ -195,7 +195,7 @@ export class IngestionPipeline {
         [device.tenant_id, device.id],
       )
     ).rows;
-    this.tagCache.set(device.id, { expiresAt: Date.now() + 15_000, tags });
+    this.tagCache.set(device.id, { expiresAt: Date.now() + 5_000, tags });
     return tags;
   }
   private async productionContext(device: Device) {
