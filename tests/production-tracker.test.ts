@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { counterStep } from '../packages/shared/src/production-attribution.js';
 import {
   attribute,
   type Runtime,
@@ -38,6 +39,19 @@ const sum = (
   field: 'pieces' | 'producing' | 'idle' | 'manual' | 'tons' | 'pallets',
 ) => deltas.reduce((total, delta) => total + delta[field], 0);
 
+describe('counterStep', () => {
+  it('skips a lone zero instead of counting the counter over again', () => {
+    // Captured from a Haiwell A7 on 18/09/2026: 17924, then 0, then 18032.
+    expect(counterStep(17924, 0)).toEqual({ delta: 0, reading: 17924 });
+    expect(counterStep(17924, 18032)).toEqual({ delta: 108, reading: 18032 });
+  });
+  it('still counts from zero when the HMI really resets', () => {
+    expect(counterStep(7852, 12)).toEqual({ delta: 12, reading: 12 });
+  });
+  it('ignores a small step back and keeps the higher reading', () => {
+    expect(counterStep(5672, 5620)).toEqual({ delta: 0, reading: 5672 });
+  });
+});
 describe('production tracker', () => {
   it('starts from the first message without inventing production', () => {
     const result = attribute(null, observe(0, { pieces: 5000 }), config, 30);

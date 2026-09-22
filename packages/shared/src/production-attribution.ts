@@ -60,10 +60,15 @@ const BUCKET_MS = BUCKET_SECONDS * 1000;
  * to less than half of what it was, e.g. 7852 → 12 at the start of a shift) counts from zero
  * again. A small step back (5672 → 5620: an unstable reading or a manual correction) counts
  * nothing and keeps the higher reading, or the pieces would be counted twice on the way up.
+ * A lone zero is never a new baseline: a Haiwell A7 published 17924, then 0, then 18032, and
+ * counting from that zero added the whole counter as production. The zero is skipped, so the
+ * reading that follows it is either the counter going on (18032: 108 pieces) or, if the HMI
+ * really did reset, the first small reading, which then counts from zero as usual.
  */
 export function counterStep(previous: number | null, next: number | null) {
   if (previous == null || next == null) return { delta: 0, reading: next ?? previous };
   if (next >= previous) return { delta: next - previous, reading: next };
+  if (next === 0 && previous > 0) return { delta: 0, reading: previous };
   if (next <= previous / 2) return { delta: Math.max(next, 0), reading: next };
   return { delta: 0, reading: previous };
 }

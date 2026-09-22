@@ -1101,6 +1101,8 @@ export async function closeShiftReports(
       const outside = buckets.filter((row) => !inShift(new Date(row.bucket)));
       const whole = { start: dayStart, end: dayEnd };
       const summary = summarize(outside, whole, [whole], dayEnd);
+      // A day with nothing made outside the shifts is not a row anyone needs to read.
+      if (!summary.pieces && !summary.pallets && !summary.tons) continue;
       await insert({
         kind: 'off_shift',
         shiftId: null,
