@@ -7008,3 +7008,45 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .widget-body > .widget-calculated {
   margin-top: 8px;
 }
+
+/* A card can carry several calculated fields: a list in the editor, lines under the reading. */
+.widget-calculated-list {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  margin-top: 6px;
+}
+.widget-calculated-list .widget-calculated {
+  margin: 0;
+}
+.formula-item {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px dashed #e3ebed;
+}
+.formula-item:last-of-type {
+  border-bottom: none;
+}
+.formula-item .formula-row {
+  grid-template-columns: 1fr 1.6fr 0.7fr 0.5fr 34px;
+  align-items: center;
+}
+.formula-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+@media (max-width: 640px) {
+  .formula-item .formula-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.detail-average {
+  font-style: normal;
+  font-weight: 400;
+  color: #6b7f86;
+}

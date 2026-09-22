@@ -2030,4 +2030,13 @@
   :root[data-theme='dark'] .formula-preview {
     color: #aebec3;
   }
+  :root[data-theme='dark'] .formula-item {
+    border-bottom: 1px dashed #202d32;
+  }
+  :root[data-theme='dark'] .formula-item:last-of-type {
+    border-bottom: none;
+  }
+  :root[data-theme='dark'] .detail-average {
+    color: #92a2a8;
+  }
 }

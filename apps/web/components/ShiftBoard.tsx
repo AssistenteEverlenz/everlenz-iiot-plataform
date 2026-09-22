@@ -13,7 +13,11 @@ import {
 } from 'recharts';
 import { usePoll } from './data';
 import { TargetModal } from './TargetModal';
-import { ShiftDetailModal, type DetailFocus } from './ShiftDetailModal';
+import {
+  ShiftDetailModal,
+  type CalculatedSetting,
+  type DetailFocus,
+} from './ShiftDetailModal';
 
 // "Quadro de produção": one card that answers how the shift (or the day) is going. Produced
 // against the target, where the pace leads by the end (S-curve and projection), what is needed
@@ -494,10 +498,13 @@ export interface CalculatedField {
 export function ShiftBoard({
   deviceId,
   calculated,
+  calculatedSettings,
 }: {
   deviceId: string;
-  /** A formula the master wrote on the card, shown as one more number of the board. */
-  calculated?: CalculatedField | null;
+  /** The formulas themselves, so the detail modal can chart them hour by hour. */
+  calculatedSettings?: CalculatedSetting[];
+  /** Formulas the master wrote on the card, shown as more numbers of the board. */
+  calculated?: CalculatedField[];
 }) {
   const [mode, setMode] = useState<'shift' | 'day'>('shift');
   const response = usePoll<ShiftBoardResponse>(
@@ -513,6 +520,7 @@ export function ShiftBoard({
       mode={mode}
       onMode={setMode}
       calculated={calculated}
+      calculatedSettings={calculatedSettings}
       onChanged={() => void response.refresh()}
     />
   );
@@ -530,9 +538,11 @@ export function ShiftBoardView({
   onChanged,
   historical = false,
   hideHead = false,
-  calculated = null,
+  calculated = [],
+  calculatedSettings = [],
 }: {
-  calculated?: CalculatedField | null;
+  calculated?: CalculatedField[];
+  calculatedSettings?: CalculatedSetting[];
   /** The TV draws its own header (shift, state, clock). */
   hideHead?: boolean;
   data: ShiftBoardResponse;
@@ -721,15 +731,15 @@ export function ShiftBoardView({
                   : `restam ${duration(board.remainingSeconds)} produtivos`}
               </em>
             </div>
-            {calculated && (
-              <div className="shift-kpi">
-                <span>{calculated.label}</span>
+            {calculated.map((field) => (
+              <div className="shift-kpi" key={field.label}>
+                <span>{field.label}</span>
                 <b>
-                  {calculated.value} <small>{calculated.unit}</small>
+                  {field.value} <small>{field.unit}</small>
                 </b>
                 <em>conta configurada no card</em>
               </div>
-            )}
+            ))}
             {board.palletTiming && board.palletTiming.count > 0 && (
               <div
                 className={`shift-kpi ${historical ? '' : 'clickable'}`}
@@ -852,6 +862,7 @@ export function ShiftBoardView({
           deviceId={deviceId}
           mode={mode}
           focus={detail}
+          calculated={calculatedSettings}
           onClose={() => setDetail(null)}
         />
       )}

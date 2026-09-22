@@ -375,6 +375,45 @@ async function palletTiming(
   };
 }
 
+/**
+ * Hourly average of the variables a calculated field reads. The rollups already hold the sum
+ * and the count per hour, so this is one cheap query however long the shift is.
+ */
+async function hourlyVariables(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  keys: string | undefined,
+  from: Date,
+  to: Date,
+): Promise<Record<string, Array<{ hour: string; value: number }>>> {
+  const wanted = (keys ?? '')
+    .split(',')
+    .map((key) => key.trim())
+    .filter((key) => /^[A-Za-z_][A-Za-z0-9_.]{0,63}$/.test(key))
+    .slice(0, 8);
+  if (!wanted.length) return {};
+  const rows = await db.query<{ key: string; hour: Date | string; value: string | number }>(
+    `SELECT t.key,date_trunc('hour',r.bucket) hour,
+       sum(r.value_sum)/nullif(sum(r.sample_count),0) value
+     FROM telemetry_hourly_rollups r JOIN tags t ON t.id=r.tag_id
+     WHERE r.tenant_id=$1 AND r.device_id=$2 AND t.key=ANY($3::text[])
+       AND r.bucket>=$4 AND r.bucket<$5
+     GROUP BY t.key,date_trunc('hour',r.bucket)
+     ORDER BY t.key,date_trunc('hour',r.bucket)`,
+    [tenantId, deviceId, wanted, from, to],
+  );
+  const series: Record<string, Array<{ hour: string; value: number }>> = {};
+  for (const row of rows.rows) {
+    if (row.value == null) continue;
+    (series[row.key] ??= []).push({
+      hour: new Date(row.hour).toISOString(),
+      value: Number(row.value),
+    });
+  }
+  return series;
+}
+
 /** Each pallet of a window: when the counter moved and the time since the pallet before it. */
 async function palletEvents(
   db: Database,
@@ -1477,6 +1516,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         // A closed shift of the history asks for its own window.
         from: z.iso.datetime().optional(),
         to: z.iso.datetime().optional(),
+        // Variables a calculated field reads, to chart it hour by hour ("cortes por minuto").
+        keys: z.string().max(400).optional(),
       })
       .parse(req.query);
     const mode = query.mode;
@@ -1527,6 +1568,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       pallets: config.pallets_tag_id
         ? await palletEvents(db, tenantId, id, config.pallets_tag_id, span.start, until)
         : [],
+      variables: await hourlyVariables(db, tenantId, id, query.keys, span.start, until),
     };
   });
 

@@ -286,6 +286,29 @@ function placesOfScale(multiplier: number | string | null | undefined) {
   return index > 0 ? index : 0;
 }
 
+export interface CalculatedSetting {
+  id: string;
+  label: string;
+  formula: string;
+  unit?: string;
+  decimals?: number;
+}
+/** The card's calculated fields, reading the single formula of the first version as one. */
+function calculatedFields(config: DashboardWidget['config']): CalculatedSetting[] {
+  if (config.calculated?.length) return config.calculated.filter((item) => item.formula?.trim());
+  if (config.formula?.trim())
+    return [
+      {
+        id: 'legacy',
+        label: config.formulaLabel || 'Calculado',
+        formula: config.formula,
+        unit: config.formulaUnit,
+        decimals: config.formulaDecimals,
+      },
+    ];
+  return [];
+}
+
 // Cards that read no single variable; every other card needs one to show anything.
 const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto']);
 
@@ -334,18 +357,23 @@ function Widget({
 }) {
   const color = widget.config.color ?? '#12b8a6';
   // "Cortes por minuto" and the like: the plant's own arithmetic over the HMI's variables,
-  // shown under the reading of the card that carries the formula.
-  const calculated = widget.config.formula
-    ? evaluateFormula(widget.config.formula, values ?? {})
-    : null;
-  const calculatedLine = widget.config.formula ? (
-    <p className="widget-calculated">
-      <span>{widget.config.formulaLabel || 'Calculado'}</span>
-      <b>
-        {calculated == null ? '—' : number(calculated, widget.config.formulaDecimals ?? 1)}
-        {widget.config.formulaUnit ? ' ' + widget.config.formulaUnit : ''}
-      </b>
-    </p>
+  // shown under the reading of the card that carries the formulas.
+  const calculated = calculatedFields(widget.config).map((field) => ({
+    ...field,
+    result: evaluateFormula(field.formula, values ?? {}),
+  }));
+  const calculatedLine = calculated.length ? (
+    <div className="widget-calculated-list">
+      {calculated.map((field) => (
+        <p className="widget-calculated" key={field.id}>
+          <span>{field.label || 'Calculado'}</span>
+          <b>
+            {field.result == null ? '—' : number(field.result, field.decimals ?? 1)}
+            {field.unit ? ' ' + field.unit : ''}
+          </b>
+        </p>
+      ))}
+    </div>
   ) : null;
   // Each production chart owns its period, so two charts can compare different windows.
   const [period, setPeriod] = useState<ProductionPeriod>(
@@ -743,18 +771,12 @@ function Widget({
       {widget.widget_type === 'shift_board' && (
         <ShiftBoard
           deviceId={widget.device_id}
-          calculated={
-            widget.config.formula
-              ? {
-                  label: widget.config.formulaLabel || 'Calculado',
-                  value:
-                    calculated == null
-                      ? '—'
-                      : number(calculated, widget.config.formulaDecimals ?? 1),
-                  unit: widget.config.formulaUnit ?? '',
-                }
-              : null
-          }
+          calculated={calculated.map((field) => ({
+            label: field.label || 'Calculado',
+            value: field.result == null ? '—' : number(field.result, field.decimals ?? 1),
+            unit: field.unit ?? '',
+          }))}
+          calculatedSettings={calculatedFields(widget.config)}
         />
       )}
       {widget.widget_type === 'oee' && (
@@ -866,10 +888,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   // Two different things: where the HMI's number has its comma (the variable's scale) and how
   // many decimal places this card shows.
   const [commaPlaces, setCommaPlaces] = useState(0);
-  const [formula, setFormula] = useState('');
-  const [formulaLabel, setFormulaLabel] = useState('');
-  const [formulaUnit, setFormulaUnit] = useState('');
-  const [formulaDecimals, setFormulaDecimals] = useState(1);
+  const [calculatedList, setCalculatedList] = useState<CalculatedSetting[]>([]);
   const [colSpanInput, setColSpanInput] = useState(4);
   const [rowSpanInput, setRowSpanInput] = useState(4);
   const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
@@ -1044,10 +1063,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMaximum(widget.config.max ?? 100);
     setDecimals(widget.config.decimals ?? 1);
     setCommaPlaces(placesOfScale(widget.scale_multiplier));
-    setFormula(widget.config.formula ?? '');
-    setFormulaLabel(widget.config.formulaLabel ?? '');
-    setFormulaUnit(widget.config.formulaUnit ?? '');
-    setFormulaDecimals(widget.config.formulaDecimals ?? 1);
+    setCalculatedList(calculatedFields(widget.config));
     setColSpanInput(spansOf(widget).cols);
     setRowSpanInput(spansOf(widget).rows);
     setGaugeStyle(widget.config.gaugeStyle ?? 'top');
@@ -1142,10 +1158,20 @@ export function DashboardCanvas({ id }: { id: string }) {
           productColors,
           counterMode,
           resetVariable: counterMode ? resetVariable.trim() : '',
-          formula: formula.trim(),
-          formulaLabel: formulaLabel.trim().slice(0, 40),
-          formulaUnit: formulaUnit.trim().slice(0, 12),
-          formulaDecimals,
+          calculated: calculatedList
+            .filter((field) => field.formula.trim())
+            .map((field) => ({
+              id: field.id,
+              label: field.label.trim().slice(0, 40),
+              formula: field.formula.trim(),
+              unit: (field.unit ?? '').trim().slice(0, 12),
+              decimals: field.decimals ?? 1,
+            })),
+          // The first version's single formula gives way to the list.
+          formula: '',
+          formulaLabel: '',
+          formulaUnit: '',
+          formulaDecimals: 1,
         },
       });
       setEditingWidget(null);
@@ -1553,63 +1579,104 @@ export function DashboardCanvas({ id }: { id: string }) {
                   }
                 />
               </label>
-              <label className="field full-field">
+              <div className="field full-field">
                 <span className="field-label">
-                  Informação calculada
+                  Informações calculadas
                   <Hint
-                    text="Uma conta sua sobre as variáveis da IHM, mostrada abaixo do valor. Exemplo: PecasPorHora / 60 / (4 * 6) dá os cortes por minuto. Use + - * / ( ), números com vírgula e as funções min, max, round, abs, floor, ceil, com ; entre os argumentos."
+                    align="left"
+                    text="Contas suas sobre as variáveis da IHM, mostradas abaixo do valor e no quadro de produção. Exemplo: PecasPorHora / 60 / (4 * 6) dá os cortes por minuto. Use + - * / ( ), números com vírgula e as funções min, max, round, abs, floor, ceil, com ; entre os argumentos."
                   />
                 </span>
-                <div className="formula-row">
-                  <input
-                    value={formulaLabel}
-                    placeholder="Nome, ex.: Cortes por minuto"
-                    maxLength={40}
-                    onChange={(event) => setFormulaLabel(event.target.value)}
-                  />
-                  <input
-                    className="formula-input"
-                    value={formula}
-                    placeholder="PecasPorHora / 60 / (4 * 6)"
-                    onChange={(event) => setFormula(event.target.value)}
-                  />
-                  <input
-                    value={formulaUnit}
-                    placeholder="Unidade"
-                    maxLength={12}
-                    onChange={(event) => setFormulaUnit(event.target.value)}
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="6"
-                    title="Casas decimais do valor calculado"
-                    value={formulaDecimals}
-                    onChange={(event) => setFormulaDecimals(Number(event.target.value))}
-                  />
-                </div>
-                {formula.trim() &&
-                  (formulaError(formula, Object.keys(readings)) ? (
-                    <small className="formula-error">
-                      {formulaError(formula, Object.keys(readings))}
-                    </small>
-                  ) : (
-                    <small className="formula-preview">
-                      Agora daria{' '}
-                      <b>
-                        {evaluateFormula(formula, readings) == null
-                          ? '—'
-                          : number(evaluateFormula(formula, readings) ?? 0, formulaDecimals)}
-                      </b>{' '}
-                      {formulaUnit}
-                    </small>
-                  ))}
-                {!formula.trim() && (
+                {calculatedList.map((field, index) => {
+                  const problem = field.formula.trim()
+                    ? formulaError(field.formula, Object.keys(readings))
+                    : null;
+                  const now = field.formula.trim()
+                    ? evaluateFormula(field.formula, readings)
+                    : null;
+                  const change = (patch: Partial<CalculatedSetting>) =>
+                    setCalculatedList((list) =>
+                      list.map((item, position) =>
+                        position === index ? { ...item, ...patch } : item,
+                      ),
+                    );
+                  return (
+                    <div className="formula-item" key={field.id}>
+                      <div className="formula-row">
+                        <input
+                          value={field.label}
+                          placeholder="Nome, ex.: Cortes por minuto"
+                          maxLength={40}
+                          onChange={(event) => change({ label: event.target.value })}
+                        />
+                        <input
+                          className="formula-input"
+                          value={field.formula}
+                          placeholder="PecasPorHora / 60 / (4 * 6)"
+                          onChange={(event) => change({ formula: event.target.value })}
+                        />
+                        <input
+                          value={field.unit ?? ''}
+                          placeholder="Unidade"
+                          maxLength={12}
+                          onChange={(event) => change({ unit: event.target.value })}
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max="6"
+                          title="Casas decimais do valor calculado"
+                          value={field.decimals ?? 1}
+                          onChange={(event) => change({ decimals: Number(event.target.value) })}
+                        />
+                        <button
+                          type="button"
+                          className="icon-button"
+                          title="Remover esta informação"
+                          aria-label="Remover esta informação"
+                          onClick={() =>
+                            setCalculatedList((list) =>
+                              list.filter((_, position) => position !== index),
+                            )
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                      {problem ? (
+                        <small className="formula-error">{problem}</small>
+                      ) : field.formula.trim() ? (
+                        <small className="formula-preview">
+                          Agora daria <b>{now == null ? '—' : number(now, field.decimals ?? 1)}</b>{' '}
+                          {field.unit}
+                        </small>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                <div className="formula-add">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCalculatedList((list) => [
+                        ...list,
+                        {
+                          id: `calc-${Date.now()}-${list.length}`,
+                          label: '',
+                          formula: '',
+                          unit: '',
+                          decimals: 1,
+                        },
+                      ])
+                    }
+                  >
+                    + Adicionar informação calculada
+                  </button>
                   <small className="shifts-help">
-                    Variáveis disponíveis: {Object.keys(readings).slice(0, 8).join(', ') || '—'}
+                    Variáveis: {Object.keys(readings).slice(0, 8).join(', ') || '—'}
                   </small>
-                )}
-              </label>
+                </div>
+              </div>
               <label className="field">
                 <span className="field-label">
                   Casas decimais

@@ -15,6 +15,16 @@ import {
 } from 'recharts';
 import { usePoll } from './data';
 import { metricInfo, type ProductionMetric } from './ShiftBoard';
+import { evaluateFormula, formulaVariables, parseFormula } from './formula';
+
+/** A formula the master wrote on the card: the modal charts it hour by hour. */
+export interface CalculatedSetting {
+  id: string;
+  label: string;
+  formula: string;
+  unit?: string;
+  decimals?: number;
+}
 
 // What is behind each number of the production board: clicking a card opens this. It shows the
 // shift hour by hour — how much was produced, how the machine spent the hour — and every pallet
@@ -43,6 +53,21 @@ export interface DetailData {
     manual: number;
   }[];
   pallets: PalletEvent[];
+  /** Hourly average of each variable a calculated field reads. */
+  variables?: Record<string, Array<{ hour: string; value: number }>>;
+}
+
+/** The variables every formula of a card needs, to ask the server for them in one go. */
+export function formulaKeys(fields: CalculatedSetting[]) {
+  const keys = new Set<string>();
+  for (const field of fields) {
+    try {
+      for (const name of formulaVariables(parseFormula(field.formula))) keys.add(name);
+    } catch {
+      // A formula still being written asks for nothing.
+    }
+  }
+  return [...keys];
 }
 
 const TITLES: Record<DetailFocus, string> = {
@@ -78,9 +103,12 @@ function minutesSeconds(seconds: number | null | undefined) {
 export function ShiftDetailCharts({
   data,
   focus = 'produced',
+  calculated = [],
 }: {
   data: DetailData | null;
   focus?: DetailFocus;
+  /** Calculated fields of the card: each one becomes a chart over the shift. */
+  calculated?: CalculatedSetting[];
 }) {
   const info = metricInfo[data?.metric ?? 'pallets'];
   const hours = useMemo(() => {
@@ -260,6 +288,67 @@ export function ShiftDetailCharts({
         </>
       )}
 
+      {showHours &&
+        calculated.map((field) => {
+          const series = (data.hours ?? []).map((hour) => {
+            const values: Record<string, number> = {};
+            for (const [key, points] of Object.entries(data.variables ?? {})) {
+              const point = points.find((item) => item.hour === hour.hour);
+              if (point) values[key] = point.value;
+            }
+            return { hour: clock(hour.hour), value: evaluateFormula(field.formula, values) };
+          });
+          const known = series.filter((point) => point.value != null);
+          const average = known.length
+            ? known.reduce((sum, point) => sum + (point.value ?? 0), 0) / known.length
+            : null;
+          return (
+            <div className="detail-section" key={field.id}>
+              <strong>
+                {field.label || 'Calculado'} durante o período
+                {average != null && (
+                  <em className="detail-average">
+                    {' '}
+                    · média {number(average, field.decimals ?? 1)} {field.unit}
+                  </em>
+                )}
+              </strong>
+              <div className="detail-chart">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={series}>
+                    <CartesianGrid
+                      stroke="var(--detail-grid)"
+                      strokeDasharray="3 6"
+                      vertical={false}
+                    />
+                    <XAxis dataKey="hour" stroke="var(--detail-axis)" fontSize={12} />
+                    <YAxis stroke="var(--detail-axis)" fontSize={12} width={48} />
+                    <Tooltip
+                      formatter={(value) => [
+                        `${number(Number(value), field.decimals ?? 1)} ${field.unit ?? ''}`,
+                        field.label || 'calculado',
+                      ]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#b4592c"
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      connectNulls
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              {!known.length && (
+                <p className="shifts-help">
+                  Sem leituras das variáveis desta conta no período.
+                </p>
+              )}
+            </div>
+          );
+        })}
+
       {showPallets && ranking.count > 0 && (
         <>
           <div className="detail-summary">
@@ -369,14 +458,20 @@ export function ShiftDetailModal({
   deviceId,
   mode,
   focus,
+  calculated = [],
   onClose,
 }: {
   deviceId: string;
   mode: 'shift' | 'day';
   focus: DetailFocus;
+  calculated?: CalculatedSetting[];
   onClose: () => void;
 }) {
-  const detail = usePoll<DetailData>(`/devices/${deviceId}/shift-detail?mode=${mode}`, 60000);
+  const keys = formulaKeys(calculated);
+  const detail = usePoll<DetailData>(
+    `/devices/${deviceId}/shift-detail?mode=${mode}${keys.length ? `&keys=${encodeURIComponent(keys.join(','))}` : ''}`,
+    60000,
+  );
   const data = detail.data;
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -399,7 +494,7 @@ export function ShiftDetailModal({
 
         {detail.loading && <p>Carregando…</p>}
         {detail.error && <div className="form-error">{detail.error}</div>}
-        <ShiftDetailCharts data={data} focus={focus} />
+        <ShiftDetailCharts data={data} focus={focus} calculated={calculated} />
 
         <div className="modal-actions">
           <button type="button" onClick={onClose}>

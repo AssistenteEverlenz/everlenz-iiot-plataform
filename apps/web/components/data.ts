@@ -110,7 +110,15 @@ export interface DashboardWidget {
       color: string;
       priority: number;
     }>;
-    /** A formula over the device's variables, shown under the reading ("cortes por minuto"). */
+    /** Formulas over the device's variables, shown under the reading ("cortes por minuto"). */
+    calculated?: Array<{
+      id: string;
+      label: string;
+      formula: string;
+      unit?: string;
+      decimals?: number;
+    }>;
+    /** The single formula of the first version, still read from older cards. */
     formula?: string;
     formulaLabel?: string;
     formulaUnit?: string;
