@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -202,7 +202,16 @@ function segmentPaint(segment: { state: string; mix?: Record<string, number> }) 
   return stops.length ? `linear-gradient(90deg, ${stops.join(', ')})` : solid;
 }
 
-export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSize?: number }) {
+export function ShiftCurve({
+  board,
+  fontSize = 10,
+  deviceId,
+}: {
+  board: BoardData;
+  fontSize?: number;
+  /** With the device, a close zoom reads the counter minute by minute. */
+  deviceId?: string;
+}) {
   const reactId = useId();
   const info = metricInfo[board.metric];
   const chart = board.curve.map((point, index) => ({
@@ -217,8 +226,41 @@ export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSiz
   const [dragging, setDragging] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const span = view ?? { start: 0, end: Math.max(0, chart.length - 1) };
-  const visible = chart.slice(span.start, span.end + 1);
+  const coarse = chart.slice(span.start, span.end + 1);
   const MIN_POINTS = 6;
+  // Under about an hour on screen, each 5-minute step hides more than it shows.
+  const wantsMinutes = Boolean(deviceId) && view != null && coarse.length > 1 && coarse.length <= 13;
+  const windowFrom = coarse[0]?.t ?? null;
+  const windowTo = coarse.at(-1)?.t ?? null;
+  const minutes = usePoll<{ minutes: Array<{ t: string; value: number }> }>(
+    wantsMinutes && windowFrom && windowTo
+      ? `/devices/${deviceId}/shift-minutes?from=${encodeURIComponent(windowFrom)}&to=${encodeURIComponent(windowTo)}`
+      : null,
+    60000,
+  );
+  // The minute curve carries on from where the coarse curve was at the start of the window.
+  const detailed = useMemo(() => {
+    const rows = minutes.data?.minutes;
+    if (!wantsMinutes || !rows?.length) return null;
+    const base = coarse[0];
+    let running = base?.actual ?? 0;
+    const plannedStep =
+      coarse.length > 1
+        ? (((coarse.at(-1)?.planned ?? 0) - (base?.planned ?? 0)) / (rows.length - 1 || 1))
+        : 0;
+    return rows.map((row, index) => {
+      running += row.value;
+      return {
+        t: row.t,
+        label: clock(row.t),
+        state: base?.state ?? 'unknown',
+        actual: base?.actual == null ? null : running,
+        planned: base?.planned == null ? null : (base.planned ?? 0) + plannedStep * index,
+        projected: null,
+      };
+    });
+  }, [minutes.data, wantsMinutes, coarse]);
+  const visible = detailed ?? coarse;
 
   function zoom(factor: number, anchor = 0.5) {
     setView((current) => {
@@ -304,7 +346,11 @@ export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSiz
           ⤢
         </button>
       </div>
-      {view && <span className="chart-zoom-hint">arraste para andar no turno</span>}
+      {view && (
+        <span className="chart-zoom-hint">
+          {detailed ? 'minuto a minuto · arraste para andar' : 'arraste para andar no turno'}
+        </span>
+      )}
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={visible} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
           {stateStops.length > 0 && (
@@ -718,7 +764,7 @@ export function ShiftBoardView({
                 </span>
               </div>
               <div className="shift-chart">
-                <ShiftCurve board={board} />
+                <ShiftCurve board={board} deviceId={deviceId} />
               </div>
             </div>
             <div className="shift-availability">

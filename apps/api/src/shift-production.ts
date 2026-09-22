@@ -1395,6 +1395,76 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   });
 
   /**
+   * The curve minute by minute over a short window: the 5-minute buckets the board is built
+   * from cannot show a stop that lasted two minutes, so a zoomed-in curve reads the counter
+   * itself and counts the increments per minute, with the same rules the buckets use.
+   */
+  app.get('/api/devices/:id/shift-minutes', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = z
+      .object({ from: z.iso.datetime(), to: z.iso.datetime(), metric: z.string().optional() })
+      .parse(req.query);
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+    if (to <= from) return reply.code(400).send({ error: 'Período inválido' });
+    // Four hours of 10-second readings is about 1440 rows: enough for a zoom, cheap to read.
+    if (to.getTime() - from.getTime() > 4 * 3600 * 1000)
+      return reply.code(400).send({ error: 'Use no máximo 4 horas por vez' });
+    const tenantId = access.principal(req).tenantId;
+    const config = await loadConfig(db, tenantId, id);
+    if (!config) return reply.code(404).send({ error: 'Device not found' });
+    const metric: Metric =
+      (query.metric as Metric | undefined) ??
+      config.target_metric ??
+      (config.blocks_tag_id ? 'milheiros' : 'pallets');
+    const tagId =
+      metric === 'pallets'
+        ? config.pallets_tag_id
+        : metric === 'tons'
+          ? (config.tons_total_tag_id ?? config.blocks_tag_id)
+          : config.blocks_tag_id;
+    if (!tagId) return { minutes: [], metric };
+    const rows = await db.query<{ at: Date | string; value: number | null }>(
+      `(SELECT received_at at,value_number value FROM telemetry_samples
+        WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at<$4
+        ORDER BY received_at DESC LIMIT 1)
+       UNION ALL
+       (SELECT received_at,value_number FROM telemetry_samples
+        WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at>=$4 AND received_at<$5
+        ORDER BY received_at)`,
+      [tenantId, id, tagId, from, to],
+    );
+    const ordered = rows.rows
+      .map((row) => ({
+        at: new Date(row.at).getTime(),
+        value: row.value == null ? null : Number(row.value),
+      }))
+      .sort((a, b) => a.at - b.at);
+    const perMinute = new Map<number, number>();
+    let reading: number | null = null;
+    for (const row of ordered) {
+      const step = counterStep(reading, row.value);
+      reading = step.reading;
+      if (step.delta <= 0 || row.at < from.getTime()) continue;
+      const minute = Math.floor(row.at / 60000) * 60000;
+      perMinute.set(minute, (perMinute.get(minute) ?? 0) + step.delta);
+    }
+    const weight =
+      metric === 'tons'
+        ? config.tons_total_tag_id
+          ? 1
+          : (config.weight_per_unit_kg ?? 0) / 1000
+        : metric === 'milheiros'
+          ? 1 / 1000
+          : 1;
+    const minutes: Array<{ t: string; value: number }> = [];
+    for (let at = Math.floor(from.getTime() / 60000) * 60000; at < to.getTime(); at += 60000)
+      minutes.push({ t: new Date(at).toISOString(), value: (perMinute.get(at) ?? 0) * weight });
+    return { minutes, metric };
+  });
+
+  /**
    * What is behind each number of the board: production hour by hour, the machine's time in
    * each hour and every pallet with how long it took. Same window as the board.
    */
