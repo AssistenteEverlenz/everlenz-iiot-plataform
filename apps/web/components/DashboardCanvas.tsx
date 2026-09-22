@@ -240,8 +240,12 @@ function shiftDay(date: string, days: number) {
   return parsed.toISOString().slice(0, 10);
 }
 
-const visualizationHelp: Record<DashboardWidget['widget_type'], string> = {
+/** What the picker offers: the stored types, plus the formula card, kept as a value card. */
+type PickerType = DashboardWidget['widget_type'] | 'formula';
+const visualizationHelp: Record<PickerType, string> = {
   value: 'Mostra a leitura atual de uma variável numérica, booleana ou de texto.',
+  formula:
+    'O número do card é uma conta sua sobre as variáveis da IHM e do turno, sem precisar de uma variável própria. Exemplo: turno.pecas / turno.horas_produzindo.',
   line: 'Usa uma variável numérica e desenha sua evolução dentro da janela do painel.',
   gauge: 'Usa uma variável numérica com escala mínima, máxima e faixas coloridas.',
   status: 'Usa uma variável booleana: verdadeiro representa operação e falso representa parada.',
@@ -354,6 +358,10 @@ const SHIFT_VARIABLE_HELP: Record<string, string> = {
 
 // Cards that read no single variable; every other card needs one to show anything.
 const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto']);
+/** A card is complete without a variable when it is one of those, or when it is a formula. */
+function needsVariable(widget: { widget_type: string; config: DashboardWidget['config'] }) {
+  return !variableFreeTypes.has(widget.widget_type) && !widget.config.mainFormula?.trim();
+}
 
 function Widget({
   widget,
@@ -596,7 +604,7 @@ function Widget({
       onDragEnter={dragEnter}
       onDragEnd={dragEnd}
       onDrop={drop}
-      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${dropTarget ? 'drop-target' : ''} ${currentRange && !missing ? 'alarm-active' : ''} ${missing ? 'variable-missing' : ''} ${!variableFreeTypes.has(widget.widget_type) && !widget.tag_id ? 'variable-unbound' : ''}`}
+      className={`dashboard-widget widget-${widget.width} sized ${shownSpan.cols > 6 ? 'wide' : ''} ${liveSpan ? 'resizing' : ''} ${dropTarget ? 'drop-target' : ''} ${currentRange && !missing ? 'alarm-active' : ''} ${missing ? 'variable-missing' : ''} ${needsVariable(widget) && !widget.tag_id ? 'variable-unbound' : ''}`}
       style={
         {
           '--accent': activeColor,
@@ -635,7 +643,7 @@ function Widget({
           </small>
         </div>
       )}
-      {!variableFreeTypes.has(widget.widget_type) && !widget.tag_id && (
+      {needsVariable(widget) && !widget.tag_id && (
         <div className="widget-missing widget-unbound">
           <span aria-hidden="true">✎</span>
           <strong>Sem variável vinculada</strong>
@@ -774,14 +782,19 @@ function Widget({
       {widget.widget_type === 'value' && (
         <>
           <div className="hero-value">
-            {numeric != null
+            {widget.config.mainFormula
+              ? (() => {
+                  const result = evaluateFormula(widget.config.mainFormula, values ?? {});
+                  return result == null ? '—' : number(result, widget.config.decimals ?? 1);
+                })()
+              : numeric != null
               ? number(numeric, widget.config.decimals ?? 1)
               : latest?.value_boolean != null
                 ? latest.value_boolean
                   ? 'Ligado'
                   : 'Desligado'
                 : (latest?.value_text ?? '—')}
-            <span>{widget.unit}</span>
+            <span>{widget.config.mainFormula ? widget.config.mainFormulaUnit : widget.unit}</span>
           </div>
           {calculatedLine}
           {widget.config.counterMode && latest?.value_number != null && (
@@ -921,7 +934,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [tv, setTv] = useState(false);
   const [error, setError] = useState('');
   const [signalId, setSignalId] = useState('');
-  const [widgetType, setWidgetType] = useState<DashboardWidget['widget_type']>('value');
+  const [widgetType, setWidgetType] = useState<PickerType>('value');
   const [title, setTitle] = useState('');
   const [color, setColor] = useState('#12b8a6');
   const [width, setWidth] = useState<DashboardWidget['width']>('small');
@@ -933,6 +946,8 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [commaPlaces, setCommaPlaces] = useState(0);
   const [calculatedList, setCalculatedList] = useState<CalculatedSetting[]>([]);
   const [showingVariables, setShowingVariables] = useState(false);
+  const [mainFormula, setMainFormula] = useState('');
+  const [mainFormulaUnit, setMainFormulaUnit] = useState('');
   const [colSpanInput, setColSpanInput] = useState(4);
   const [rowSpanInput, setRowSpanInput] = useState(4);
   const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
@@ -1056,14 +1071,14 @@ export function DashboardCanvas({ id }: { id: string }) {
         });
         tagId = tag.id;
       }
+      const isFormula = widgetType === 'formula';
       await mutate(`/dashboards/${id}/widgets`, 'POST', {
         deviceId,
-        tagId,
-        widgetType,
+        tagId: isFormula ? null : tagId,
+        widgetType: isFormula ? 'value' : widgetType,
         title:
           title ||
-          selectedSignal?.name ||
-          selectedSignal?.key ||
+          (isFormula ? 'Cálculo' : (selectedSignal?.name ?? selectedSignal?.key ?? '')) ||
           (widgetType === 'oee'
             ? 'OEE'
             : widgetType === 'shift_board'
@@ -1072,6 +1087,8 @@ export function DashboardCanvas({ id }: { id: string }) {
         // The production board needs the whole row to be readable.
         width: widgetType === 'shift_board' ? 'full' : width,
         config: {
+          // A formula card starts showing zero until its own formula is written in the pencil.
+          ...(isFormula ? { mainFormula: '0', mainFormulaUnit: '' } : {}),
           // New cards start in the White label primary colour; existing cards keep their own.
           color: branding.primary_color,
           min: 0,
@@ -1124,6 +1141,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     setDecimals(widget.config.decimals ?? 1);
     setCommaPlaces(placesOfScale(widget.scale_multiplier));
     setCalculatedList(calculatedFields(widget.config));
+    setMainFormula(widget.config.mainFormula ?? '');
+    setMainFormulaUnit(widget.config.mainFormulaUnit ?? '');
     setColSpanInput(spansOf(widget).cols);
     setRowSpanInput(spansOf(widget).rows);
     setGaugeStyle(widget.config.gaugeStyle ?? 'top');
@@ -1170,7 +1189,7 @@ export function DashboardCanvas({ id }: { id: string }) {
       }
       // The card's variable (a card from the default model starts without one).
       let tagId: string | null | undefined;
-      if (!variableFreeTypes.has(editingWidget.widget_type)) {
+      if (needsVariable({ widget_type: editingWidget.widget_type, config: { mainFormula } })) {
         tagId = selectedSignal?.tag_id ?? null;
         if (selectedSignal && !tagId) {
           const tag = await mutate<{ id: string }>(`/devices/${deviceId}/tags`, 'POST', {
@@ -1218,6 +1237,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           productColors,
           counterMode,
           resetVariable: counterMode ? resetVariable.trim() : '',
+          mainFormula: mainFormula.trim(),
+          mainFormulaUnit: mainFormulaUnit.trim().slice(0, 12),
           calculated: calculatedList
             .filter((field) => field.formula.trim())
             .map((field) => ({
@@ -1498,6 +1519,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                   {(
                     [
                       ['value', '42', 'Valor'],
+                      ['formula', 'ƒ', 'Fórmula'],
                       ['line', '∿', 'Tendência'],
                       ['gauge', '◒', 'Medidor'],
                       ['status', '●', 'Estado'],
@@ -1589,7 +1611,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                 Título
                 <input required value={title} onChange={(event) => setTitle(event.target.value)} />
               </label>
-              {!variableFreeTypes.has(editingWidget.widget_type) && (
+              {needsVariable({ widget_type: editingWidget.widget_type, config: { mainFormula } }) && (
                 <label className="field full-field">
                   Variável
                   <select value={signalId} onChange={(event) => setSignalId(event.target.value)}>
@@ -1639,6 +1661,47 @@ export function DashboardCanvas({ id }: { id: string }) {
                   }
                 />
               </label>
+              {editingWidget.widget_type === 'value' && (
+                <div className="field full-field">
+                  <span className="field-label">
+                    Fórmula do valor
+                    <Hint
+                      align="left"
+                      text="Quando preenchida, o número do card é o resultado desta conta e o card não precisa de variável própria. Exemplo: turno.pecas / turno.horas_produzindo."
+                    />
+                  </span>
+                  <div className="formula-row formula-row-main">
+                    <FormulaInput
+                      value={mainFormula}
+                      options={variableOptions}
+                      placeholder="turno.pecas / turno.horas_produzindo"
+                      onChange={setMainFormula}
+                    />
+                    <input
+                      value={mainFormulaUnit}
+                      placeholder="Unidade"
+                      maxLength={12}
+                      onChange={(event) => setMainFormulaUnit(event.target.value)}
+                    />
+                  </div>
+                  {mainFormula.trim() &&
+                    (formulaError(mainFormula, Object.keys(readings)) ? (
+                      <small className="formula-error">
+                        {formulaError(mainFormula, Object.keys(readings))}
+                      </small>
+                    ) : (
+                      <small className="formula-preview">
+                        Agora daria{' '}
+                        <b>
+                          {evaluateFormula(mainFormula, readings) == null
+                            ? '—'
+                            : number(evaluateFormula(mainFormula, readings) ?? 0, decimals)}
+                        </b>{' '}
+                        {mainFormulaUnit}
+                      </small>
+                    ))}
+                </div>
+              )}
               <div className="field full-field">
                 <span className="field-label">
                   Informações calculadas

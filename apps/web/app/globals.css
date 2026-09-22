@@ -7354,3 +7354,12 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   text-transform: uppercase;
   color: #8ba1a8;
 }
+
+.formula-row-main {
+  grid-template-columns: 1fr 0.4fr;
+}
+@media (max-width: 640px) {
+  .formula-row-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

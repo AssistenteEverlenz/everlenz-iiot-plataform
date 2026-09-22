@@ -110,6 +110,9 @@ export interface DashboardWidget {
       color: string;
       priority: number;
     }>;
+    /** The card's own number is this formula, with no variable of its own behind it. */
+    mainFormula?: string;
+    mainFormulaUnit?: string;
     /** Formulas over the device's variables, shown under the reading ("cortes por minuto"). */
     calculated?: Array<{
       id: string;
