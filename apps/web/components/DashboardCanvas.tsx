@@ -717,9 +717,9 @@ function Widget({
               {number(max, widget.config.decimals ?? 1)}
             </span>
           </div>
-          {calculatedLine}
         </div>
       )}
+      {(widget.widget_type === 'gauge' || widget.widget_type === 'status') && calculatedLine}
       {widget.widget_type === 'status' && (
         <div className={`machine-status ${isOn(latest) ? 'running' : ''}`}>
           <span className="status-orb" />

@@ -393,8 +393,8 @@ async function hourlyVariables(
     .filter((key) => /^[A-Za-z_][A-Za-z0-9_.]{0,63}$/.test(key))
     .slice(0, 8);
   if (!wanted.length) return {};
-  const rows = await db.query<{ key: string; hour: Date | string; value: string | number }>(
-    `SELECT t.key,date_trunc('hour',r.bucket) hour,
+  const rows = await db.query<{ key: string; hour_at: Date | string; value: string | number }>(
+    `SELECT t.key,date_trunc('hour',r.bucket) AS hour_at,
        sum(r.value_sum)/nullif(sum(r.sample_count),0) value
      FROM telemetry_hourly_rollups r JOIN tags t ON t.id=r.tag_id
      WHERE r.tenant_id=$1 AND r.device_id=$2 AND t.key=ANY($3::text[])
@@ -407,7 +407,7 @@ async function hourlyVariables(
   for (const row of rows.rows) {
     if (row.value == null) continue;
     (series[row.key] ??= []).push({
-      hour: new Date(row.hour).toISOString(),
+      hour: new Date(row.hour_at).toISOString(),
       value: Number(row.value),
     });
   }
@@ -1568,7 +1568,16 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       pallets: config.pallets_tag_id
         ? await palletEvents(db, tenantId, id, config.pallets_tag_id, span.start, until)
         : [],
-      variables: await hourlyVariables(db, tenantId, id, query.keys, span.start, until),
+      // A problem reading the variables of a calculated field must not cost the whole detail.
+      variables: await hourlyVariables(db, tenantId, id, query.keys, span.start, until).catch(
+        (error: unknown) => {
+          req.log.warn({
+            event: 'shift_detail_variables_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+          return {};
+        },
+      ),
     };
   });
 
