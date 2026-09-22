@@ -737,7 +737,6 @@ export function ShiftBoardView({
                 <b>
                   {field.value} <small>{field.unit}</small>
                 </b>
-                <em>conta configurada no card</em>
               </div>
             ))}
             {board.palletTiming && board.palletTiming.count > 0 && (
