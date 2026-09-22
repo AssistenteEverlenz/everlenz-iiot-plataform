@@ -7274,3 +7274,57 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     padding: 8px 10px;
   }
 }
+
+/* The formula box with the variables at hand. */
+.formula-field {
+  position: relative;
+}
+.formula-field .formula-input {
+  width: 100%;
+}
+.formula-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 230px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d5e1e4;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(16, 45, 54, 0.14);
+}
+.formula-suggestions button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+}
+.formula-suggestions button:hover,
+.formula-suggestions button:focus-visible {
+  background: #eef6f5;
+}
+.formula-suggestions code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #12525c;
+}
+.formula-suggestions span {
+  font-size: 11px;
+  color: #6b7f86;
+}
+.formula-suggestions b {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #24434d;
+}

@@ -2039,4 +2039,26 @@
   :root[data-theme='dark'] .detail-average {
     color: #92a2a8;
   }
+  :root[data-theme='dark'] .formula-suggestions {
+    background: #12191c;
+    border: 1px solid #27373d;
+    box-shadow: 0 12px 28px rgba(16, 45, 54, 0.14);
+  }
+  :root[data-theme='dark'] .formula-suggestions button {
+    border: none;
+    background: transparent;
+  }
+  :root[data-theme='dark'] .formula-suggestions button:hover,
+  :root[data-theme='dark'] .formula-suggestions button:focus-visible {
+    background: #1c2625;
+  }
+  :root[data-theme='dark'] .formula-suggestions code {
+    color: #c7d2d5;
+  }
+  :root[data-theme='dark'] .formula-suggestions span {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .formula-suggestions b {
+    color: #9bbfca;
+  }
 }

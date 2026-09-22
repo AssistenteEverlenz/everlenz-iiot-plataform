@@ -27,6 +27,16 @@ describe('calculated fields', () => {
     expect(evaluateFormula('Pecas / Paletes', { Pecas: 10, Paletes: 0 })).toBeNull();
     expect(evaluateFormula('Pecas * 2', {})).toBeNull();
   });
+  // The platform offers its own numbers beside the HMI ones, named with a dot.
+  it("reads the platform's own variables, like turno.pecas", () => {
+    expect(
+      evaluateFormula('turno.pecas / turno.horas_produzindo', {
+        'turno.pecas': 65160,
+        'turno.horas_produzindo': 6,
+      }),
+    ).toBe(10860);
+    expect(formulaError('turno.pecas / turno.horas', ['turno.pecas'])).toMatch(/não encontrada/);
+  });
   it('lists the variables a formula needs', () =>
     expect(formulaVariables(parseFormula(cuts))).toEqual(['PecasPorHora']));
   it('explains what is wrong before it is saved', () => {

@@ -27,6 +27,8 @@ import {
   type Signal,
 } from './data';
 import { Hint } from './Hint';
+import { FormulaInput, type VariableOption } from './FormulaInput';
+import type { ShiftBoardResponse } from './ShiftBoard';
 import { evaluateFormula, formulaError } from './formula';
 
 import { ScrollHint } from './ScrollHint';
@@ -308,6 +310,46 @@ function calculatedFields(config: DashboardWidget['config']): CalculatedSetting[
     ];
   return [];
 }
+
+/**
+ * What the platform itself knows about the shift, offered to a formula beside the HMI's own
+ * variables: "turno.pecas / turno.horas_produzindo" gives the real pieces per hour.
+ */
+function shiftVariables(board: ShiftBoardResponse | null): Record<string, number> {
+  const data = board?.board;
+  if (!data) return {};
+  const time = data.time;
+  return {
+    'turno.pecas': data.totals.pieces,
+    'turno.milheiros': data.totals.milheiros,
+    'turno.paletes': data.totals.pallets,
+    'turno.toneladas': data.totals.tons,
+    'turno.horas_produzindo': time.producing / 3600,
+    'turno.horas_paradas': (time.idle + time.manual) / 3600,
+    'turno.horas_decorridas': time.elapsedProductive / 3600,
+    'turno.minutos_produzindo': time.producing / 60,
+    'turno.aproveitamento': data.utilization == null ? 0 : data.utilization * 100,
+    'turno.ritmo': data.pacePerHour,
+    'turno.meta': data.target?.value ?? 0,
+    'turno.meta_feito': data.target?.actual ?? 0,
+    'turno.paletes_tempo_medio': data.palletTiming?.averageSeconds ?? 0,
+  };
+}
+const SHIFT_VARIABLE_HELP: Record<string, string> = {
+  'turno.pecas': 'peças produzidas no turno',
+  'turno.milheiros': 'milheiros no turno',
+  'turno.paletes': 'paletes no turno',
+  'turno.toneladas': 'toneladas no turno',
+  'turno.horas_produzindo': 'horas com a máquina produzindo',
+  'turno.horas_paradas': 'horas ociosa ou em manual',
+  'turno.horas_decorridas': 'horas de turno já decorridas',
+  'turno.minutos_produzindo': 'minutos com a máquina produzindo',
+  'turno.aproveitamento': 'aproveitamento da máquina, em %',
+  'turno.ritmo': 'ritmo atual, na unidade da meta por hora',
+  'turno.meta': 'meta do turno',
+  'turno.meta_feito': 'quanto já foi feito da meta',
+  'turno.paletes_tempo_medio': 'segundos por palete, em média',
+};
 
 // Cards that read no single variable; every other card needs one to show anything.
 const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto']);
@@ -958,13 +1000,29 @@ export function DashboardCanvas({ id }: { id: string }) {
   const selectedSignal = signals.data?.find(
     (signal) => signal.id === signalId || signal.tag_id === signalId,
   );
+  // The running shift, for the platform's own variables in a formula.
+  const shift = usePoll<ShiftBoardResponse>(
+    deviceId ? `/devices/${deviceId}/shift-board?mode=shift` : null,
+    60000,
+  );
   // Latest reading of each variable by key: what a card's formula is evaluated against.
   const readings = useMemo(() => {
     const map: Record<string, number> = {};
     for (const sample of latest.data ?? [])
       if (typeof sample.value_number === 'number') map[sample.key] = sample.value_number;
-    return map;
-  }, [latest.data]);
+    return { ...map, ...shiftVariables(shift.data ?? null) };
+  }, [latest.data, shift.data]);
+
+  // What the suggestion list under the formula box offers.
+  const variableOptions = useMemo<VariableOption[]>(
+    () =>
+      Object.entries(readings).map(([name, value]) => ({
+        name,
+        description: SHIFT_VARIABLE_HELP[name] ?? 'variável da IHM',
+        value: number(value, Math.abs(value) < 10 ? 2 : 0),
+      })),
+    [readings],
+  );
   const byTag = useMemo(
     () => new Map((latest.data ?? []).map((sample) => [sample.tag_id, sample])),
     [latest.data],
@@ -1609,11 +1667,11 @@ export function DashboardCanvas({ id }: { id: string }) {
                           maxLength={40}
                           onChange={(event) => change({ label: event.target.value })}
                         />
-                        <input
-                          className="formula-input"
+                        <FormulaInput
                           value={field.formula}
-                          placeholder="PecasPorHora / 60 / (4 * 6)"
-                          onChange={(event) => change({ formula: event.target.value })}
+                          options={variableOptions}
+                          placeholder="turno.pecas / turno.horas_produzindo"
+                          onChange={(formula) => change({ formula })}
                         />
                         <input
                           value={field.unit ?? ''}
@@ -1673,7 +1731,8 @@ export function DashboardCanvas({ id }: { id: string }) {
                     + Adicionar informação calculada
                   </button>
                   <small className="shifts-help">
-                    Variáveis: {Object.keys(readings).slice(0, 8).join(', ') || '—'}
+                    Digite o nome de uma variável e escolha na lista. Há as da IHM e as do
+                    turno, como turno.pecas e turno.horas_produzindo.
                   </small>
                 </div>
               </div>
