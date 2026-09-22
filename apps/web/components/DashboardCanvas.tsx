@@ -1706,20 +1706,6 @@ export function DashboardCanvas({ id }: { id: string }) {
                   ))}
                 </select>
               </label>
-              {editingWidget.tag_id && (
-                <label className="field">
-                  <span className="field-label">
-                    Contagem desta variável
-                    <Hint
-                      align="left"
-                      text="Refaz os totais por hora a partir das leituras gravadas. Use quando um total parecer alto demais, por exemplo depois de mexer na vírgula."
-                    />
-                  </span>
-                  <button type="button" disabled={savingModal} onClick={() => void recount()}>
-                    Recalcular do histórico
-                  </button>
-                </label>
-              )}
               <label className="field">
                 Cor
                 <input
@@ -2165,6 +2151,16 @@ export function DashboardCanvas({ id }: { id: string }) {
                   }
                 >
                   Conferir com a IHM
+                </button>
+              )}
+              {editingWidget.tag_id && (
+                <button
+                  type="button"
+                  disabled={savingModal}
+                  title="Refaz os totais por hora a partir das leituras gravadas"
+                  onClick={() => void recount()}
+                >
+                  Recalcular do histórico
                 </button>
               )}
               {editingWidget.tag_id && (

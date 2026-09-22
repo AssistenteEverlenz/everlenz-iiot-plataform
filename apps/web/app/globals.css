@@ -7050,3 +7050,131 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   font-weight: 400;
   color: #6b7f86;
 }
+
+/* ---------------------------------------------------------------------------
+   Phones: one pass over the whole platform. Touch targets a finger can hit,
+   fields that do not make iOS zoom the page, modals that use the screen they
+   have, and blocks that stack instead of squeezing.
+   --------------------------------------------------------------------------- */
+@media (max-width: 700px) {
+  button,
+  .primary-button,
+  .secondary-button {
+    min-height: 42px;
+    padding: 11px 14px;
+    font-size: 13px;
+  }
+  .icon-button,
+  .chart-zoom button {
+    min-height: 0;
+  }
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+    /* Under 16px iOS zooms the page on focus and the layout jumps. */
+    font-size: 16px;
+    padding: 11px 12px;
+  }
+  input {
+    min-width: 0;
+  }
+  .modal-card {
+    width: 100%;
+    max-width: none;
+    max-height: 92vh;
+    padding: 18px 16px calc(14px + env(safe-area-inset-bottom));
+    border-radius: 16px 16px 0 0;
+    align-self: flex-end;
+  }
+  .modal-card .form-grid,
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .modal-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .modal-actions > button,
+  .modal-actions > .primary-button {
+    width: 100%;
+  }
+  .modal-title h2 {
+    font-size: 18px;
+    line-height: 1.25;
+  }
+  /* The board: two columns of numbers, big enough to read from a metre away. */
+  .shift-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .shift-kpi {
+    padding: 10px 12px;
+  }
+  .shift-kpi b {
+    font-size: 24px;
+  }
+  .shift-kpi.hero {
+    grid-column: 1 / -1;
+  }
+  .shift-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shift-chart,
+  .detail-chart {
+    height: 190px;
+  }
+  .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .detail-summary b {
+    font-size: 19px;
+  }
+  .detail-modal,
+  .production-detail-modal {
+    width: 100%;
+  }
+  .detail-table {
+    font-size: 13px;
+  }
+  .detail-table th,
+  .detail-table td {
+    padding: 8px 8px;
+  }
+  /* Card periods and actions wrap instead of pushing the title out of the card. */
+  .widget-head-period {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .widget-head-period button {
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 11.5px;
+  }
+  .formula-item .formula-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .formula-item .formula-row .icon-button {
+    justify-self: end;
+  }
+  .production-detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .snapshot-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .snapshot-row > button,
+  .snapshot-row > select,
+  .snapshot-row > input {
+    width: 100%;
+  }
+  /* A table wider than the screen scrolls on its own instead of stretching the page. */
+  .scroll,
+  .production-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
