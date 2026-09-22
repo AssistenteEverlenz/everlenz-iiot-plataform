@@ -383,22 +383,34 @@ export async function createApp(
       scope,
     );
     await sql.query(
-      `WITH ordered AS (
-         SELECT tenant_id,site_id,device_id,tag_id,product_code,timestamp,value_number,
-           lag(value_number) OVER (ORDER BY timestamp,id) previous_value
+      `WITH readings AS (
+         SELECT tenant_id,site_id,device_id,tag_id,product_code,timestamp,id,value_number
          FROM telemetry_samples
          WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL
-       ), grouped AS (
+       ), counted AS (
+         -- A zero between two readings is a bad reading, never a new baseline: it stays out of
+         -- the increments, so the reading after it adds only what it really produced.
+         SELECT timestamp,product_code,value_number,
+           lag(value_number) OVER (ORDER BY timestamp,id) previous_value
+         FROM readings WHERE value_number <> 0
+       ), deltas AS (
+         SELECT product_code,date_trunc('hour',timestamp) bucket,
+           sum(CASE WHEN previous_value IS NULL THEN 0
+             WHEN value_number >= previous_value THEN value_number-previous_value
+             ELSE greatest(value_number,0) END) positive_delta
+         FROM counted
+         GROUP BY product_code,date_trunc('hour',timestamp)
+       ), stats AS (
          SELECT tenant_id,site_id,device_id,tag_id,product_code,
            date_trunc('hour',timestamp) bucket,count(*) sample_count,
            sum(value_number) value_sum,min(value_number) value_min,max(value_number) value_max,
            (array_agg(value_number ORDER BY timestamp))[1] first_value,min(timestamp) first_at,
-           (array_agg(value_number ORDER BY timestamp DESC))[1] last_value,max(timestamp) last_at,
-           sum(CASE WHEN previous_value IS NULL THEN 0
-             WHEN value_number >= previous_value THEN value_number-previous_value
-             ELSE greatest(value_number,0) END) positive_delta
-         FROM ordered
+           (array_agg(value_number ORDER BY timestamp DESC))[1] last_value,max(timestamp) last_at
+         FROM readings
          GROUP BY tenant_id,site_id,device_id,tag_id,product_code,date_trunc('hour',timestamp)
+       ), grouped AS (
+         SELECT s.*,COALESCE(d.positive_delta,0) positive_delta FROM stats s
+         LEFT JOIN deltas d ON d.product_code=s.product_code AND d.bucket=s.bucket
        )
        INSERT INTO telemetry_hourly_rollups(
          tenant_id,site_id,device_id,tag_id,product_code,bucket,sample_count,value_sum,
