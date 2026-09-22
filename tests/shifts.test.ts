@@ -9,6 +9,7 @@ import {
   validateShifts,
   type ShiftDefinition,
 } from '../packages/shared/src/shifts.js';
+import { summarize } from '../apps/api/src/shift-production.js';
 
 const shift = (patch: Partial<ShiftDefinition>): ShiftDefinition => ({
   id: null,
@@ -94,5 +95,41 @@ describe('shift calendar', () => {
 
   it('reads the plant date of an instant', () => {
     expect(plantDate(new Date('2026-09-12T02:30:00Z'))).toBe('2026-09-11');
+  });
+});
+
+describe('a pause the plant works through', () => {
+  const day = occurrenceOf(shift({ breaks: [{ start: '11:00', end: '12:00' }] }), '2026-09-08');
+  const windows = productiveWindows(day);
+  // One 5-minute bucket at 11:10 local (14:10Z): inside the lunch pause.
+  const bucket = (patch: { producing_s?: number; idle_s?: number; pallets?: number }) => [
+    {
+      bucket: '2026-09-08T14:10:00.000Z',
+      product_code: 'ITEM GERAL',
+      pieces: 0,
+      pallets: patch.pallets ?? 0,
+      tons: 0,
+      producing_s: patch.producing_s ?? 0,
+      idle_s: patch.idle_s ?? 0,
+      manual_s: 0,
+    },
+  ];
+  const until = new Date('2026-09-08T14:15:00.000Z');
+
+  it('counts the machine running during the pause as production time', () => {
+    const summary = summarize(bucket({ producing_s: 300, pallets: 2 }), day, windows, until);
+    expect(summary.producing).toBe(300);
+    expect(summary.producingInPause).toBe(300);
+    // 07:00 to 11:15 local minus the 15 min of pause already elapsed, plus the 5 min worked.
+    expect(summary.elapsedProductive).toBe(4 * 3600 + 300);
+    expect(summary.pallets).toBe(2);
+  });
+
+  it('leaves a pause that really happened out of the machine time', () => {
+    const summary = summarize(bucket({ idle_s: 300 }), day, windows, until);
+    expect(summary.producing).toBe(0);
+    expect(summary.idle).toBe(0);
+    expect(summary.producingInPause).toBe(0);
+    expect(summary.elapsedProductive).toBe(4 * 3600);
   });
 });

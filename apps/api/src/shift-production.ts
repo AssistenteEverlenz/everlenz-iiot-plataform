@@ -138,6 +138,8 @@ export interface Summary extends Totals {
   /** In automatic after the last production, when it stopped within the final minutes. */
   closing: number;
   elapsedProductive: number;
+  /** Producing seconds inside a scheduled pause: the plant worked through it. */
+  producingInPause: number;
   products: Array<Totals & { product_code: string }>;
 }
 
@@ -224,6 +226,25 @@ async function loadBuckets(db: Database, tenantId: string, deviceId: string, fro
  * Production counts over the whole span (a piece made during a pause still counts for the
  * shift); state time only inside the productive windows, so pauses never spoil availability.
  */
+function producingInPauseBetween(
+  buckets: BucketRow[],
+  windows: TimeWindow[],
+  from: Date,
+  to: Date,
+) {
+  let seconds = 0;
+  for (const row of buckets) {
+    const start = new Date(row.bucket);
+    const end = new Date(start.getTime() + BUCKET_MS);
+    const overlap =
+      Math.min(end.getTime(), to.getTime()) - Math.max(start.getTime(), from.getTime());
+    if (overlap <= 0) continue;
+    const paused = Math.max(0, 1 - productiveSecondsIn(windows, start, end) / BUCKET_SECONDS);
+    seconds += Number(row.producing_s) * paused * (overlap / BUCKET_MS);
+  }
+  return seconds;
+}
+
 export function summarize(
   buckets: BucketRow[],
   span: TimeWindow,
@@ -242,6 +263,7 @@ export function summarize(
     waiting: 0,
     closing: 0,
     elapsedProductive: 0,
+    producingInPause: 0,
     products: [],
   };
   const products = new Map<string, Totals>();
@@ -260,7 +282,13 @@ export function summarize(
     product.tons += Number(row.tons);
     products.set(row.product_code, product);
     const weight = productiveSecondsIn(windows, start, end) / BUCKET_SECONDS;
-    summary.producing += Number(row.producing_s) * weight;
+    // A pause the plant decided not to take is production, not a pause: the machine running
+    // during it counts as producing. Time stopped during a pause stays out, so a pause that
+    // does happen never hurts the machine's utilization.
+    const paused = Math.max(0, 1 - weight);
+    const producingInPause = Number(row.producing_s) * paused;
+    summary.producingInPause += producingInPause;
+    summary.producing += Number(row.producing_s) * weight + producingInPause;
     if (started == null || start.getTime() < started)
       summary.waiting += Number(row.idle_s) * weight;
     else if (closingFrom != null && start.getTime() >= closingFrom)
@@ -269,7 +297,8 @@ export function summarize(
     summary.manual += Number(row.manual_s) * weight;
   }
   const end = new Date(Math.min(span.end.getTime(), until.getTime()));
-  summary.elapsedProductive = productiveSecondsIn(windows, span.start, end);
+  summary.elapsedProductive =
+    productiveSecondsIn(windows, span.start, end) + summary.producingInPause;
   summary.offline = Math.max(
     0,
     summary.elapsedProductive -
@@ -436,6 +465,7 @@ async function buildBoard(
       ),
     0,
   );
+  const pauseWorked = Math.max(0, pauseSeconds - summary.producingInPause);
   const metric: Metric = config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets');
   const perShift = await targetFor(db, tenantId, deviceId, config, until);
   const targetValue = perShift ? perShift.value * Math.max(occurrences.length, 0) : null;
@@ -454,7 +484,9 @@ async function buildBoard(
   }
   const actual = metricValue(summary, metric);
   const rateFrom = new Date(now.getTime() - RATE_WINDOW_SECONDS * 1000);
-  const rateSeconds = productiveSecondsIn(windows, rateFrom, until);
+  const rateSeconds =
+    productiveSecondsIn(windows, rateFrom, until) +
+    producingInPauseBetween(buckets, windows, rateFrom, until);
   let recent = 0;
   for (const [at, totals] of byBucket)
     if (at + BUCKET_MS > rateFrom.getTime() && at < until.getTime())
@@ -522,7 +554,11 @@ async function buildBoard(
     const end = new Date(Math.min(at + BUCKET_MS, until.getTime()));
     const productive = productiveSecondsIn(windows, start, end);
     if (productive < 1) {
-      timeline.push({ t: start.toISOString(), state: occurrences.length ? 'pause' : 'outside' });
+      const worked = (statesByBucket.get(at)?.producing ?? 0) > 0;
+      timeline.push({
+        t: start.toISOString(),
+        state: worked ? 'producing' : occurrences.length ? 'pause' : 'outside',
+      });
       continue;
     }
     const seconds = statesByBucket.get(at) ?? { producing: 0, idle: 0, manual: 0 };
@@ -574,7 +610,7 @@ async function buildBoard(
       offline: summary.offline,
       waiting: summary.waiting,
       closing: summary.closing,
-      pause: pauseSeconds,
+      pause: pauseWorked,
       elapsedProductive: summary.elapsedProductive,
     },
     utilization:
