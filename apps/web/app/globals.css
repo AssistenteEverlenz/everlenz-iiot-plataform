@@ -7178,3 +7178,99 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Maintenance actions of a card: words on a desktop, icons on a phone. */
+.action-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.action-compact .action-glyph {
+  font-size: 15px;
+  line-height: 1;
+}
+@media (min-width: 701px) {
+  .action-compact .action-glyph {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  /* The four maintenance actions sit on one row as icons; only Cancelar and Salvar keep words. */
+  .modal-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+  }
+  .modal-actions > button,
+  .modal-actions > .primary-button {
+    width: auto;
+  }
+  .modal-actions .action-compact {
+    justify-content: center;
+    padding: 0;
+    width: 100%;
+    height: 44px;
+  }
+  .modal-actions .action-compact .action-text {
+    /* Kept for screen readers and for the title on a long press. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .modal-actions > button:not(.action-compact) {
+    grid-column: span 2;
+  }
+  .modal-actions > .primary-button,
+  .modal-actions > button.primary-button {
+    grid-column: 1 / -1;
+    order: 9;
+  }
+  /* The board on a phone: the same numbers, half the scrolling. */
+  .shift-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .shift-kpi {
+    padding: 8px 10px;
+    gap: 1px;
+  }
+  .shift-kpi span {
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+  }
+  .shift-kpi b {
+    font-size: 21px;
+  }
+  .shift-kpi b small {
+    font-size: 10px;
+  }
+  .shift-kpi em {
+    font-size: 9.5px;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .shift-kpi.hero {
+    grid-column: 1 / -1;
+  }
+  .shift-kpi.hero b {
+    font-size: 30px;
+  }
+  /* The head of the board in one compact block instead of four stacked lines. */
+  .shift-board-head {
+    gap: 6px;
+  }
+  .shift-board-head h3,
+  .shift-board-head strong {
+    font-size: 15px;
+  }
+  .shift-health {
+    font-size: 11.5px;
+    padding: 8px 10px;
+  }
+}

@@ -2133,15 +2133,22 @@ export function DashboardCanvas({ id }: { id: string }) {
               <button
                 type="button"
                 disabled={savingModal}
-                className="danger-text"
+                className="danger-text action-compact"
+                aria-label="Excluir item"
+                title="Excluir item"
                 onClick={() => setRemovingWidget(editingWidget)}
               >
-                Excluir item
+                <span className="action-glyph" aria-hidden="true">
+                  ␡
+                </span>
+                <span className="action-text">Excluir item</span>
               </button>
               {editingWidget.tag_id && editingWidget.data_type === 'number' && (
                 <button
                   type="button"
                   disabled={savingModal}
+                  className="action-compact"
+                  aria-label="Conferir com a IHM"
                   title="Compara o que a IHM contou desde o último zeramento com o que a plataforma somou"
                   onClick={() =>
                     setCheckingHmi({
@@ -2150,27 +2157,40 @@ export function DashboardCanvas({ id }: { id: string }) {
                     })
                   }
                 >
-                  Conferir com a IHM
+                  <span className="action-glyph" aria-hidden="true">
+                    ⇄
+                  </span>
+                  <span className="action-text">Conferir com a IHM</span>
                 </button>
               )}
               {editingWidget.tag_id && (
                 <button
                   type="button"
                   disabled={savingModal}
+                  className="action-compact"
+                  aria-label="Recalcular do histórico"
                   title="Refaz os totais por hora a partir das leituras gravadas"
                   onClick={() => void recount()}
                 >
-                  Recalcular do histórico
+                  <span className="action-glyph" aria-hidden="true">
+                    ↻
+                  </span>
+                  <span className="action-text">Recalcular do histórico</span>
                 </button>
               )}
               {editingWidget.tag_id && (
                 <button
                   type="button"
                   disabled={savingModal}
-                  className="danger-text"
+                  className="danger-text action-compact"
+                  aria-label="Zerar histórico da variável"
+                  title="Zerar histórico da variável"
                   onClick={() => setClearingHistory(editingWidget)}
                 >
-                  Zerar histórico da variável
+                  <span className="action-glyph" aria-hidden="true">
+                    ⌫
+                  </span>
+                  <span className="action-text">Zerar histórico da variável</span>
                 </button>
               )}
               <button type="button" disabled={savingModal} onClick={() => setEditingWidget(null)}>
