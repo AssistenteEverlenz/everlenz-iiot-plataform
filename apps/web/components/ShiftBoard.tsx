@@ -75,7 +75,7 @@ export interface BoardData {
     actual: number | null;
     projected: number | null;
   }>;
-  timeline: Array<{ t: string; state: string }>;
+  timeline: Array<{ t: string; state: string; mix?: Record<string, number> }>;
   /** Pallet pace: time between the last two pallets, and producing time per pallet. */
   palletTiming?: {
     lastSeconds: number | null;
@@ -178,6 +178,30 @@ function statusLine(data: ShiftBoardResponse) {
  * shift, and the tooltip names the state at the point under the mouse. The chart zooms with the
  * wheel or the buttons and can be dragged sideways, so a busy hour can be looked at closely.
  */
+/**
+ * The colour of one block of the timeline. A block the machine spent in more than one state is
+ * painted in slices, so a two-minute stop inside a producing block is visible.
+ */
+function segmentPaint(segment: { state: string; mix?: Record<string, number> }) {
+  const solid = stateInfo[segment.state]?.color ?? stateInfo.unknown.color;
+  const mix = segment.mix;
+  if (!mix) return solid;
+  const total = Object.values(mix).reduce((sum, seconds) => sum + seconds, 0);
+  if (total <= 0) return solid;
+  const order = ['producing', 'waiting', 'closing', 'idle', 'manual', 'offline'];
+  let at = 0;
+  const stops: string[] = [];
+  for (const state of order) {
+    const seconds = mix[state];
+    if (!seconds) continue;
+    const color = stateInfo[state]?.color ?? stateInfo.unknown.color;
+    const from = (at / total) * 100;
+    at += seconds;
+    stops.push(`${color} ${from.toFixed(1)}%`, `${color} ${((at / total) * 100).toFixed(1)}%`);
+  }
+  return stops.length ? `linear-gradient(90deg, ${stops.join(', ')})` : solid;
+}
+
 export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSize?: number }) {
   const reactId = useId();
   const info = metricInfo[board.metric];
@@ -415,7 +439,20 @@ export function Gauge({ value }: { value: number | null }) {
   );
 }
 
-export function ShiftBoard({ deviceId }: { deviceId: string }) {
+export interface CalculatedField {
+  label: string;
+  value: string;
+  unit: string;
+}
+
+export function ShiftBoard({
+  deviceId,
+  calculated,
+}: {
+  deviceId: string;
+  /** A formula the master wrote on the card, shown as one more number of the board. */
+  calculated?: CalculatedField | null;
+}) {
   const [mode, setMode] = useState<'shift' | 'day'>('shift');
   const response = usePoll<ShiftBoardResponse>(
     `/devices/${deviceId}/shift-board?mode=${mode}`,
@@ -429,6 +466,7 @@ export function ShiftBoard({ deviceId }: { deviceId: string }) {
       deviceId={deviceId}
       mode={mode}
       onMode={setMode}
+      calculated={calculated}
       onChanged={() => void response.refresh()}
     />
   );
@@ -446,7 +484,9 @@ export function ShiftBoardView({
   onChanged,
   historical = false,
   hideHead = false,
+  calculated = null,
 }: {
+  calculated?: CalculatedField | null;
   /** The TV draws its own header (shift, state, clock). */
   hideHead?: boolean;
   data: ShiftBoardResponse;
@@ -635,6 +675,15 @@ export function ShiftBoardView({
                   : `restam ${duration(board.remainingSeconds)} produtivos`}
               </em>
             </div>
+            {calculated && (
+              <div className="shift-kpi">
+                <span>{calculated.label}</span>
+                <b>
+                  {calculated.value} <small>{calculated.unit}</small>
+                </b>
+                <em>conta configurada no card</em>
+              </div>
+            )}
             {board.palletTiming && board.palletTiming.count > 0 && (
               <div
                 className={`shift-kpi ${historical ? '' : 'clickable'}`}
@@ -718,7 +767,7 @@ export function ShiftBoardView({
             {board.timeline.map((segment) => (
               <span
                 key={segment.t}
-                style={{ background: stateInfo[segment.state]?.color }}
+                style={{ background: segmentPaint(segment) }}
                 title={`${clock(segment.t)} · ${stateInfo[segment.state]?.label ?? segment.state}`}
               />
             ))}

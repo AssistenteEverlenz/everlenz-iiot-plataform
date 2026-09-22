@@ -110,6 +110,11 @@ export interface DashboardWidget {
       color: string;
       priority: number;
     }>;
+    /** A formula over the device's variables, shown under the reading ("cortes por minuto"). */
+    formula?: string;
+    formulaLabel?: string;
+    formulaUnit?: string;
+    formulaDecimals?: number;
     productionPeriodMinutes?: number;
     productionMinimumValue?: number;
     productionMetricKind?: 'rate_average' | 'counter_delta';

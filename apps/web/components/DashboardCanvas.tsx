@@ -27,6 +27,7 @@ import {
   type Signal,
 } from './data';
 import { Hint } from './Hint';
+import { evaluateFormula, formulaError } from './formula';
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
@@ -303,6 +304,7 @@ function Widget({
   dropTarget,
   dragEnter,
   dragEnd,
+  values,
   missing = false,
   order = 0,
   dataVersion = 0,
@@ -316,6 +318,8 @@ function Widget({
   /** The widget's variable is no longer in the device's publications. */
   missing?: boolean;
   history: Sample[];
+  /** Latest reading of every variable of the device, by key: what a formula reads. */
+  values?: Record<string, number>;
   dashboardId: string;
   counter?: CounterValue;
   resize: (cols: number, rows: number) => void;
@@ -329,6 +333,20 @@ function Widget({
   dragEnd: () => void;
 }) {
   const color = widget.config.color ?? '#12b8a6';
+  // "Cortes por minuto" and the like: the plant's own arithmetic over the HMI's variables,
+  // shown under the reading of the card that carries the formula.
+  const calculated = widget.config.formula
+    ? evaluateFormula(widget.config.formula, values ?? {})
+    : null;
+  const calculatedLine = widget.config.formula ? (
+    <p className="widget-calculated">
+      <span>{widget.config.formulaLabel || 'Calculado'}</span>
+      <b>
+        {calculated == null ? '—' : number(calculated, widget.config.formulaDecimals ?? 1)}
+        {widget.config.formulaUnit ? ' ' + widget.config.formulaUnit : ''}
+      </b>
+    </p>
+  ) : null;
   // Each production chart owns its period, so two charts can compare different windows.
   const [period, setPeriod] = useState<ProductionPeriod>(
     widget.config.productionDefaultPeriod ?? '7d',
@@ -664,6 +682,7 @@ function Widget({
               <strong>{number(numeric, widget.config.decimals ?? 1)}</strong>
               <span>{widget.unit}</span>
             </div>
+            {calculatedLine}
             <span className="gauge-limit gauge-limit-min">
               {number(min, widget.config.decimals ?? 1)}
             </span>
@@ -693,6 +712,7 @@ function Widget({
                 : (latest?.value_text ?? '—')}
             <span>{widget.unit}</span>
           </div>
+          {calculatedLine}
           {widget.config.counterMode && latest?.value_number != null && (
             <button className="counter-reset" type="button" onClick={reset}>
               Zerar contador
@@ -720,7 +740,23 @@ function Widget({
           periodText={periodLabel(period, statistics?.trend_days ?? 7)}
         />
       )}
-      {widget.widget_type === 'shift_board' && <ShiftBoard deviceId={widget.device_id} />}
+      {widget.widget_type === 'shift_board' && (
+        <ShiftBoard
+          deviceId={widget.device_id}
+          calculated={
+            widget.config.formula
+              ? {
+                  label: widget.config.formulaLabel || 'Calculado',
+                  value:
+                    calculated == null
+                      ? '—'
+                      : number(calculated, widget.config.formulaDecimals ?? 1),
+                  unit: widget.config.formulaUnit ?? '',
+                }
+              : null
+          }
+        />
+      )}
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
           <strong>OEE pronto para configurar</strong>
@@ -830,6 +866,10 @@ export function DashboardCanvas({ id }: { id: string }) {
   // Two different things: where the HMI's number has its comma (the variable's scale) and how
   // many decimal places this card shows.
   const [commaPlaces, setCommaPlaces] = useState(0);
+  const [formula, setFormula] = useState('');
+  const [formulaLabel, setFormulaLabel] = useState('');
+  const [formulaUnit, setFormulaUnit] = useState('');
+  const [formulaDecimals, setFormulaDecimals] = useState(1);
   const [colSpanInput, setColSpanInput] = useState(4);
   const [rowSpanInput, setRowSpanInput] = useState(4);
   const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
@@ -899,6 +939,13 @@ export function DashboardCanvas({ id }: { id: string }) {
   const selectedSignal = signals.data?.find(
     (signal) => signal.id === signalId || signal.tag_id === signalId,
   );
+  // Latest reading of each variable by key: what a card's formula is evaluated against.
+  const readings = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const sample of latest.data ?? [])
+      if (typeof sample.value_number === 'number') map[sample.key] = sample.value_number;
+    return map;
+  }, [latest.data]);
   const byTag = useMemo(
     () => new Map((latest.data ?? []).map((sample) => [sample.tag_id, sample])),
     [latest.data],
@@ -997,6 +1044,10 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMaximum(widget.config.max ?? 100);
     setDecimals(widget.config.decimals ?? 1);
     setCommaPlaces(placesOfScale(widget.scale_multiplier));
+    setFormula(widget.config.formula ?? '');
+    setFormulaLabel(widget.config.formulaLabel ?? '');
+    setFormulaUnit(widget.config.formulaUnit ?? '');
+    setFormulaDecimals(widget.config.formulaDecimals ?? 1);
     setColSpanInput(spansOf(widget).cols);
     setRowSpanInput(spansOf(widget).rows);
     setGaugeStyle(widget.config.gaugeStyle ?? 'top');
@@ -1091,6 +1142,10 @@ export function DashboardCanvas({ id }: { id: string }) {
           productColors,
           counterMode,
           resetVariable: counterMode ? resetVariable.trim() : '',
+          formula: formula.trim(),
+          formulaLabel: formulaLabel.trim().slice(0, 40),
+          formulaUnit: formulaUnit.trim().slice(0, 12),
+          formulaDecimals,
         },
       });
       setEditingWidget(null);
@@ -1267,6 +1322,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             missing={Boolean(widget.tag_id && signals.data && !publishedTagIds.has(widget.tag_id))}
             order={stackOrder.get(widget.id)}
             history={history.data ?? []}
+            values={readings}
             dashboardId={id}
             counter={counters.data?.find((item) => item.widget_id === widget.id)}
             dataVersion={dataVersion}
@@ -1496,6 +1552,63 @@ export function DashboardCanvas({ id }: { id: string }) {
                     setRowSpanInput(Math.max(2, Math.min(20, Number(event.target.value) || 2)))
                   }
                 />
+              </label>
+              <label className="field full-field">
+                <span className="field-label">
+                  Informação calculada
+                  <Hint
+                    text="Uma conta sua sobre as variáveis da IHM, mostrada abaixo do valor. Exemplo: PecasPorHora / 60 / (4 * 6) dá os cortes por minuto. Use + - * / ( ), números com vírgula e as funções min, max, round, abs, floor, ceil, com ; entre os argumentos."
+                  />
+                </span>
+                <div className="formula-row">
+                  <input
+                    value={formulaLabel}
+                    placeholder="Nome, ex.: Cortes por minuto"
+                    maxLength={40}
+                    onChange={(event) => setFormulaLabel(event.target.value)}
+                  />
+                  <input
+                    className="formula-input"
+                    value={formula}
+                    placeholder="PecasPorHora / 60 / (4 * 6)"
+                    onChange={(event) => setFormula(event.target.value)}
+                  />
+                  <input
+                    value={formulaUnit}
+                    placeholder="Unidade"
+                    maxLength={12}
+                    onChange={(event) => setFormulaUnit(event.target.value)}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="6"
+                    title="Casas decimais do valor calculado"
+                    value={formulaDecimals}
+                    onChange={(event) => setFormulaDecimals(Number(event.target.value))}
+                  />
+                </div>
+                {formula.trim() &&
+                  (formulaError(formula, Object.keys(readings)) ? (
+                    <small className="formula-error">
+                      {formulaError(formula, Object.keys(readings))}
+                    </small>
+                  ) : (
+                    <small className="formula-preview">
+                      Agora daria{' '}
+                      <b>
+                        {evaluateFormula(formula, readings) == null
+                          ? '—'
+                          : number(evaluateFormula(formula, readings) ?? 0, formulaDecimals)}
+                      </b>{' '}
+                      {formulaUnit}
+                    </small>
+                  ))}
+                {!formula.trim() && (
+                  <small className="shifts-help">
+                    Variáveis disponíveis: {Object.keys(readings).slice(0, 8).join(', ') || '—'}
+                  </small>
+                )}
               </label>
               <label className="field">
                 <span className="field-label">

@@ -6946,3 +6946,42 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .shift-curve-frame.pannable svg {
   pointer-events: auto;
 }
+
+/* A calculated field: the plant's own arithmetic over the HMI's variables. */
+.widget-calculated {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #5d757e;
+}
+.widget-calculated b {
+  font-size: 15px;
+  color: #1d3c46;
+  font-variant-numeric: tabular-nums;
+}
+.formula-row {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr 0.7fr 0.5fr;
+  gap: 8px;
+}
+.formula-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.formula-error {
+  color: #a3272f;
+  font-weight: 600;
+}
+.formula-preview {
+  color: #3f6068;
+}
+.formula-preview b {
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 640px) {
+  .formula-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

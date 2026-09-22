@@ -546,7 +546,12 @@ async function buildBoard(
     current.manual += Number(row.manual_s);
     statesByBucket.set(at, current);
   }
-  const timeline: Array<{ t: string; state: string }> = [];
+  const timeline: Array<{
+    t: string;
+    state: string;
+    /** Seconds of each state inside the block, so a two-minute stop still shows. */
+    mix?: Record<string, number>;
+  }> = [];
   const started = firstProducingAt(buckets, span);
   const closingFrom = closingFromAt(buckets, span, closingSeconds);
   for (let at = firstBucket; at < until.getTime(); at += BUCKET_MS) {
@@ -576,7 +581,14 @@ async function buildBoard(
       ['manual', seconds.manual],
       ['offline', offline],
     ] as const;
-    timeline.push({ t: start.toISOString(), state: [...ranked].sort((a, b) => b[1] - a[1])[0][0] });
+    const mix = Object.fromEntries(
+      ranked.filter(([, seconds]) => seconds >= 1).map(([state, seconds]) => [state, Math.round(seconds)]),
+    );
+    timeline.push({
+      t: start.toISOString(),
+      state: [...ranked].sort((a, b) => b[1] - a[1])[0][0],
+      ...(Object.keys(mix).length > 1 ? { mix } : {}),
+    });
   }
 
   let health: Health | null = null;

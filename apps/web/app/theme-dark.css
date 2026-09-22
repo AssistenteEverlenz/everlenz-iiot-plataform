@@ -2018,4 +2018,16 @@
   :root[data-theme='dark'] .production-detail-charts {
     border-top: 1px solid #1e2b2f;
   }
+  :root[data-theme='dark'] .widget-calculated {
+    color: #98acb3;
+  }
+  :root[data-theme='dark'] .widget-calculated b {
+    color: #ccd6d9;
+  }
+  :root[data-theme='dark'] .formula-error {
+    color: #da8b90;
+  }
+  :root[data-theme='dark'] .formula-preview {
+    color: #aebec3;
+  }
 }
