@@ -190,6 +190,7 @@ export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSiz
   // Window of points on screen; null is the whole shift.
   const [view, setView] = useState<{ start: number; end: number } | null>(null);
   const drag = useRef<{ x: number; start: number; end: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const span = view ?? { start: 0, end: Math.max(0, chart.length - 1) };
   const visible = chart.slice(span.start, span.end + 1);
@@ -224,7 +225,7 @@ export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSiz
 
   return (
     <div
-      className="shift-curve-frame"
+      className={`shift-curve-frame${view ? ' pannable' : ''}${dragging ? ' dragging' : ''}`}
       ref={frame}
       onWheel={(event) => {
         if (!chart.length) return;
@@ -232,31 +233,41 @@ export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSiz
         const anchor = box ? Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) : 0.5;
         zoom(event.deltaY < 0 ? 0.75 : 1.35, anchor);
       }}
-      onPointerDown={(event) => {
-        if (!view) return;
+      onDragStart={(event) => event.preventDefault()}
+      onPointerDownCapture={(event) => {
+        if (!view || event.button !== 0) return;
+        // The zoom buttons keep their click: only the chart area pans.
+        if ((event.target as HTMLElement).closest('.chart-zoom')) return;
+        event.preventDefault();
         drag.current = { x: event.clientX, start: view.start, end: view.end };
+        setDragging(true);
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
-      onPointerMove={(event) => {
+      onPointerMoveCapture={(event) => {
         const box = frame.current?.getBoundingClientRect();
         if (!drag.current || !box) return;
+        event.preventDefault();
         const width = drag.current.end - drag.current.start + 1;
         const moved = Math.round(((drag.current.x - event.clientX) / box.width) * width);
         const from = Math.max(0, Math.min(chart.length - width, drag.current.start + moved));
         setView({ start: from, end: from + width - 1 });
       }}
-      onPointerUp={() => {
+      onPointerUpCapture={(event) => {
+        if (!drag.current) return;
+        event.currentTarget.releasePointerCapture(event.pointerId);
         drag.current = null;
+        setDragging(false);
       }}
-      onPointerCancel={() => {
+      onPointerCancelCapture={() => {
         drag.current = null;
+        setDragging(false);
       }}
     >
       <div className="chart-zoom">
-        <button type="button" title="Aproximar" aria-label="Aproximar" onClick={() => zoom(0.75)}>
+        <button type="button" title="Aproximar" aria-label="Aproximar" onClick={(event) => { event.stopPropagation(); zoom(0.75); }}>
           +
         </button>
-        <button type="button" title="Afastar" aria-label="Afastar" onClick={() => zoom(1.35)}>
+        <button type="button" title="Afastar" aria-label="Afastar" onClick={(event) => { event.stopPropagation(); zoom(1.35); }}>
           −
         </button>
         <button
@@ -264,7 +275,7 @@ export function ShiftCurve({ board, fontSize = 10 }: { board: BoardData; fontSiz
           title="Ver o turno inteiro"
           aria-label="Ver o turno inteiro"
           disabled={!view}
-          onClick={() => setView(null)}
+          onClick={(event) => { event.stopPropagation(); setView(null); }}
         >
           ⤢
         </button>
