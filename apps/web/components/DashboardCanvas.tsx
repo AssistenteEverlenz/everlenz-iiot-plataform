@@ -682,7 +682,6 @@ function Widget({
               <strong>{number(numeric, widget.config.decimals ?? 1)}</strong>
               <span>{widget.unit}</span>
             </div>
-            {calculatedLine}
             <span className="gauge-limit gauge-limit-min">
               {number(min, widget.config.decimals ?? 1)}
             </span>
@@ -690,6 +689,7 @@ function Widget({
               {number(max, widget.config.decimals ?? 1)}
             </span>
           </div>
+          {calculatedLine}
         </div>
       )}
       {widget.widget_type === 'status' && (
