@@ -7328,3 +7328,29 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   font-variant-numeric: tabular-nums;
   color: #24434d;
 }
+
+/* The list of names a formula can use: a click copies the name. */
+.variable-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+}
+.variable-name:hover,
+.variable-name:focus-visible {
+  background: #eef6f5;
+}
+.variable-name code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #12525c;
+}
+.variable-name span {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8ba1a8;
+}

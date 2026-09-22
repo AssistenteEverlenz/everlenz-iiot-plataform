@@ -28,6 +28,7 @@ import {
 } from './data';
 import { Hint } from './Hint';
 import { FormulaInput, type VariableOption } from './FormulaInput';
+import { VariablesModal } from './VariablesModal';
 import type { ShiftBoardResponse } from './ShiftBoard';
 import { evaluateFormula, formulaError } from './formula';
 
@@ -931,6 +932,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   // many decimal places this card shows.
   const [commaPlaces, setCommaPlaces] = useState(0);
   const [calculatedList, setCalculatedList] = useState<CalculatedSetting[]>([]);
+  const [showingVariables, setShowingVariables] = useState(false);
   const [colSpanInput, setColSpanInput] = useState(4);
   const [rowSpanInput, setRowSpanInput] = useState(4);
   const [gaugeStyle, setGaugeStyle] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
@@ -1730,9 +1732,11 @@ export function DashboardCanvas({ id }: { id: string }) {
                   >
                     + Adicionar informação calculada
                   </button>
+                  <button type="button" onClick={() => setShowingVariables(true)}>
+                    Ver variáveis disponíveis
+                  </button>
                   <small className="shifts-help">
-                    Digite o nome de uma variável e escolha na lista. Há as da IHM e as do
-                    turno, como turno.pecas e turno.horas_produzindo.
+                    Digite o nome de uma variável e escolha na lista que aparece.
                   </small>
                 </div>
               </div>
@@ -2262,6 +2266,9 @@ export function DashboardCanvas({ id }: { id: string }) {
             </div>
           </form>
         </div>
+      )}
+      {showingVariables && (
+        <VariablesModal options={variableOptions} onClose={() => setShowingVariables(false)} />
       )}
       {removingWidget && (
         <ActionModal
