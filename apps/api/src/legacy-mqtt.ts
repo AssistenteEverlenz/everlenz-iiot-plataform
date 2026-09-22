@@ -34,6 +34,13 @@ export interface LegacyProxyOptions {
   upstreamPort: number;
   lookup(username: string): Promise<LegacyDevice | null>;
   recordAttempt(device: LegacyDevice, ip: string): Promise<void>;
+  /**
+   * A device already in legacy mode connecting from an address nobody released yet: the packet
+   * goes to the broker first and the address is only released if the broker accepts the
+   * device's own password. A plant whose public address changes comes back by itself; someone
+   * who only guessed the user name never gets through.
+   */
+  autoAllow?(device: LegacyDevice, ip: string): Promise<void>;
   log: { info(entry: object): void; warn(entry: object): void };
 }
 
@@ -123,24 +130,63 @@ export function startLegacyMqttProxy(options: LegacyProxyOptions): net.Server {
     client.on('error', () => client.destroy());
     const timer = setTimeout(() => client.destroy(), CONNECT_TIMEOUT_MS);
 
-    const decide = async (connect: ConnectInfo) => {
-      const device = connect.username ? await options.lookup(connect.username) : null;
-      if (device?.legacy && device.allowedIps.includes(ip)) {
-        const upstream = net.connect(options.upstreamPort, options.upstreamHost);
-        upstream.setNoDelay(true);
-        upstream.on('error', () => {
-          upstream.destroy();
-          client.destroy();
-        });
-        client.on('close', () => upstream.destroy());
-        upstream.on('close', () => client.destroy());
-        upstream.once('connect', () => {
-          upstream.write(buffered);
+    /** Pipes the client to the broker. `onAccepted` runs when the broker's CONNACK says yes. */
+    const pass = (
+      connect: ConnectInfo,
+      onAccepted?: (accepted: boolean) => void | Promise<void>,
+    ) => {
+      const upstream = net.connect(options.upstreamPort, options.upstreamHost);
+      upstream.setNoDelay(true);
+      upstream.on('error', () => {
+        upstream.destroy();
+        client.destroy();
+      });
+      client.on('close', () => upstream.destroy());
+      upstream.on('close', () => client.destroy());
+      upstream.once('connect', () => {
+        upstream.write(buffered);
+        if (!onAccepted) {
           client.pipe(upstream);
           upstream.pipe(client);
           client.resume();
-        });
+          return;
+        }
+        // Read the CONNACK before deciding: byte 3 carries the result in MQTT 3 and 5 alike.
+        const onConnack = (chunk: Buffer) => {
+          upstream.off('data', onConnack);
+          const accepted = chunk[0] === 0x20 && chunk[3] === 0x00;
+          void onAccepted(accepted);
+          if (!accepted) {
+            upstream.destroy();
+            client.end(chunk);
+            return;
+          }
+          client.write(chunk);
+          client.pipe(upstream);
+          upstream.pipe(client);
+          client.resume();
+        };
+        upstream.on('data', onConnack);
+      });
+    };
+
+    const decide = async (connect: ConnectInfo) => {
+      const device = connect.username ? await options.lookup(connect.username) : null;
+      if (device?.legacy && device.allowedIps.includes(ip)) {
+        pass(connect);
         options.log.info({ event: 'legacy_mqtt_passed', username: connect.username, ip });
+        return;
+      }
+      if (device?.legacy && options.autoAllow) {
+        pass(connect, async (accepted) => {
+          if (accepted) {
+            await options.autoAllow?.(device, ip);
+            options.log.info({ event: 'legacy_mqtt_auto_allowed', username: connect.username, ip });
+            return;
+          }
+          await options.recordAttempt(device, ip);
+          options.log.warn({ event: 'legacy_mqtt_refused', username: connect.username, ip });
+        });
         return;
       }
       if (device) {

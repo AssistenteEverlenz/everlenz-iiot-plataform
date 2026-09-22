@@ -41,6 +41,34 @@ const legacyProxy = env.MQTT_LEGACY_PORT
         legacyLookups.set(key, { at: Date.now(), device });
         return device;
       },
+      // The plant's public address changed and the HMI proved it has the device's password:
+      // the address joins the device's list by itself, the newest five are kept, and the
+      // release is written to the audit trail as done by the platform.
+      async autoAllow(device, ip) {
+        await database.query(
+          `UPDATE devices
+           SET legacy_allowed_ips=(
+                 SELECT CASE WHEN array_length(kept,1) > 5
+                   THEN kept[array_length(kept,1)-4:array_length(kept,1)] ELSE kept END
+                 FROM (SELECT array_remove(legacy_allowed_ips,$3::text) || $3::text kept) list
+               ),
+               updated_at=now()
+           WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL`,
+          [device.tenantId, device.deviceId, ip],
+        );
+        await database.query(
+          'DELETE FROM device_legacy_attempts WHERE tenant_id=$1 AND device_id=$2 AND source_ip=$3',
+          [device.tenantId, device.deviceId, ip],
+        );
+        await database.query(
+          `INSERT INTO audit_log(tenant_id,actor_email,actor_role,action,target_type,target_id,
+             summary,ip_address)
+           VALUES($1,'plataforma','master','device.legacy_ip.auto_allow','device',$2,$3::jsonb,$4)`,
+          [device.tenantId, device.deviceId, JSON.stringify({ ip }), ip],
+        );
+        // The proxy caches the device for a while: drop it so the new address is seen at once.
+        legacyLookups.clear();
+      },
       async recordAttempt(device, ip) {
         await database.query(
           `INSERT INTO device_legacy_attempts(tenant_id,device_id,source_ip) VALUES($1,$2,$3)

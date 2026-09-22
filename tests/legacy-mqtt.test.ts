@@ -93,18 +93,25 @@ describe('legacy MQTT proxy', () => {
     });
   }
 
-  async function setup(device: LegacyDevice | null) {
-    // Stand-in broker: answers CONNACK accepted to whatever it receives.
+  async function setup(
+    device: LegacyDevice | null,
+    options: { brokerAccepts?: boolean; autoAllow?: boolean } = {},
+  ) {
+    // Stand-in broker: answers CONNACK accepted, or refused when the test asks for it.
     const received: Buffer[] = [];
+    const answer = Buffer.from(
+      options.brokerAccepts === false ? [0x20, 0x02, 0x00, 0x05] : [0x20, 0x02, 0x00, 0x00],
+    );
     const broker = net.createServer((socket) =>
       socket.on('data', (chunk) => {
         received.push(chunk);
-        socket.write(Buffer.from([0x20, 0x02, 0x00, 0x00]));
+        socket.write(answer);
       }),
     );
     broker.listen(0, '127.0.0.1');
     const brokerPort = await listening(broker);
     const attempts: string[] = [];
+    const released: string[] = [];
     const proxy = startLegacyMqttProxy({
       port: 0,
       host: '127.0.0.1',
@@ -114,9 +121,14 @@ describe('legacy MQTT proxy', () => {
       recordAttempt: async (_device: LegacyDevice, ip: string) => {
         attempts.push(ip);
       },
+      autoAllow: options.autoAllow
+        ? async (_device: LegacyDevice, ip: string) => {
+            released.push(ip);
+          }
+        : undefined,
       log: { info: () => undefined, warn: () => undefined },
     });
-    return { port: await listening(proxy), received, attempts };
+    return { port: await listening(proxy), received, attempts, released };
   }
 
   it('passes a released address through to the broker, CONNECT included', async () => {
@@ -153,6 +165,30 @@ describe('legacy MQTT proxy', () => {
     });
     const reply = await exchange(port, connectPacket({ level: 5 }));
     expect([...reply]).toEqual([0x20, 0x03, 0x00, 0x87, 0x00]);
+    expect(attempts).toEqual(['127.0.0.1']);
+  });
+
+  // The plant's public address changes and the HMI comes back by itself, because the broker
+  // confirms the device's own password before the address is released.
+  it('releases a new address once the broker accepts the device password', async () => {
+    const { port, released, attempts } = await setup(
+      { deviceId: 'd', tenantId: 't', legacy: true, allowedIps: ['10.0.0.9'] },
+      { autoAllow: true },
+    );
+    const reply = await exchange(port, connectPacket());
+    expect([...reply]).toEqual([0x20, 0x02, 0x00, 0x00]);
+    expect(released).toEqual(['127.0.0.1']);
+    expect(attempts).toHaveLength(0);
+  });
+
+  it('releases nothing when the broker refuses the password', async () => {
+    const { port, released, attempts } = await setup(
+      { deviceId: 'd', tenantId: 't', legacy: true, allowedIps: ['10.0.0.9'] },
+      { autoAllow: true, brokerAccepts: false },
+    );
+    const reply = await exchange(port, connectPacket());
+    expect([...reply]).toEqual([0x20, 0x02, 0x00, 0x05]);
+    expect(released).toHaveLength(0);
     expect(attempts).toEqual(['127.0.0.1']);
   });
 
