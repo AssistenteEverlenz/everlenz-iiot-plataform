@@ -226,12 +226,13 @@ export function ShiftCurve({
   const gradientId = `shift-state-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   // Window of points on screen; null is the whole shift.
   const [view, setView] = useState<{ start: number; end: number } | null>(null);
-  const drag = useRef<{ x: number; start: number; end: number } | null>(null);
+  const drag = useRef<{ x: number; start: number; end: number; moving: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const span = view ?? { start: 0, end: Math.max(0, chart.length - 1) };
   const coarse = chart.slice(span.start, span.end + 1);
   const MIN_POINTS = 6;
+  const DRAG_THRESHOLD_PX = 8;
   // Under about an hour on screen, each 5-minute step hides more than it shows.
   const wantsMinutes = Boolean(deviceId) && view != null && coarse.length > 1 && coarse.length <= 13;
   const windowFrom = coarse[0]?.t ?? null;
@@ -308,14 +309,20 @@ export function ShiftCurve({
         if (!view || event.button !== 0) return;
         // The zoom buttons keep their click: only the chart area pans.
         if ((event.target as HTMLElement).closest('.chart-zoom')) return;
-        event.preventDefault();
-        drag.current = { x: event.clientX, start: view.start, end: view.end };
-        setDragging(true);
-        event.currentTarget.setPointerCapture(event.pointerId);
+        // Nothing is taken from the chart yet: a tap still reaches it and opens the value.
+        drag.current = { x: event.clientX, start: view.start, end: view.end, moving: false };
       }}
       onPointerMoveCapture={(event) => {
         const box = frame.current?.getBoundingClientRect();
         if (!drag.current || !box) return;
+        const travelled = Math.abs(event.clientX - drag.current.x);
+        if (!drag.current.moving) {
+          // Under a few pixels it is a tap, not a drag: the chart keeps the event.
+          if (travelled < DRAG_THRESHOLD_PX) return;
+          drag.current.moving = true;
+          setDragging(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }
         event.preventDefault();
         const width = drag.current.end - drag.current.start + 1;
         const moved = Math.round(((drag.current.x - event.clientX) / box.width) * width);
@@ -323,8 +330,7 @@ export function ShiftCurve({
         setView({ start: from, end: from + width - 1 });
       }}
       onPointerUpCapture={(event) => {
-        if (!drag.current) return;
-        event.currentTarget.releasePointerCapture(event.pointerId);
+        if (drag.current?.moving) event.currentTarget.releasePointerCapture(event.pointerId);
         drag.current = null;
         setDragging(false);
       }}
@@ -388,7 +394,7 @@ export function ShiftCurve({
               formatNumber(value, info.decimals && value < 10 ? 1 : 0)
             }
           />
-          <Tooltip content={<CurveTooltip info={info} />} />
+          <Tooltip content={<CurveTooltip info={info} />} allowEscapeViewBox={{ x: false, y: true }} offset={16} />
           <Area
             type="monotone"
             dataKey="actual"
