@@ -756,7 +756,7 @@ export function ShiftBoardView({
                   <span>{field.label}</span>
                   <b>
                     {field.value}
-                    {field.unit && <small>{field.unit}</small>}
+                    {field.unit && <em>{field.unit}</em>}
                   </b>
                 </div>
               ))}

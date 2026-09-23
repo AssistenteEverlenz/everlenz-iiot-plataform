@@ -62,12 +62,32 @@ export function formulaKeys(fields: CalculatedSetting[]) {
   const keys = new Set<string>();
   for (const field of fields) {
     try {
-      for (const name of formulaVariables(parseFormula(field.formula))) keys.add(name);
+      for (const name of formulaVariables(parseFormula(field.formula)))
+        if (!name.startsWith('turno.')) keys.add(name);
     } catch {
       // A formula still being written asks for nothing.
     }
   }
   return [...keys];
+}
+
+/** The shift variables as they were in one hour: the chart of a formula reads these. */
+function hourVariables(hour: DetailData['hours'][number]): Record<string, number> {
+  const stopped = hour.idle + hour.manual;
+  const busy = hour.producing + stopped;
+  return {
+    'turno.pecas': hour.pieces,
+    'turno.milheiros': hour.pieces / 1000,
+    'turno.paletes': hour.pallets,
+    'turno.toneladas': hour.tons,
+    'turno.horas_produzindo': hour.producing / 3600,
+    'turno.minutos_produzindo': hour.producing / 60,
+    'turno.horas_paradas': stopped / 3600,
+    'turno.horas_decorridas': busy / 3600,
+    'turno.aproveitamento': busy > 0 ? (hour.producing / busy) * 100 : 0,
+    'turno.ritmo': hour.producing > 0 ? hour.pallets / (hour.producing / 3600) : 0,
+    'turno.paletes_tempo_medio': hour.pallets > 0 ? hour.producing / hour.pallets : 0,
+  };
 }
 
 const TITLES: Record<DetailFocus, string> = {
@@ -291,7 +311,9 @@ export function ShiftDetailCharts({
       {showHours &&
         calculated.map((field) => {
           const series = (data.hours ?? []).map((hour) => {
-            const values: Record<string, number> = {};
+            // The HMI's variables come as the hour's average; the platform's own come from what
+            // the machine did in that hour, so a formula reads the same names either way.
+            const values: Record<string, number> = hourVariables(hour);
             for (const [key, points] of Object.entries(data.variables ?? {})) {
               const point = points.find((item) => item.hour === hour.hour);
               if (point) values[key] = point.value;
@@ -342,7 +364,8 @@ export function ShiftDetailCharts({
               </div>
               {!known.length && (
                 <p className="shifts-help">
-                  Sem leituras das variáveis desta conta no período.
+                  Esta conta não pôde ser calculada nas horas do período: confira se as variáveis
+                  dela têm leitura.
                 </p>
               )}
             </div>

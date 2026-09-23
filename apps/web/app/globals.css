@@ -7364,57 +7364,58 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   }
 }
 
-/* The plant's own calculations: a quiet strip under the shift's numbers, so adding three
-   formulas does not turn the board into nine narrow boxes. */
+/* The plant own calculations: one quiet panel under the shift numbers, each value with its
+   name above it, so three formulas read as a group instead of competing with the cards. */
 .shift-calculated {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0;
-  margin-top: 10px;
-  padding: 8px 4px;
-  border-top: 1px solid #e9f0f1;
-  border-bottom: 1px solid #e9f0f1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 2px;
+  margin-top: 12px;
+  padding: 2px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f6fafa, #f1f6f7);
+  border: 1px solid #e6eef0;
 }
 .shift-calculated > div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 16px;
-  border-right: 1px solid #e9f0f1;
+  display: grid;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 10px;
 }
-.shift-calculated > div:last-child {
-  border-right: none;
+.shift-calculated > div:hover {
+  background: #ffffff;
 }
 .shift-calculated span {
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #6b7f86;
+  color: #7b8f96;
 }
 .shift-calculated b {
-  font-size: 19px;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 21px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: #16333c;
+  line-height: 1.1;
 }
-.shift-calculated b small {
-  margin-left: 4px;
+.shift-calculated b em {
+  font-style: normal;
   font-size: 11px;
   font-weight: 400;
-  color: #6b7f86;
+  color: #7b8f96;
 }
 @media (max-width: 700px) {
   .shift-calculated {
-    gap: 2px 0;
-    padding: 6px 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .shift-calculated > div {
-    flex: 1 1 45%;
-    padding: 4px 8px;
-    border-right: none;
+    padding: 8px 10px;
   }
   .shift-calculated b {
-    font-size: 16px;
+    font-size: 17px;
   }
+}
 }
