@@ -7445,7 +7445,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   grid-auto-rows: 1fr;
 }
 .shift-kpi {
-  align-content: start;
+  /* Every card has the same height: the numbers sit in the middle of theirs, so a card with a
+     shorter note does not leave a gap under it. */
+  align-content: center;
 }
 @media (max-width: 700px) {
   /* The pencil that edits the target: a 34px target a finger can hit, same drawing. */
