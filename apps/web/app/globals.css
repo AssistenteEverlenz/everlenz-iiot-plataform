@@ -7084,8 +7084,10 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     max-width: none;
     max-height: 92vh;
     padding: 18px 16px calc(14px + env(safe-area-inset-bottom));
-    border-radius: 16px 16px 0 0;
-    align-self: flex-end;
+    /* Centred while it fits the screen; a tall one grows to the top and scrolls inside. */
+    border-radius: 16px;
+    align-self: center;
+    margin: auto;
   }
   .modal-card .form-grid,
   .form-grid {
@@ -7435,4 +7437,30 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   min-width: 96px;
   padding: 7px 10px;
   font-size: 12.5px;
+}
+
+/* All the numbers of the board are cards of the same height: a two-line note under one of them
+   no longer makes its card taller than the rest. */
+.shift-kpis {
+  grid-auto-rows: 1fr;
+}
+.shift-kpi {
+  align-content: start;
+}
+@media (max-width: 700px) {
+  /* The pencil that edits the target: a 34px target a finger can hit, same drawing. */
+  .shift-kpi .kpi-edit {
+    width: 34px;
+    height: 34px;
+    margin: -6px -6px -6px 0;
+    display: inline-grid;
+    place-items: center;
+    font-size: 16px;
+  }
+  .shift-kpi .shift-kpi-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
 }
