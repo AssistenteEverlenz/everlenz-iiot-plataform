@@ -2091,4 +2091,7 @@
   :root[data-theme='dark'] .shift-calculated b em {
     color: #84979e;
   }
+  :root[data-theme='dark'] .detail-step label {
+    color: #92a2a8;
+  }
 }

@@ -1516,8 +1516,10 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         // A closed shift of the history asks for its own window.
         from: z.iso.datetime().optional(),
         to: z.iso.datetime().optional(),
-        // Variables a calculated field reads, to chart it hour by hour ("cortes por minuto").
+        // Variables a calculated field reads, to chart it over time ("cortes por minuto").
         keys: z.string().max(400).optional(),
+        // How long each column of the charts covers, in minutes: 5 to 60.
+        step: z.coerce.number().int().refine((value) => [5, 10, 15, 30, 60].includes(value)).default(60),
       })
       .parse(req.query);
     const mode = query.mode;
@@ -1543,12 +1545,13 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const span = asked ?? spanOf(chosen);
     const until = new Date(Math.min(span.end.getTime(), now.getTime()));
     const buckets = await loadBuckets(db, tenantId, id, span.start, until);
+    const stepMs = query.step * 60_000;
     const byHour = new Map<
       string,
       { pieces: number; pallets: number; tons: number; producing: number; idle: number; manual: number }
     >();
     for (const row of buckets) {
-      const hour = new Date(Math.floor(new Date(row.bucket).getTime() / 3600_000) * 3600_000).toISOString();
+      const hour = new Date(Math.floor(new Date(row.bucket).getTime() / stepMs) * stepMs).toISOString();
       const entry = byHour.get(hour) ?? { pieces: 0, pallets: 0, tons: 0, producing: 0, idle: 0, manual: 0 };
       entry.pieces += Number(row.pieces);
       entry.pallets += Number(row.pallets);
@@ -1562,6 +1565,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       span: { start: span.start.toISOString(), end: span.end.toISOString(), until: until.toISOString() },
       shiftName: chosen.map((item) => item.name).join(' + ') || 'Período',
       metric: config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets'),
+      step: query.step,
       hours: [...byHour.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([hour, entry]) => ({ hour, ...entry })),

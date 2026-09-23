@@ -7418,3 +7418,21 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     font-size: 17px;
   }
 }
+
+/* How long each column of the shift charts covers. */
+.detail-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.detail-step label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7f86;
+}
+.detail-step select {
+  min-width: 96px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+}

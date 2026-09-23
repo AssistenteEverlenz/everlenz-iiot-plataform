@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -39,10 +39,20 @@ interface PalletEvent {
   pallets: number;
   product: string | null;
 }
+export const DETAIL_STEPS = [
+  { minutes: 5, label: '5 min' },
+  { minutes: 10, label: '10 min' },
+  { minutes: 15, label: '15 min' },
+  { minutes: 30, label: '30 min' },
+  { minutes: 60, label: '1 hora' },
+] as const;
+
 export interface DetailData {
   span: { start: string; end: string; until: string } | null;
   shiftName: string;
   metric: ProductionMetric;
+  step?: number;
+  /** One entry per period of the chosen step: the field is named after the first version. */
   hours: {
     hour: string;
     pieces: number;
@@ -237,7 +247,7 @@ export function ShiftDetailCharts({
           </div>
 
           <div className="detail-section">
-            <strong>Produção por hora</strong>
+            <strong>Produção por período</strong>
             <div className="detail-chart">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={hours}>
@@ -272,12 +282,12 @@ export function ShiftDetailCharts({
           </div>
 
           <div className="detail-section">
-            <strong>Como a máquina passou cada hora</strong>
+            <strong>Como a máquina passou cada período</strong>
             <div className="scroll">
               <table className="detail-table">
                 <thead>
                   <tr>
-                    <th>Hora</th>
+                    <th>{(data.step ?? 60) >= 60 ? 'Hora' : 'Período'}</th>
                     <th className="n">Produzido</th>
                     <th className="n">Acumulado</th>
                     <th className="n">Produzindo</th>
@@ -314,8 +324,12 @@ export function ShiftDetailCharts({
             // The HMI's variables come as the hour's average; the platform's own come from what
             // the machine did in that hour, so a formula reads the same names either way.
             const values: Record<string, number> = hourVariables(hour);
+            const inHour = new Date(hour.hour);
+            inHour.setMinutes(0, 0, 0);
             for (const [key, points] of Object.entries(data.variables ?? {})) {
-              const point = points.find((item) => item.hour === hour.hour);
+              const point = points.find(
+                (item) => item.hour === hour.hour || item.hour === inHour.toISOString(),
+              );
               if (point) values[key] = point.value;
             }
             return { hour: clock(hour.hour), value: evaluateFormula(field.formula, values) };
@@ -491,8 +505,9 @@ export function ShiftDetailModal({
   onClose: () => void;
 }) {
   const keys = formulaKeys(calculated);
+  const [step, setStep] = useState(60);
   const detail = usePoll<DetailData>(
-    `/devices/${deviceId}/shift-detail?mode=${mode}${keys.length ? `&keys=${encodeURIComponent(keys.join(','))}` : ''}`,
+    `/devices/${deviceId}/shift-detail?mode=${mode}&step=${step}${keys.length ? `&keys=${encodeURIComponent(keys.join(','))}` : ''}`,
     60000,
   );
   const data = detail.data;
@@ -510,9 +525,23 @@ export function ShiftDetailModal({
               </p>
             )}
           </div>
-          <button type="button" className="icon-button" onClick={onClose}>
-            ×
-          </button>
+          <div className="detail-step">
+            <label htmlFor="detail-step">Dividir por</label>
+            <select
+              id="detail-step"
+              value={step}
+              onChange={(event) => setStep(Number(event.target.value))}
+            >
+              {DETAIL_STEPS.map((option) => (
+                <option key={option.minutes} value={option.minutes}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="icon-button" onClick={onClose}>
+              ×
+            </button>
+          </div>
         </div>
 
         {detail.loading && <p>Carregando…</p>}
