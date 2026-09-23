@@ -731,14 +731,6 @@ export function ShiftBoardView({
                   : `restam ${duration(board.remainingSeconds)} produtivos`}
               </em>
             </div>
-            {calculated.map((field) => (
-              <div className="shift-kpi" key={field.label}>
-                <span>{field.label}</span>
-                <b>
-                  {field.value} <small>{field.unit}</small>
-                </b>
-              </div>
-            ))}
             {board.palletTiming && board.palletTiming.count > 0 && (
               <div
                 className={`shift-kpi ${historical ? '' : 'clickable'}`}
@@ -756,6 +748,20 @@ export function ShiftBoardView({
               </div>
             )}
           </div>
+
+          {calculated.length > 0 && (
+            <div className="shift-calculated" aria-label="Cálculos do card">
+              {calculated.map((field) => (
+                <div key={field.label}>
+                  <span>{field.label}</span>
+                  <b>
+                    {field.value}
+                    {field.unit && <small>{field.unit}</small>}
+                  </b>
+                </div>
+              ))}
+            </div>
+          )}
 
           {healthText && <div className={`shift-health ${tone}`}>{healthText}</div>}
 

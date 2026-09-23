@@ -2075,4 +2075,28 @@
   :root[data-theme='dark'] .variable-name span {
     color: #8ba1a8;
   }
+  :root[data-theme='dark'] .shift-calculated {
+    border-top: 1px solid #1d292d;
+    border-bottom: 1px solid #1d292d;
+  }
+  :root[data-theme='dark'] .shift-calculated > div {
+    border-right: 1px solid #1d292d;
+  }
+  :root[data-theme='dark'] .shift-calculated > div:last-child {
+    border-right: none;
+  }
+  :root[data-theme='dark'] .shift-calculated span {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .shift-calculated b {
+    color: #d3dbde;
+  }
+  :root[data-theme='dark'] .shift-calculated b small {
+    color: #92a2a8;
+  }
+  @media (max-width: 700px) {
+    :root[data-theme='dark'] .shift-calculated > div {
+      border-right: none;
+    }
+  }
 }
