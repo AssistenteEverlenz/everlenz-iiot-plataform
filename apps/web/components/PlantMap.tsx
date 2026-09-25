@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 export interface MapPlant {
   id: string;
@@ -18,6 +18,8 @@ type LeafletMap = {
   remove(): void;
   fitBounds(points: [number, number][], options: object): void;
   setView(point: [number, number], zoom: number): void;
+  getCenter(): { lat: number; lng: number };
+  getZoom(): number;
 };
 type LeafletMarker = {
   addTo(map: LeafletMap): LeafletMarker;
@@ -89,6 +91,11 @@ export function PlantMap({
 }) {
   const node = useRef<HTMLDivElement>(null);
   const instance = useRef<LeafletMap | null>(null);
+  const viewport = useRef<{ center: [number, number]; zoom: number } | null>(null);
+  const signature = useMemo(
+    () => plants.map((plant) => `${plant.id}:${plant.state}:${plant.location.latitude}:${plant.location.longitude}`).join('|'),
+    [plants],
+  );
   useEffect(() => {
     let active = true;
     void loadLeaflet()
@@ -113,9 +120,9 @@ export function PlantMap({
           const color = COLORS[plant.state] ?? COLORS.unknown;
           const icon = window.L.divIcon({
             className: 'plant-map-marker-wrap',
-            html: `<button class="plant-map-marker ${selected === plant.id ? 'selected' : ''}" style="--pin:${color}" aria-label="${esc(plant.name)}"><span></span></button>`,
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
+            html: `<button data-plant-id="${plant.id}" class="plant-map-marker ${selected === plant.id ? 'selected' : ''}" style="--pin:${color}" aria-label="${esc(plant.name)}"><span></span></button>`,
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
           });
           window.L.marker(point, { icon })
             .addTo(map)
@@ -124,17 +131,27 @@ export function PlantMap({
             )
             .on('click', () => onSelect(plant.id));
         }
-        if (points.length === 0) map.setView([-14.2, -51.9], 4);
+        if (viewport.current) map.setView(viewport.current.center, viewport.current.zoom);
+        else if (points.length === 0) map.setView([-14.2, -51.9], 4);
         else if (points.length === 1) map.setView(points[0], 11);
         else map.fitBounds(points, { padding: [45, 45], maxZoom: 12 });
       })
       .catch(() => undefined);
     return () => {
       active = false;
-      instance.current?.remove();
+      if (instance.current) {
+        const center = instance.current.getCenter();
+        viewport.current = { center: [center.lat, center.lng], zoom: instance.current.getZoom() };
+        instance.current.remove();
+      }
       instance.current = null;
     };
-  }, [plants, selected, onSelect]);
+  }, [signature, onSelect]);
+  useEffect(() => {
+    node.current?.querySelectorAll('.plant-map-marker').forEach((marker) => {
+      marker.classList.toggle('selected', marker.getAttribute('data-plant-id') === selected);
+    });
+  }, [selected, signature]);
   return (
     <div className="plant-map" ref={node}>
       <span className="plant-map-loading">Carregando mapa…</span>

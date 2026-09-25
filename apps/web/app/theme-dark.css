@@ -977,6 +977,17 @@
     border: 1px solid #243338;
     background: #12191c;
   }
+  :root[data-theme='dark'] .users-filter-bar {
+    background: #101b20;
+    border-color: #294047;
+    box-shadow: none;
+  }
+  :root[data-theme='dark'] .users-filter-bar input,
+  :root[data-theme='dark'] .users-filter-bar select,
+  :root[data-theme='dark'] .device-access-box > input {
+    background: #16242a;
+    border-color: #38515a;
+  }
   :root[data-theme='dark'] .credential-box {
     border: 1px dashed #3d5760;
     background: #172024;

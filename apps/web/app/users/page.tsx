@@ -40,6 +40,7 @@ export default function UsersPage() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
   const [deviceFilter, setDeviceFilter] = useState('');
+  const [ceramicQuery, setCeramicQuery] = useState('');
   const [deviceSearch, setDeviceSearch] = useState('');
   const filteredUsers = useMemo(() => (users.data ?? []).filter((user) => {
     const q = query.trim().toLocaleLowerCase('pt-BR');
@@ -143,10 +144,23 @@ export default function UsersPage() {
       </section>
       <section className="card users-filter-bar">
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome, e-mail, grupo ou cerâmica" />
-        <select value={deviceFilter} onChange={(event) => setDeviceFilter(event.target.value)}>
-          <option value="">Todas as cerâmicas</option>
-          {(devices.data ?? []).map((device) => <option key={device.id} value={device.id}>{device.name} · {device.site_name}</option>)}
-        </select>
+        <div className="filter-combobox">
+          <input
+            type="search"
+            list="user-ceramic-filter"
+            value={ceramicQuery}
+            onChange={(event) => {
+              const value = event.target.value;
+              setCeramicQuery(value);
+              const match = (devices.data ?? []).find((device) => `${device.name} · ${device.site_name ?? ''}` === value);
+              setDeviceFilter(match?.id ?? '');
+            }}
+            placeholder="Todas as cerâmicas · digite para buscar"
+          />
+          <datalist id="user-ceramic-filter">
+            {(devices.data ?? []).map((device) => <option key={device.id} value={`${device.name} · ${device.site_name ?? ''}`} />)}
+          </datalist>
+        </div>
         <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
           <option value="all">Todos os status</option><option value="active">Ativos</option><option value="inactive">Desativados</option><option value="pending">Troca pendente</option>
         </select>
