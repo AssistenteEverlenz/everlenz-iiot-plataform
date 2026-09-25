@@ -1682,6 +1682,9 @@ input:focus-visible {
 }
 .platform-main {
   margin-left: var(--sidebar-width);
+  max-width: none;
+  min-width: 0;
+  width: auto;
   transition: margin-left 0.22s ease;
 }
 .sidebar-brand-row {
