@@ -1,5 +1,6 @@
 'use client';
 
+import 'leaflet/dist/leaflet.css';
 import { useEffect, useMemo, useRef } from 'react';
 
 export interface MapPlant {
@@ -48,30 +49,12 @@ const COLORS: Record<string, string> = {
   offline: '#98a6ab',
   unknown: '#98a6ab',
 };
+// Leaflet ships with the platform: the Content-Security-Policy only allows scripts and styles
+// from our own origin, so loading it from a CDN was blocked and the map never appeared.
 function loadLeaflet() {
   if (window.L) return Promise.resolve();
-  if (window.__iiotLeaflet) return window.__iiotLeaflet;
-  window.__iiotLeaflet = new Promise((resolve, reject) => {
-    if (!document.getElementById('leaflet-css')) {
-      const link = document.createElement('link');
-      link.id = 'leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
-    }
-    const old = document.getElementById('leaflet-js') as HTMLScriptElement | null;
-    if (old) {
-      old.addEventListener('load', () => resolve());
-      old.addEventListener('error', () => reject(new Error('Mapa indisponível')));
-      return;
-    }
-    const script = document.createElement('script');
-    script.id = 'leaflet-js';
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Mapa indisponível'));
-    document.body.appendChild(script);
+  window.__iiotLeaflet ??= import('leaflet').then((module) => {
+    window.L = (module.default ?? module) as unknown as Leaflet;
   });
   return window.__iiotLeaflet;
 }

@@ -947,7 +947,7 @@ export async function createApp(
       // be replaced afterwards through POST /api/devices/:id/mqtt-credential.
       const created = await sql.query(
         `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_credential_rotated_at,legacy_plain_mqtt,address,city,state,latitude,longitude,location_updated_at)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,now(),$13,$14,$15,upper($16),$17,$18,CASE WHEN $15 IS NULL THEN NULL ELSE now() END) RETURNING *`,
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,now(),$13,$14,$15,upper($16),$17,$18,CASE WHEN $15::text IS NULL THEN NULL ELSE now() END) RETURNING *`,
         [
           id,
           current.tenantId,

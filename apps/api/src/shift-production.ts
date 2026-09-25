@@ -1333,6 +1333,13 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       const actual = metric === 'blocks' ? totals.pieces : totals[metric];
       const elapsed = Number(row.producing) + Number(row.idle);
       const pacePerHour = elapsed > 0 ? actual / (elapsed / 3600) : 0;
+      // The rest of today at the day's pace, counted only over the shifts still ahead and without
+      // their pauses: a plant with one shift is not projected over the whole 24 hours.
+      const today = occurrences.filter((item) => item.productionDate === plantDate(now));
+      const remaining = today.reduce(
+        (total, item) => total + productiveSecondsIn(productiveWindows(item), now, item.end),
+        0,
+      );
       return {
         siteId: row.site_id,
         siteName: row.site_name,
@@ -1353,21 +1360,14 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         updatedAt: row.last_at ? new Date(row.last_at).toISOString() : null,
         metric,
         totals,
-        target:
-          row.target_value == null
-            ? null
-            : Number(row.target_value) *
-              occurrences.filter((item) => item.productionDate === plantDate(now)).length,
-        projection:
-          elapsed > 0
-            ? actual + pacePerHour * Math.max(0, 24 - (now.getTime() - from.getTime()) / 3600000)
-            : actual,
+        target: row.target_value == null ? null : Number(row.target_value) * today.length,
+        projection: actual + (pacePerHour / 3600) * remaining,
         pacePerHour,
         utilization: elapsed > 0 ? Number(row.producing) / elapsed : null,
         readings: row.readings ?? {},
       };
     });
-    const rank: Record<string, number> = { offline: 5, manual: 4, idle: 3, producing: 1 };
+    const rank: Record<string, number> = { offline: 5, manual: 4, idle: 3, pause: 2, producing: 1 };
     const sites = [...new Set(machines.map((item) => item.siteId))].map((siteId) => {
       const children = machines.filter((item) => item.siteId === siteId);
       const first = children[0];
@@ -1383,32 +1383,75 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   });
   app.get('/api/operations/settings', async (req) => {
     const current = access.principal(req);
+    // A card's formulas are the plant's own arithmetic: only for whoever can see that device.
+    const deviceIds = await access.accessibleDeviceIds(req);
     const [view, cards] = await Promise.all([
-      db.query<{ layout_columns: number }>('SELECT layout_columns FROM operation_view_settings WHERE tenant_id=$1', [current.tenantId]),
-      db.query<{ device_id: string; config: Record<string, unknown> }>('SELECT device_id,config FROM device_operation_cards WHERE tenant_id=$1', [current.tenantId]),
+      db.query<{ layout_columns: number }>(
+        'SELECT layout_columns FROM operation_view_settings WHERE tenant_id=$1',
+        [current.tenantId],
+      ),
+      db.query<{ device_id: string; config: Record<string, unknown> }>(
+        `SELECT device_id,config FROM device_operation_cards
+         WHERE tenant_id=$1 AND ($2::uuid[] IS NULL OR device_id=ANY($2))`,
+        [current.tenantId, deviceIds],
+      ),
     ]);
-    return { layoutColumns: view.rows[0]?.layout_columns ?? 2, cards: Object.fromEntries(cards.rows.map((row) => [row.device_id, row.config])) };
+    return {
+      layoutColumns: view.rows[0]?.layout_columns ?? 2,
+      cards: Object.fromEntries(cards.rows.map((row) => [row.device_id, row.config])),
+    };
   });
   app.patch('/api/operations/settings', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
     const body = z.object({ layoutColumns: z.number().int().min(1).max(3) }).parse(req.body);
-    await db.query(`INSERT INTO operation_view_settings(tenant_id,layout_columns) VALUES($1,$2)
-      ON CONFLICT(tenant_id) DO UPDATE SET layout_columns=excluded.layout_columns,updated_at=now()`, [current.tenantId, body.layoutColumns]);
+    await db.query(
+      `INSERT INTO operation_view_settings(tenant_id,layout_columns) VALUES($1,$2)
+       ON CONFLICT(tenant_id) DO UPDATE SET layout_columns=excluded.layout_columns,updated_at=now()`,
+      [current.tenantId, body.layoutColumns],
+    );
     return body;
   });
+  // The plant card on the operations page, laid out like a dashboard: an ordered list of blocks
+  // on a 12-column grid, each a platform number (produced, target, ...) or the plant's formula.
   app.patch('/api/devices/:id/operation-card', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const field = z.object({ id: z.string().max(80), label: z.string().max(60), formula: z.string().max(500), unit: z.string().max(20), decimals: z.number().int().min(0).max(4) });
-    const layout = z.object({ id: z.string().max(80), order: z.number().int().min(0).max(20), colSpan: z.number().int().min(1).max(4), rowSpan: z.number().int().min(1).max(3) });
-    const body = z.object({ visibleFields: z.array(z.enum(['produced','target','projection','pace'])).min(1).max(4), greenPct: z.number().min(0).max(2), yellowPct: z.number().min(0).max(2), calculated: z.array(field).max(4), layout: z.array(layout).max(10) })
-      .refine((value) => value.yellowPct <= value.greenPct, { message: 'Faixa amarela deve ser menor que a verde' }).parse(req.body);
-    const exists = await db.query('SELECT id FROM devices WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL', [current.tenantId, id]);
+    const item = z.object({
+      id: z.string().min(1).max(80),
+      kind: z.enum(['produced', 'target', 'projection', 'pace', 'efficiency', 'formula']),
+      label: z.string().max(60).optional(),
+      formula: z.string().max(500).optional(),
+      unit: z.string().max(20).optional(),
+      decimals: z.number().int().min(0).max(4).optional(),
+      colSpan: z.number().int().min(1).max(12),
+      rowSpan: z.number().int().min(1).max(6),
+    });
+    const body = z
+      .object({
+        version: z.literal(2),
+        greenPct: z.number().min(0).max(2),
+        yellowPct: z.number().min(0).max(2),
+        items: z.array(item).min(1).max(16),
+      })
+      .refine((value) => value.yellowPct <= value.greenPct, {
+        message: 'Faixa amarela deve ser menor que a verde',
+      })
+      .refine((value) => new Set(value.items.map((entry) => entry.id)).size === value.items.length, {
+        message: 'Blocos repetidos no cartão',
+      })
+      .parse(req.body);
+    const exists = await db.query(
+      'SELECT id FROM devices WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL',
+      [current.tenantId, id],
+    );
     if (!exists.rows.length) return reply.code(404).send({ error: 'Device not found' });
-    await db.query(`INSERT INTO device_operation_cards(tenant_id,device_id,config) VALUES($1,$2,$3::jsonb)
-      ON CONFLICT(tenant_id,device_id) DO UPDATE SET config=excluded.config,updated_at=now()`, [current.tenantId, id, JSON.stringify(body)]);
+    await db.query(
+      `INSERT INTO device_operation_cards(tenant_id,device_id,config) VALUES($1,$2,$3::jsonb)
+       ON CONFLICT(tenant_id,device_id) DO UPDATE SET config=excluded.config,updated_at=now()`,
+      [current.tenantId, id, JSON.stringify(body)],
+    );
     return body;
   });
   app.get('/api/sites/:id/shifts', async (req, reply) => {
