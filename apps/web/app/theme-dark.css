@@ -157,6 +157,16 @@
   :root[data-theme='dark'] .machine-row {
     background: #172125;
   }
+  :root[data-theme='dark'] .machine-efficiency {
+    background: #12352f;
+    border-color: #27695d;
+    color: #52d4b5;
+  }
+  :root[data-theme='dark'] .machine-actions a,
+  :root[data-theme='dark'] .machine-actions button {
+    background: #16242a;
+    border-color: #344b53;
+  }
   :root[data-theme='dark'] .machine-title span,
   :root[data-theme='dark'] .machine-metric span {
     color: #86999f;

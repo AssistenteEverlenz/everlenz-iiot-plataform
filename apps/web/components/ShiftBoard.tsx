@@ -304,25 +304,25 @@ export function ShiftCurve({
         const anchor = box ? Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) : 0.5;
         zoom(event.deltaY < 0 ? 0.75 : 1.35, anchor);
       }}
-      onDragStart={(event) => event.preventDefault()}
+      onDragStart={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       onPointerDownCapture={(event) => {
         if (!view || event.button !== 0) return;
         // The zoom buttons keep their click: only the chart area pans.
         if ((event.target as HTMLElement).closest('.chart-zoom')) return;
-        // Nothing is taken from the chart yet: a tap still reaches it and opens the value.
-        drag.current = { x: event.clientX, start: view.start, end: view.end, moving: false };
+        event.preventDefault();
+        event.stopPropagation();
+        drag.current = { x: event.clientX, start: view.start, end: view.end, moving: true };
+        setDragging(true);
+        event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMoveCapture={(event) => {
         const box = frame.current?.getBoundingClientRect();
         if (!drag.current || !box) return;
         const travelled = Math.abs(event.clientX - drag.current.x);
-        if (!drag.current.moving) {
-          // Under a few pixels it is a tap, not a drag: the chart keeps the event.
-          if (travelled < DRAG_THRESHOLD_PX) return;
-          drag.current.moving = true;
-          setDragging(true);
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }
+        if (!drag.current.moving && travelled < DRAG_THRESHOLD_PX) return;
         event.preventDefault();
         const width = drag.current.end - drag.current.start + 1;
         const moved = Math.round(((drag.current.x - event.clientX) / box.width) * width);

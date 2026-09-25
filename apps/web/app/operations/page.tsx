@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PlantMap } from '../../components/PlantMap';
+import { ShiftBoard } from '../../components/ShiftBoard';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, time, usePoll } from '../../components/data';
 
@@ -108,6 +109,7 @@ export default function OperationsPage() {
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<Machine | null>(null);
+  const [detail, setDetail] = useState<Machine | null>(null);
   const sites = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('pt-BR');
     return (data?.sites ?? []).filter(
@@ -320,27 +322,15 @@ export default function OperationsPage() {
                         label="Ritmo"
                         value={`${number(machine.pacePerHour, 1)} ${METRICS[machine.metric]}/h`}
                       />
-                      <Metric
-                        label="Aproveitamento"
-                        value={
-                          machine.utilization == null
-                            ? '—'
-                            : `${number(machine.utilization * 100, 1)}%`
-                        }
-                      />
-                      {machine.dashboardId && (
-                        <Link
-                          href={`/dashboards/${machine.dashboardId}`}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Abrir painel →
-                        </Link>
-                      )}
-                      {user.role === 'master' && (
-                        <button onClick={(event) => { event.stopPropagation(); setEditing(machine); }}>
-                          Localização
-                        </button>
-                      )}
+                      <button className="machine-efficiency" onClick={(event) => { event.stopPropagation(); setDetail(machine); }}>
+                        <span>EFICIÊNCIA</span>
+                        <b>{machine.utilization == null ? '—' : `${number(machine.utilization * 100, 1)}%`}</b>
+                        <small>Ver relatório</small>
+                      </button>
+                      <div className="machine-actions">
+                        {machine.dashboardId && <Link href={`/dashboards/${machine.dashboardId}`} onClick={(event) => event.stopPropagation()}>Painel →</Link>}
+                        {user.role === 'master' && <button onClick={(event) => { event.stopPropagation(); setEditing(machine); }}>Localização</button>}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -371,6 +361,17 @@ export default function OperationsPage() {
             void refresh();
           }}
         />
+      )}
+      {detail && (
+        <div className="modal-backdrop operations-report-backdrop" onMouseDown={() => setDetail(null)}>
+          <section className="modal-card operations-report-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="operations-report-head">
+              <div><span className="eyebrow">RELATÓRIO DE PRODUÇÃO</span><h2>{detail.deviceName}</h2><small>{detail.siteName}</small></div>
+              <button className="icon-button" onClick={() => setDetail(null)}>×</button>
+            </header>
+            <ShiftBoard deviceId={detail.deviceId} />
+          </section>
+        </div>
       )}
     </div>
   );
