@@ -113,8 +113,8 @@ export function PlantMap({
           const icon = window.L.divIcon({
             className: 'plant-map-marker-wrap',
             html: `<button class="plant-map-marker ${selected === plant.id ? 'selected' : ''}" style="--pin:${color}" aria-label="${esc(plant.name)}"><span></span></button>`,
-            iconSize: [34, 42],
-            iconAnchor: [17, 38],
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
           });
           window.L.marker(point, { icon })
             .addTo(map)

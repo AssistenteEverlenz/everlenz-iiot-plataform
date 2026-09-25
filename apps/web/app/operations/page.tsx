@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PlantMap } from '../../components/PlantMap';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, time, usePoll } from '../../components/data';
@@ -48,6 +48,51 @@ const STATES: Record<string, { label: string; color: string }> = {
   unknown: { label: 'Sem dados', color: '#98a6ab' },
 };
 const METRICS = { milheiros: 'milheiros', tons: 't', blocks: 'peças', pallets: 'paletes' };
+const BRAZIL_STATES = [
+  ['AC', 'Acre'],
+  ['AL', 'Alagoas'],
+  ['AP', 'Amapá'],
+  ['AM', 'Amazonas'],
+  ['BA', 'Bahia'],
+  ['CE', 'Ceará'],
+  ['DF', 'Distrito Federal'],
+  ['ES', 'Espírito Santo'],
+  ['GO', 'Goiás'],
+  ['MA', 'Maranhão'],
+  ['MT', 'Mato Grosso'],
+  ['MS', 'Mato Grosso do Sul'],
+  ['MG', 'Minas Gerais'],
+  ['PA', 'Pará'],
+  ['PB', 'Paraíba'],
+  ['PR', 'Paraná'],
+  ['PE', 'Pernambuco'],
+  ['PI', 'Piauí'],
+  ['RJ', 'Rio de Janeiro'],
+  ['RN', 'Rio Grande do Norte'],
+  ['RS', 'Rio Grande do Sul'],
+  ['RO', 'Rondônia'],
+  ['RR', 'Roraima'],
+  ['SC', 'Santa Catarina'],
+  ['SP', 'São Paulo'],
+  ['SE', 'Sergipe'],
+  ['TO', 'Tocantins'],
+] as const;
+function stateCode(value: string | null) {
+  const normalized = value?.trim().toLocaleLowerCase('pt-BR') ?? '';
+  return (
+    BRAZIL_STATES.find(
+      ([code, name]) =>
+        code.toLocaleLowerCase('pt-BR') === normalized ||
+        name.toLocaleLowerCase('pt-BR') === normalized ||
+        `${name} (${code})`.toLocaleLowerCase('pt-BR') === normalized,
+    )?.[0] ?? null
+  );
+}
+function stateLabel(value: string | null) {
+  const code = stateCode(value);
+  const found = BRAZIL_STATES.find(([item]) => item === code);
+  return found ? `${found[1]} (${found[0]})` : (value ?? '');
+}
 function number(value: number, decimals = 0) {
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: decimals }).format(value);
 }
@@ -136,26 +181,81 @@ export default function OperationsPage() {
       {error && <div className="notice error">{error}</div>}
       {loading && <div className="empty">Carregando a operação…</div>}
       {data && (
-        <div className="operations-main">
-          <section className="map-panel">
-            <PlantMap plants={sites} selected={selected} onSelect={select} />
-            <div className="map-legend">
-              {Object.entries(STATES)
-                .slice(0, 5)
-                .map(([key, item]) => (
-                  <span key={key}>
-                    <i style={{ background: item.color }} />
-                    {item.label}
+        <div className="operations-content">
+          <section className="operations-map-card">
+            <header className="operations-section-head">
+              <div className="operations-section-title">
+                <span className="operations-section-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M12 21s-7-6.1-7-11a7 7 0 0 1 14 0c0 4.9-7 11-7 11Z" />
+                    <circle cx="12" cy="10" r="2.5" />
+                  </svg>
+                </span>
+                <div>
+                  <h2>Mapa de operações</h2>
+                  <p>Localização e condição atual das cerâmicas monitoradas.</p>
+                </div>
+              </div>
+              <span className="operations-live">
+                <i /> Ao vivo
+              </span>
+            </header>
+            <div className="operations-map-frame">
+              <PlantMap plants={sites} selected={selected} onSelect={select} />
+              {sites.every((site) => site.location.latitude == null) && (
+                <div className="operations-map-empty">
+                  <span className="operations-section-icon" aria-hidden="true">
+                    ⌖
                   </span>
-                ))}
+                  <strong>Cadastre a localização das cerâmicas</strong>
+                  <p>Use o botão Localização em cada unidade para exibir seus pontos no mapa.</p>
+                </div>
+              )}
             </div>
-            {sites.some((s) => s.location.latitude == null) && (
-              <p className="map-missing">
-                {sites.filter((s) => s.location.latitude == null).length} cerâmica(s) ainda sem
-                localização cadastrada.
-              </p>
-            )}
+            <footer className="operations-map-foot">
+              <div>
+                <span className="operations-foot-label">Pontos exibidos</span>
+                <strong>
+                  {sites.filter((site) => site.location.latitude != null).length}{' '}
+                  {sites.filter((site) => site.location.latitude != null).length === 1
+                    ? 'cerâmica no mapa'
+                    : 'cerâmicas no mapa'}
+                </strong>
+              </div>
+              <div className="map-legend">
+                {Object.entries(STATES)
+                  .slice(0, 5)
+                  .map(([key, item]) => (
+                    <span key={key}>
+                      <i style={{ background: item.color }} />
+                      {item.label}
+                    </span>
+                  ))}
+              </div>
+            </footer>
+            <div className="operations-location-chips">
+              {sites
+                .filter((site) => site.location.latitude != null)
+                .map((site) => (
+                  <button key={site.id} onClick={() => select(site.id)}>
+                    <i style={{ background: STATES[site.state]?.color ?? STATES.unknown.color }} />
+                    {site.name}
+                  </button>
+                ))}
+              {sites.some((site) => site.location.latitude == null) && (
+                <span className="map-missing">
+                  {sites.filter((site) => site.location.latitude == null).length} sem localização
+                </span>
+              )}
+            </div>
           </section>
+          <div className="operations-list-head">
+            <div>
+              <span className="eyebrow">VISÃO CONSOLIDADA</span>
+              <h2>Produção por cerâmica</h2>
+            </div>
+            <span>{sites.length} unidades exibidas</span>
+          </div>
           <section className="plant-list">
             {sites.map((site) => (
               <article
@@ -293,16 +393,47 @@ function LocationModal({
   const [form, setForm] = useState({
     address: site.location.address ?? '',
     city: site.location.city ?? '',
-    state: site.location.state ?? '',
+    state: stateLabel(site.location.state),
     latitude: site.location.latitude?.toString() ?? '',
     longitude: site.location.longitude?.toString() ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [cities, setCities] = useState<string[]>([]);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const selectedState = stateCode(form.state);
+  useEffect(() => {
+    if (!selectedState) {
+      setCities([]);
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingCities(true);
+    void fetch(
+      `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${selectedState}/municipios?orderBy=nome`,
+      { signal: controller.signal },
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error('IBGE indisponível');
+        return response.json() as Promise<Array<{ nome: string }>>;
+      })
+      .then((items) => setCities(items.map((item) => item.nome)))
+      .catch((reason: unknown) => {
+        if (!(reason instanceof Error && reason.name === 'AbortError')) setCities([]);
+      })
+      .finally(() => setLoadingCities(false));
+    return () => controller.abort();
+  }, [selectedState]);
   async function save() {
     setSaving(true);
     setError('');
     try {
+      const region = stateCode(form.state);
+      if (!region) throw new Error('Selecione um estado da lista.');
+      const city = cities.find(
+        (item) => item.toLocaleLowerCase('pt-BR') === form.city.trim().toLocaleLowerCase('pt-BR'),
+      );
+      if (!city) throw new Error('Selecione uma cidade válida da lista do IBGE.');
       const latitude = form.latitude.trim() === '' ? null : Number(form.latitude.replace(',', '.'));
       const longitude =
         form.longitude.trim() === '' ? null : Number(form.longitude.replace(',', '.'));
@@ -312,7 +443,13 @@ function LocationModal({
         (longitude !== null && !Number.isFinite(longitude))
       )
         throw new Error('Informe latitude e longitude válidas.');
-      await mutate(`/sites/${site.id}/location`, 'PATCH', { ...form, latitude, longitude });
+      await mutate(`/sites/${site.id}/location`, 'PATCH', {
+        ...form,
+        city,
+        state: region,
+        latitude,
+        longitude,
+      });
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao salvar');
@@ -342,15 +479,41 @@ function LocationModal({
         </label>
         <div className="form-row">
           <label>
-            Cidade
-            <input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-          </label>
-          <label>
             Estado
             <input
+              list={`states-${site.id}`}
               value={form.state}
-              onChange={(e) => setForm({ ...form, state: e.target.value })}
+              autoComplete="off"
+              placeholder="Digite para buscar"
+              onChange={(e) => setForm({ ...form, state: e.target.value, city: '' })}
             />
+            <datalist id={`states-${site.id}`}>
+              {BRAZIL_STATES.map(([code, name]) => (
+                <option key={code} value={`${name} (${code})`} />
+              ))}
+            </datalist>
+          </label>
+          <label>
+            Cidade
+            <input
+              list={`cities-${site.id}`}
+              value={form.city}
+              autoComplete="off"
+              disabled={!selectedState || loadingCities}
+              placeholder={
+                loadingCities
+                  ? 'Carregando cidades…'
+                  : selectedState
+                    ? 'Digite para buscar'
+                    : 'Selecione o estado'
+              }
+              onChange={(e) => setForm({ ...form, city: e.target.value })}
+            />
+            <datalist id={`cities-${site.id}`}>
+              {cities.map((city) => (
+                <option key={city} value={city} />
+              ))}
+            </datalist>
           </label>
         </div>
         <div className="form-row">

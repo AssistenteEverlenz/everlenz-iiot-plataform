@@ -41,9 +41,68 @@
   :root[data-theme='dark'] .operations-toolbar > span {
     color: #8c9da3;
   }
-  :root[data-theme='dark'] .map-panel {
+  :root[data-theme='dark'] .operations-map-card {
     background: #12191c;
     border: 1px solid #253439;
+    box-shadow: 0 18px 48px rgba(23, 54, 62, 0.06);
+  }
+  :root[data-theme='dark'] .operations-section-title h2,
+  :root[data-theme='dark'] .operations-list-head h2 {
+    color: #d2dbde;
+  }
+  :root[data-theme='dark'] .operations-section-title p {
+    color: #8c9ca1;
+  }
+  :root[data-theme='dark'] .operations-section-icon {
+    border: 1px solid #304744;
+    background: linear-gradient(180deg, #172825, #12191c);
+    color: #80e5da;
+  }
+  :root[data-theme='dark'] .operations-live {
+    border: 1px solid #2e4842;
+    background: #172721;
+    color: #85e0cd;
+  }
+  :root[data-theme='dark'] .operations-live i {
+    background: #1fbf7a;
+    box-shadow: 0 0 0 4px rgba(31, 191, 122, 0.12);
+  }
+  :root[data-theme='dark'] .operations-map-frame {
+    border: 1px solid #25353a;
+    background: #1d292e;
+  }
+  :root[data-theme='dark'] .operations-map-empty {
+    border: 1px solid rgba(40, 57, 62, 0.88);
+    background: rgba(18, 25, 28, 0.92);
+    box-shadow: 0 16px 45px rgba(23, 54, 62, 0.14);
+  }
+  :root[data-theme='dark'] .operations-map-empty strong {
+    color: #d2dbde;
+  }
+  :root[data-theme='dark'] .operations-map-empty p {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .operations-map-foot {
+    border-top: 1px solid #212e33;
+  }
+  :root[data-theme='dark'] .operations-foot-label {
+    color: #81939a;
+  }
+  :root[data-theme='dark'] .operations-map-foot strong {
+    color: #c2ced2;
+  }
+  :root[data-theme='dark'] .operations-location-chips button,
+  :root[data-theme='dark'] .operations-location-chips > span {
+    border: 1px solid #253439;
+    background: #161f22;
+    color: #a0b3b9;
+  }
+  :root[data-theme='dark'] .operations-location-chips button:hover {
+    border-color: #486762;
+    background: #182623;
+  }
+  :root[data-theme='dark'] .operations-list-head > span {
+    color: #87999f;
   }
   :root[data-theme='dark'] .plant-map {
     background: #1d292e;
@@ -60,9 +119,6 @@
     background: var(--pin);
     box-shadow: 0 4px 14px rgba(6, 29, 35, 0.3);
   }
-  :root[data-theme='dark'] .plant-map-marker span {
-    background: #12191c;
-  }
   :root[data-theme='dark'] .plant-map-marker.selected {
     box-shadow: 0 0 0 5px color-mix(in srgb, var(--pin) 25%, transparent),
     0 5px 18px rgba(6, 29, 35, 0.35);
@@ -72,7 +128,7 @@
   }
   :root[data-theme='dark'] .map-legend {
     color: #a1b4ba;
-    border-top: 1px solid #212e33;
+    border-top: 0;
   }
   :root[data-theme='dark'] .map-missing {
     color: #e5c280;
