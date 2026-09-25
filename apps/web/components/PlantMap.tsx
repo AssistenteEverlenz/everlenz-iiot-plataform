@@ -37,12 +37,12 @@ declare global {
 }
 
 const COLORS: Record<string, string> = {
-  producing: '#13a875',
-  idle: '#edae25',
-  manual: '#805ad5',
-  pause: '#3b82f6',
-  offline: '#d44b4b',
-  unknown: '#789098',
+  producing: '#1fbf7a',
+  idle: '#f2a93b',
+  manual: '#e4572e',
+  pause: '#cdb9ea',
+  offline: '#98a6ab',
+  unknown: '#98a6ab',
 };
 function loadLeaflet() {
   if (window.L) return Promise.resolve();
@@ -96,9 +96,10 @@ export function PlantMap({
         instance.current?.remove();
         const map = window.L.map(node.current, { zoomControl: true, scrollWheelZoom: true });
         instance.current = map;
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
           maxZoom: 19,
-          attribution: '© OpenStreetMap',
+          subdomains: 'abcd',
+          attribution: '© OpenStreetMap contributors © CARTO',
         }).addTo(map);
         const points: [number, number][] = [];
         for (const plant of plants) {

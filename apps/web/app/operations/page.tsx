@@ -40,12 +40,12 @@ type Site = {
 };
 type Overview = { generatedAt: string; productionDate: string; sites: Site[] };
 const STATES: Record<string, { label: string; color: string }> = {
-  producing: { label: 'Produzindo', color: '#13a875' },
-  idle: { label: 'Ociosa', color: '#edae25' },
-  manual: { label: 'Manual', color: '#805ad5' },
-  pause: { label: 'Pausa', color: '#3b82f6' },
-  offline: { label: 'Offline', color: '#d44b4b' },
-  unknown: { label: 'Sem dados', color: '#789098' },
+  producing: { label: 'Produzindo', color: '#1fbf7a' },
+  idle: { label: 'Ociosa', color: '#f2a93b' },
+  manual: { label: 'Manual / parada', color: '#e4572e' },
+  pause: { label: 'Pausa', color: '#cdb9ea' },
+  offline: { label: 'Sem comunicação', color: '#98a6ab' },
+  unknown: { label: 'Sem dados', color: '#98a6ab' },
 };
 const METRICS = { milheiros: 'milheiros', tons: 't', blocks: 'peças', pallets: 'paletes' };
 function number(value: number, decimals = 0) {
