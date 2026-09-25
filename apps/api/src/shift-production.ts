@@ -1402,7 +1402,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     const field = z.object({ id: z.string().max(80), label: z.string().max(60), formula: z.string().max(500), unit: z.string().max(20), decimals: z.number().int().min(0).max(4) });
-    const body = z.object({ visibleFields: z.array(z.enum(['produced','target','projection','pace'])).min(1).max(4), greenPct: z.number().min(0).max(2), yellowPct: z.number().min(0).max(2), calculated: z.array(field).max(4) })
+    const layout = z.object({ id: z.string().max(80), order: z.number().int().min(0).max(20), colSpan: z.number().int().min(1).max(4), rowSpan: z.number().int().min(1).max(3) });
+    const body = z.object({ visibleFields: z.array(z.enum(['produced','target','projection','pace'])).min(1).max(4), greenPct: z.number().min(0).max(2), yellowPct: z.number().min(0).max(2), calculated: z.array(field).max(4), layout: z.array(layout).max(10) })
       .refine((value) => value.yellowPct <= value.greenPct, { message: 'Faixa amarela deve ser menor que a verde' }).parse(req.body);
     const exists = await db.query('SELECT id FROM devices WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL', [current.tenantId, id]);
     if (!exists.rows.length) return reply.code(404).send({ error: 'Device not found' });
