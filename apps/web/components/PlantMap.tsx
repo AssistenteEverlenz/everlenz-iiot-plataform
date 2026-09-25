@@ -20,6 +20,7 @@ type LeafletMap = {
   setView(point: [number, number], zoom: number): void;
   getCenter(): { lat: number; lng: number };
   getZoom(): number;
+  on(event: string, fn: () => void): LeafletMap;
 };
 type LeafletMarker = {
   addTo(map: LeafletMap): LeafletMarker;
@@ -84,10 +85,12 @@ export function PlantMap({
   plants,
   selected,
   onSelect,
+  onClear,
 }: {
   plants: MapPlant[];
   selected: string | null;
   onSelect: (id: string) => void;
+  onClear?: () => void;
 }) {
   const node = useRef<HTMLDivElement>(null);
   const instance = useRef<LeafletMap | null>(null);
@@ -103,6 +106,7 @@ export function PlantMap({
         if (!active || !node.current || !window.L) return;
         instance.current?.remove();
         const map = window.L.map(node.current, { zoomControl: true, scrollWheelZoom: true });
+        map.on('click', () => onClear?.());
         instance.current = map;
         window.L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
@@ -124,7 +128,7 @@ export function PlantMap({
             iconSize: [18, 18],
             iconAnchor: [9, 9],
           });
-          window.L.marker(point, { icon })
+          window.L.marker(point, { icon, bubblingMouseEvents: false })
             .addTo(map)
             .bindPopup(
               `<strong>${esc(plant.name)}</strong><small>${esc([plant.groupName, plant.location.city, plant.location.state].filter(Boolean).join(' · '))}</small>`,
@@ -146,7 +150,7 @@ export function PlantMap({
       }
       instance.current = null;
     };
-  }, [signature, onSelect]);
+  }, [signature, onSelect, onClear]);
   useEffect(() => {
     node.current?.querySelectorAll('.plant-map-marker').forEach((marker) => {
       marker.classList.toggle('selected', marker.getAttribute('data-plant-id') === selected);

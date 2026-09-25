@@ -1242,6 +1242,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       producing: number;
       idle: number;
       manual: number;
+      readings: Record<string, number>;
     }>(
       `SELECT s.id site_id,s.name site_name,s.reference site_reference,d.address,d.city,d.state region,
          d.latitude,d.longitude,d.id device_id,d.name device_name,d.device_code,
@@ -1251,7 +1252,10 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
          ps.target_metric,ps.target_per_shift target_value,
          coalesce(sum(pb.pieces),0) pieces,coalesce(sum(pb.pallets),0) pallets,
          coalesce(sum(pb.tons),0) tons,coalesce(sum(pb.producing_s),0) producing,
-         coalesce(sum(pb.idle_s),0) idle,coalesce(sum(pb.manual_s),0) manual
+         coalesce(sum(pb.idle_s),0) idle,coalesce(sum(pb.manual_s),0) manual,
+         coalesce((SELECT jsonb_object_agg(t.key,ns.last_value)
+           FROM tags t JOIN telemetry_numeric_state ns ON ns.tag_id=t.id AND ns.device_id=t.device_id
+           WHERE t.tenant_id=d.tenant_id AND t.device_id=d.id AND t.enabled=true),'{}'::jsonb) readings
        FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
        LEFT JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
        LEFT JOIN production_runtime pr ON pr.device_id=d.id AND pr.tenant_id=d.tenant_id
@@ -1360,6 +1364,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
             : actual,
         pacePerHour,
         utilization: elapsed > 0 ? Number(row.producing) / elapsed : null,
+        readings: row.readings ?? {},
       };
     });
     const rank: Record<string, number> = { offline: 5, manual: 4, idle: 3, producing: 1 };
@@ -1375,6 +1380,35 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       };
     });
     return { generatedAt: now.toISOString(), productionDate: plantDate(now), sites };
+  });
+  app.get('/api/operations/settings', async (req) => {
+    const current = access.principal(req);
+    const [view, cards] = await Promise.all([
+      db.query<{ layout_columns: number }>('SELECT layout_columns FROM operation_view_settings WHERE tenant_id=$1', [current.tenantId]),
+      db.query<{ device_id: string; config: Record<string, unknown> }>('SELECT device_id,config FROM device_operation_cards WHERE tenant_id=$1', [current.tenantId]),
+    ]);
+    return { layoutColumns: view.rows[0]?.layout_columns ?? 2, cards: Object.fromEntries(cards.rows.map((row) => [row.device_id, row.config])) };
+  });
+  app.patch('/api/operations/settings', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const body = z.object({ layoutColumns: z.number().int().min(1).max(3) }).parse(req.body);
+    await db.query(`INSERT INTO operation_view_settings(tenant_id,layout_columns) VALUES($1,$2)
+      ON CONFLICT(tenant_id) DO UPDATE SET layout_columns=excluded.layout_columns,updated_at=now()`, [current.tenantId, body.layoutColumns]);
+    return body;
+  });
+  app.patch('/api/devices/:id/operation-card', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const field = z.object({ id: z.string().max(80), label: z.string().max(60), formula: z.string().max(500), unit: z.string().max(20), decimals: z.number().int().min(0).max(4) });
+    const body = z.object({ visibleFields: z.array(z.enum(['produced','target','projection','pace'])).min(1).max(4), greenPct: z.number().min(0).max(2), yellowPct: z.number().min(0).max(2), calculated: z.array(field).max(4) })
+      .refine((value) => value.yellowPct <= value.greenPct, { message: 'Faixa amarela deve ser menor que a verde' }).parse(req.body);
+    const exists = await db.query('SELECT id FROM devices WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL', [current.tenantId, id]);
+    if (!exists.rows.length) return reply.code(404).send({ error: 'Device not found' });
+    await db.query(`INSERT INTO device_operation_cards(tenant_id,device_id,config) VALUES($1,$2,$3::jsonb)
+      ON CONFLICT(tenant_id,device_id) DO UPDATE SET config=excluded.config,updated_at=now()`, [current.tenantId, id, JSON.stringify(body)]);
+    return body;
   });
   app.get('/api/sites/:id/shifts', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
