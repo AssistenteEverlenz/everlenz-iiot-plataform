@@ -104,3 +104,27 @@
     display: none !important;
   }
 }
+
+/* Operations page plant card: its tint lives in custom properties, which the generator skips. */
+@media screen {
+  :root[data-theme='dark'] .machine-row {
+    --health-bg: #1b2629;
+    --health-line: #2d3b3f;
+  }
+  :root[data-theme='dark'] .machine-row.health-green,
+  :root[data-theme='dark'] .machine-row.health-online {
+    --health-bg: #12302a;
+    --health-line: #1f5a4a;
+  }
+  :root[data-theme='dark'] .machine-row.health-yellow {
+    --health-bg: #33290f;
+    --health-line: #6b5518;
+  }
+  :root[data-theme='dark'] .machine-row.health-red {
+    --health-bg: #3a1c16;
+    --health-line: #7a3325;
+  }
+  :root[data-theme='dark'] .machine-row.health-offline .machine-health {
+    color: #9fb0b5;
+  }
+}

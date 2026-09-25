@@ -14,8 +14,10 @@ export function VariablesModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState('');
-  const plant = options.filter((option) => option.name.startsWith('turno.'));
-  const hmi = options.filter((option) => !option.name.startsWith('turno.'));
+  // The platform's own numbers carry a prefix: turno.* on a dashboard, dia.* on the operations page.
+  const isPlatform = (name: string) => name.startsWith('turno.') || name.startsWith('dia.');
+  const plant = options.filter((option) => isPlatform(option.name));
+  const hmi = options.filter((option) => !isPlatform(option.name));
 
   async function copy(name: string) {
     try {
@@ -79,7 +81,9 @@ export function VariablesModal({
           </button>
         </div>
         {table(
-          'Do turno, calculadas pela plataforma',
+          plant.some((option) => option.name.startsWith('dia.'))
+            ? 'Do dia, calculadas pela plataforma'
+            : 'Do turno, calculadas pela plataforma',
           plant,
           'Configure a produção do equipamento para ter os números do turno.',
         )}

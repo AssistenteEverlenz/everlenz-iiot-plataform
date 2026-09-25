@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PlantMap } from '../../components/PlantMap';
 import { ShiftBoard } from '../../components/ShiftBoard';
-import { evaluateFormula, formulaError } from '../../components/formula';
+import {
+  normalizeCard,
+  OperationCardBody,
+  OperationCardEditor,
+  type CardConfig,
+} from '../../components/OperationCard';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, time, usePoll } from '../../components/data';
 
@@ -43,12 +48,7 @@ type Site = {
   machines: Machine[];
 };
 type Overview = { generatedAt: string; productionDate: string; sites: Site[] };
-type CardField = 'produced' | 'target' | 'projection' | 'pace';
-type CardFormula = { id: string; label: string; formula: string; unit: string; decimals: number };
-type CardItemLayout = { id: string; order: number; colSpan: number; rowSpan: number };
-type CardConfig = { visibleFields: CardField[]; greenPct: number; yellowPct: number; calculated: CardFormula[]; layout: CardItemLayout[] };
-type OperationSettings = { layoutColumns: 1 | 2 | 3; cards: Record<string, Partial<CardConfig>> };
-const DEFAULT_CARD: CardConfig = { visibleFields: ['produced','target','projection','pace'], greenPct: 1, yellowPct: .95, calculated: [], layout: [] };
+type OperationSettings = { layoutColumns: 1 | 2 | 3; cards: Record<string, unknown> };
 const STATES: Record<string, { label: string; color: string }> = {
   producing: { label: 'Produzindo', color: '#1fbf7a' },
   idle: { label: 'Ociosa', color: '#f2a93b' },
@@ -57,7 +57,6 @@ const STATES: Record<string, { label: string; color: string }> = {
   offline: { label: 'Sem comunicação', color: '#98a6ab' },
   unknown: { label: 'Sem dados', color: '#98a6ab' },
 };
-const METRICS = { milheiros: 'milheiros', tons: 't', blocks: 'peças', pallets: 'paletes' };
 const BRAZIL_STATES = [
   ['AC', 'Acre'],
   ['AL', 'Alagoas'],
@@ -103,12 +102,6 @@ function stateLabel(value: string | null) {
   const found = BRAZIL_STATES.find(([item]) => item === code);
   return found ? `${found[1]} (${found[0]})` : (value ?? '');
 }
-function number(value: number, decimals = 0) {
-  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: decimals }).format(value);
-}
-function value(machine: Machine) {
-  return machine.metric === 'blocks' ? machine.totals.pieces : machine.totals[machine.metric];
-}
 
 export default function OperationsPage() {
   const { user } = usePlatform();
@@ -119,7 +112,12 @@ export default function OperationsPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<Machine | null>(null);
   const [detail, setDetail] = useState<Machine | null>(null);
-  const [configuring, setConfiguring] = useState<Machine | null>(null);
+  const [configuring, setConfiguring] = useState<{ machine: Machine; siteName: string; width: number | null } | null>(null);
+  // The editor draws the card at the width it has in the list, so it wraps the same way there.
+  const configure = useCallback((machine: Machine, siteName: string) => {
+    const card = document.getElementById(`machine-${machine.deviceId}`)?.closest('.plant-summary');
+    setConfiguring({ machine, siteName, width: card instanceof HTMLElement ? card.offsetWidth : null });
+  }, []);
   const [layoutColumns, setLayoutColumns] = useState<1 | 2 | 3>(2);
   useEffect(() => { if (settings.data?.layoutColumns) setLayoutColumns(settings.data.layoutColumns); }, [settings.data?.layoutColumns]);
   const sites = useMemo(() => {
@@ -158,7 +156,7 @@ export default function OperationsPage() {
     document.getElementById(`machine-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
   const clearSelection = useCallback(() => setSelected(null), []);
-  const configFor = useCallback((id: string): CardConfig => ({ ...DEFAULT_CARD, ...(settings.data?.cards[id] ?? {}) }), [settings.data]);
+  const configFor = useCallback((id: string): CardConfig => normalizeCard(settings.data?.cards[id]), [settings.data]);
   return (
     <div className="operations-page">
       <header className="operations-heading">
@@ -316,45 +314,27 @@ export default function OperationsPage() {
                     <small>{site.reference}</small>
                   </div>
                   {site.machines.length === 1 && <div className="plant-card-actions">
-                    {user.role === 'master' && <button title="Editar cartão" aria-label="Editar cartão" onClick={() => setConfiguring(site.machines[0])}>✎</button>}
+                    {user.role === 'master' && <button title="Editar cartão" aria-label="Editar cartão" onClick={() => configure(site.machines[0], site.name)}>✎</button>}
+                    <button title="Relatório de produção" aria-label="Relatório de produção" onClick={() => setDetail(site.machines[0])}>▤</button>
                     {site.machines[0].dashboardId && <Link title="Abrir painel" aria-label="Abrir painel" href={`/dashboards/${site.machines[0].dashboardId}`}>▣</Link>}
                     {user.role === 'master' && <button title="Editar localização" aria-label="Editar localização" onClick={() => setEditing(site.machines[0])}>⌖</button>}
                   </div>}
                 </header>
                 <div className="machine-grid">
-                  {site.machines.map((machine) => {
-                    const config = configFor(machine.deviceId);
-                    const ratio = machine.target && machine.target > 0 ? machine.projection / machine.target : null;
-                    const health = ratio == null ? 'neutral' : ratio >= config.greenPct ? 'green' : ratio >= config.yellowPct ? 'yellow' : 'red';
-                    const values = { ...machine.readings, ProduzidoHoje: value(machine), Meta: machine.target ?? 0, Projecao: machine.projection, Ritmo: machine.pacePerHour, Eficiencia: (machine.utilization ?? 0) * 100 };
-                    const fields: Record<CardField, { label: string; value: string }> = {
-                      produced: { label: 'Produzido hoje', value: `${number(value(machine), machine.metric === 'tons' ? 1 : 0)} ${METRICS[machine.metric]}` },
-                      target: { label: 'Meta', value: machine.target ? `${number(machine.target)} ${METRICS[machine.metric]}` : '—' },
-                      projection: { label: 'Projeção', value: `${number(machine.projection)} ${METRICS[machine.metric]}` },
-                      pace: { label: 'Ritmo', value: `${number(machine.pacePerHour, 1)} ${METRICS[machine.metric]}/h` },
-                    };
-                    const layoutOf = (id: string, order: number) => config.layout.find((item) => item.id === id) ?? { id, order, colSpan: 1, rowSpan: 1 };
-                    const cards = [
-                      ...config.visibleFields.map((field, index) => ({ kind: 'metric' as const, id: field, ...fields[field], layout: layoutOf(field, index) })),
-                      ...config.calculated.map((field, index) => { const result = evaluateFormula(field.formula, values); return { kind: 'metric' as const, id: field.id, label: field.label || 'Calculado', value: result == null ? '—' : `${number(result, field.decimals)} ${field.unit}`, layout: layoutOf(field.id, config.visibleFields.length + index) }; }),
-                      { kind: 'efficiency' as const, id: 'efficiency', layout: layoutOf('efficiency', config.visibleFields.length + config.calculated.length) },
-                    ].sort((a, b) => a.layout.order - b.layout.order);
-                    return <div className="machine-row" id={`machine-${machine.deviceId}`} key={machine.deviceId}>
-                      {site.machines.length > 1 && <div className="machine-card-actions plant-card-actions">
-                        {user.role === 'master' && <button title="Editar cartão" onClick={() => setConfiguring(machine)}>✎</button>}
-                        {machine.dashboardId && <Link title="Abrir painel" href={`/dashboards/${machine.dashboardId}`}>▣</Link>}
-                        {user.role === 'master' && <button title="Editar localização" onClick={() => setEditing(machine)}>⌖</button>}
-                      </div>}
-                      <div className="machine-title">
-                        <span>CERÂMICA</span>
-                        <strong>{machine.deviceName}</strong>
-                        <span>{[machine.location.city, machine.location.state].filter(Boolean).join(' · ') || machine.product || 'Localização não informada'}</span>
-                      </div>
-                      <div className="machine-card-grid">
-                        {cards.map((card) => card.kind === 'efficiency' ? <button key={card.id} style={{ gridColumn: `span ${card.layout.colSpan}`, gridRow: `span ${card.layout.rowSpan}` }} className={`machine-efficiency ${health}`} onClick={(event) => { event.stopPropagation(); setDetail(machine); }}><span>EFICIÊNCIA</span><b>{machine.utilization == null ? '—' : `${number(machine.utilization * 100, 1)}%`}</b><small>Ver relatório</small></button> : <div key={card.id} className="machine-metric-card" style={{ gridColumn: `span ${card.layout.colSpan}`, gridRow: `span ${card.layout.rowSpan}` }}><Metric label={card.label} value={card.value} /></div>)}
-                      </div>
-                    </div>;
-                  })}
+                  {site.machines.map((machine) => (
+                    <div className="machine-slot" id={`machine-${machine.deviceId}`} key={machine.deviceId}>
+                      <OperationCardBody
+                        machine={machine}
+                        config={configFor(machine.deviceId)}
+                        actions={site.machines.length > 1 && <div className="plant-card-actions">
+                          {user.role === 'master' && <button title="Editar cartão" onClick={() => configure(machine, site.name)}>✎</button>}
+                          <button title="Relatório de produção" onClick={() => setDetail(machine)}>▤</button>
+                          {machine.dashboardId && <Link title="Abrir painel" href={`/dashboards/${machine.dashboardId}`}>▣</Link>}
+                          {user.role === 'master' && <button title="Editar localização" onClick={() => setEditing(machine)}>⌖</button>}
+                        </div>}
+                      />
+                    </div>
+                  ))}
                 </div>
                 <footer>
                   Último sinal{' '}
@@ -395,68 +375,19 @@ export default function OperationsPage() {
           </section>
         </div>
       )}
-      {configuring && <CardConfigModal machine={configuring} initial={configFor(configuring.deviceId)} onClose={() => setConfiguring(null)} onSaved={async () => { setConfiguring(null); await settings.refresh(); }} />}
-    </div>
-  );
-}
-function CardConfigModal({ machine, initial, onClose, onSaved }: { machine: Machine; initial: CardConfig; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<CardConfig>(initial);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const values = { ...machine.readings, ProduzidoHoje: value(machine), Meta: machine.target ?? 0, Projecao: machine.projection, Ritmo: machine.pacePerHour, Eficiencia: (machine.utilization ?? 0) * 100 };
-  const fieldLabels: Record<CardField, string> = { produced: 'Produzido hoje', target: 'Meta', projection: 'Projeção', pace: 'Ritmo' };
-  const [dragging, setDragging] = useState<string | null>(null);
-  const ids = [...form.visibleFields, ...form.calculated.map((item) => item.id), 'efficiency'];
-  const layoutOf = (id: string) => form.layout.find((item) => item.id === id) ?? { id, order: ids.indexOf(id), colSpan: 1, rowSpan: 1 };
-  const setItemLayout = (id: string, patch: Partial<CardItemLayout>) => {
-    const current = layoutOf(id);
-    setForm({ ...form, layout: [...form.layout.filter((item) => item.id !== id), { ...current, ...patch }] });
-  };
-  const moveBefore = (source: string, target: string) => {
-    if (source === target) return;
-    const ordered = [...ids].sort((a, b) => layoutOf(a).order - layoutOf(b).order).filter((id) => id !== source);
-    ordered.splice(ordered.indexOf(target), 0, source);
-    setForm({ ...form, layout: ordered.map((id, order) => ({ ...layoutOf(id), order })) });
-  };
-  const previewFields: Record<CardField, { label: string; value: string }> = {
-    produced: { label: 'Produzido hoje', value: `${number(value(machine))} ${METRICS[machine.metric]}` }, target: { label: 'Meta', value: machine.target ? `${number(machine.target)} ${METRICS[machine.metric]}` : '—' }, projection: { label: 'Projeção', value: `${number(machine.projection)} ${METRICS[machine.metric]}` }, pace: { label: 'Ritmo', value: `${number(machine.pacePerHour, 1)} ${METRICS[machine.metric]}/h` },
-  };
-  const previewItems = ids.map((id) => ({ id, layout: layoutOf(id) })).sort((a, b) => a.layout.order - b.layout.order);
-  async function save() {
-    setSaving(true); setError('');
-    try {
-      if (form.yellowPct > form.greenPct) throw new Error('O limite amarelo deve ser menor que o verde.');
-      const problem = form.calculated.map((item) => item.formula ? formulaError(item.formula, Object.keys(values)) : null).find(Boolean);
-      if (problem) throw new Error(problem);
-      await mutate(`/devices/${machine.deviceId}/operation-card`, 'PATCH', form);
-      onSaved();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar.'); }
-    finally { setSaving(false); }
-  }
-  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal-card operation-card-editor" onMouseDown={(event) => event.stopPropagation()}>
-    <div className="modal-heading"><div><span className="eyebrow">CONFIGURAR CARTÃO</span><h2>{machine.deviceName}</h2></div><button className="icon-button" onClick={onClose}>×</button></div>
-    <div className="operation-live-preview"><div className="operation-preview-head"><div><span className="eyebrow">PRÉVIA DO CARTÃO</span><strong>{machine.deviceName}</strong></div><small>Arraste os blocos e use − / + para redimensionar</small></div><div className="operation-preview-body">
-      {previewItems.map(({ id, layout }) => <div key={id} draggable onDragStart={() => setDragging(id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (dragging) moveBefore(dragging, id); setDragging(null); }} className={`operation-preview-item ${id === 'efficiency' ? 'efficiency' : ''}`} style={{ gridColumn: `span ${layout.colSpan}`, gridRow: `span ${layout.rowSpan}` }}>
-        <div className="preview-resize"><button type="button" title="Diminuir largura" onClick={() => setItemLayout(id, { colSpan: Math.max(1, layout.colSpan - 1) })}>−</button><span>{layout.colSpan}×{layout.rowSpan}</span><button type="button" title="Aumentar largura" onClick={() => setItemLayout(id, { colSpan: Math.min(4, layout.colSpan + 1) })}>＋</button><button type="button" title="Alternar altura" onClick={() => setItemLayout(id, { rowSpan: layout.rowSpan === 1 ? 2 : 1 })}>↕</button></div>
-        {id === 'efficiency' ? <><span>EFICIÊNCIA</span><b>{number((machine.utilization ?? 0) * 100, 1)}%</b><small>Ver relatório</small></> : id in previewFields ? <><span>{previewFields[id as CardField].label}</span><b>{previewFields[id as CardField].value}</b></> : (() => { const field = form.calculated.find((item) => item.id === id)!; const result = evaluateFormula(field.formula, values); return <><span>{field.label}</span><b>{result == null ? '—' : `${number(result, field.decimals)} ${field.unit}`}</b></>; })()}
-      </div>)}
-    </div></div>
-    <div className="operation-editor-section"><strong>Indicadores padrão</strong><div className="operation-field-options">
-      {(Object.keys(fieldLabels) as CardField[]).map((field) => <label key={field}><input type="checkbox" checked={form.visibleFields.includes(field)} onChange={(event) => setForm({ ...form, visibleFields: event.target.checked ? [...form.visibleFields, field] : form.visibleFields.filter((item) => item !== field) })} />{fieldLabels[field]}</label>)}
-    </div></div>
-    <div className="operation-editor-section"><strong>Cor conforme projeção da meta</strong><div className="form-row"><label>Verde a partir de (%)<input type="number" min="0" max="200" value={form.greenPct * 100} onChange={(event) => setForm({ ...form, greenPct: Number(event.target.value) / 100 })} /></label><label>Amarelo a partir de (%)<input type="number" min="0" max="200" value={form.yellowPct * 100} onChange={(event) => setForm({ ...form, yellowPct: Number(event.target.value) / 100 })} /></label></div><small>Abaixo do limite amarelo, o indicador fica vermelho.</small></div>
-    <div className="operation-editor-section"><div className="operation-editor-title"><strong>Campos calculados</strong><button type="button" onClick={() => setForm({ ...form, calculated: [...form.calculated, { id: crypto.randomUUID(), label: 'Calculado', formula: '', unit: '', decimals: 1 }] })}>＋ Adicionar fórmula</button></div>
-      {form.calculated.map((field, index) => <div className="operation-formula-row" key={field.id}><input value={field.label} placeholder="Título" onChange={(event) => setForm({ ...form, calculated: form.calculated.map((item, at) => at === index ? { ...item, label: event.target.value } : item) })} /><input value={field.formula} placeholder="Ex.: Projecao / Meta * 100" onChange={(event) => setForm({ ...form, calculated: form.calculated.map((item, at) => at === index ? { ...item, formula: event.target.value } : item) })} /><input value={field.unit} placeholder="Unidade" onChange={(event) => setForm({ ...form, calculated: form.calculated.map((item, at) => at === index ? { ...item, unit: event.target.value } : item) })} /><button type="button" onClick={() => setForm({ ...form, calculated: form.calculated.filter((_, at) => at !== index) })}>×</button></div>)}
-      <small>Variáveis disponíveis: ProduzidoHoje, Meta, Projecao, Ritmo, Eficiencia e variáveis numéricas da IHM.</small>
-    </div>
-    {error && <div className="notice error">{error}</div>}<div className="modal-actions"><button onClick={onClose}>Cancelar</button><button className="primary" disabled={saving || !form.visibleFields.length} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar cartão'}</button></div>
-  </section></div>;
-}
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="machine-metric">
-      <span>{label}</span>
-      <b>{value}</b>
+      {configuring && (
+        <OperationCardEditor
+          machine={configuring.machine}
+          siteName={configuring.siteName}
+          width={configuring.width}
+          initial={configFor(configuring.machine.deviceId)}
+          onClose={() => setConfiguring(null)}
+          onSaved={async () => {
+            setConfiguring(null);
+            await settings.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
