@@ -1,4 +1,5 @@
-export type NavIconName = 'home' | 'panels' | 'device' | 'users' | 'brand' | 'mqtt' | 'production';
+export type NavIconName =
+  'home' | 'panels' | 'device' | 'users' | 'brand' | 'mqtt' | 'production' | 'map';
 
 export function NavIcon({ name }: { name: NavIconName }) {
   const common = {
@@ -26,6 +27,13 @@ export function NavIcon({ name }: { name: NavIconName }) {
         <>
           <rect x="3" y="4" width="18" height="14" rx="2" />
           <path d="M8 21h8m-4-3v3M7 8h10" />
+        </>
+      )}
+      {name === 'map' && (
+        <>
+          <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z" />
+          <path d="M9 3v15m6-12v15" />
+          <circle cx="15" cy="11" r="2.2" fill="currentColor" stroke="none" />
         </>
       )}
       {name === 'users' && (

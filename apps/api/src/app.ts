@@ -310,6 +310,51 @@ export async function createApp(
     });
     return reply.code(201).send(site);
   });
+  app.patch('/api/sites/:id/location', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    const body = z
+      .object({
+        address: z.string().trim().max(240).nullable().optional(),
+        city: z.string().trim().max(100).nullable().optional(),
+        state: z.string().trim().max(60).nullable().optional(),
+        latitude: z.number().min(-90).max(90).nullable(),
+        longitude: z.number().min(-180).max(180).nullable(),
+      })
+      .refine((value) => (value.latitude === null) === (value.longitude === null), {
+        message: 'Informe latitude e longitude juntas',
+      })
+      .parse(req.body);
+    const updated = await db.transaction(async (sql) => {
+      const result = await sql.query(
+        `UPDATE sites SET address=$3,city=$4,state=$5,latitude=$6,longitude=$7,location_updated_at=now()
+         WHERE tenant_id=$1 AND id=$2 RETURNING *`,
+        [
+          current.tenantId,
+          id,
+          body.address || null,
+          body.city || null,
+          body.state || null,
+          body.latitude,
+          body.longitude,
+        ],
+      );
+      if (!result.rows[0]) return null;
+      await recordAudit(sql, req, current, {
+        action: 'site.location.update',
+        targetType: 'site',
+        targetId: id,
+        summary: {
+          city: body.city || null,
+          state: body.state || null,
+          located: body.latitude != null,
+        },
+      });
+      return result.rows[0];
+    });
+    return updated ?? reply.code(404).send({ error: 'Cerâmica não encontrada' });
+  });
   // `d.*` reaches the browser. Never add a secret column to `devices`: the plaintext
   // mqtt_password used to be exposed exactly this way (SECURITY.md item 12). Any new
   // sensitive column must be returned by an explicit, separately authorised route.
@@ -446,55 +491,56 @@ export async function createApp(
     const after = scaleForDecimals(body.places);
     if (before === after && !body.adjustHistory) return { places: body.places, rescaled: 0 };
     const ratio = after / before;
-    return db.transaction(async (sql) => {
-      await sql.query(
-        'UPDATE tags SET scale_multiplier=$4 WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
-        [current.tenantId, id, tagId, after],
-      );
-      let rescaled = 0;
-      if (body.adjustHistory) {
-        rescaled =
-          (
-            await sql.query(
-              `UPDATE telemetry_samples SET value_number=value_number*$4
+    return db
+      .transaction(async (sql) => {
+        await sql.query(
+          'UPDATE tags SET scale_multiplier=$4 WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+          [current.tenantId, id, tagId, after],
+        );
+        let rescaled = 0;
+        if (body.adjustHistory) {
+          rescaled =
+            (
+              await sql.query(
+                `UPDATE telemetry_samples SET value_number=value_number*$4
                WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL`,
-              [current.tenantId, id, tagId, ratio],
-            )
-          ).rowCount ?? 0;
-        // The hourly rollups are rebuilt from the readings, never multiplied: the hour the comma
-        // moved in holds a fake "counter went back" (139 then 13,9) that would count a whole
-        // day twice.
-        await rebuildTagRollups(sql, current.tenantId, id, tagId);
-      }
-      // The counter baseline the ingestor compares the next reading against lives in the old
-      // scale, and would read as a reset: it follows the newest stored reading.
-      await sql.query(
-        'DELETE FROM telemetry_numeric_state WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
-        [current.tenantId, id, tagId],
-      );
-      await sql.query(
-        `INSERT INTO telemetry_numeric_state(tenant_id,site_id,device_id,tag_id,last_timestamp,last_value)
+                [current.tenantId, id, tagId, ratio],
+              )
+            ).rowCount ?? 0;
+          // The hourly rollups are rebuilt from the readings, never multiplied: the hour the comma
+          // moved in holds a fake "counter went back" (139 then 13,9) that would count a whole
+          // day twice.
+          await rebuildTagRollups(sql, current.tenantId, id, tagId);
+        }
+        // The counter baseline the ingestor compares the next reading against lives in the old
+        // scale, and would read as a reset: it follows the newest stored reading.
+        await sql.query(
+          'DELETE FROM telemetry_numeric_state WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+          [current.tenantId, id, tagId],
+        );
+        await sql.query(
+          `INSERT INTO telemetry_numeric_state(tenant_id,site_id,device_id,tag_id,last_timestamp,last_value)
          SELECT tenant_id,site_id,device_id,tag_id,timestamp,value_number FROM telemetry_samples
          WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL
          ORDER BY timestamp DESC,id DESC LIMIT 1`,
-        [current.tenantId, id, tagId],
-      );
-      await recordAudit(sql, req, current, {
-        action: 'tag.decimals',
-        targetType: 'tag',
-        targetId: tagId,
-        summary: { key: tag.rows[0].key, places: body.places, scale: after, rescaled },
-      });
-      return { places: body.places, rescaled, changedAt: new Date() };
-    }).then(async (result) => {
-      // Production is counted from the readings: with a new scale it has to be counted again.
-      scheduleProductionRebuild(db, current.tenantId, id, req.log);
-      // A reading already on its way when the scale changed lands in the old scale and shows as
-      // a huge jump. Two minutes later, when there is enough history to compare with, such a
-      // reading is brought to the new scale and the totals are rebuilt around it.
-      if (body.adjustHistory && ratio !== 1)
-        setTimeout(
-          () => {
+          [current.tenantId, id, tagId],
+        );
+        await recordAudit(sql, req, current, {
+          action: 'tag.decimals',
+          targetType: 'tag',
+          targetId: tagId,
+          summary: { key: tag.rows[0].key, places: body.places, scale: after, rescaled },
+        });
+        return { places: body.places, rescaled, changedAt: new Date() };
+      })
+      .then(async (result) => {
+        // Production is counted from the readings: with a new scale it has to be counted again.
+        scheduleProductionRebuild(db, current.tenantId, id, req.log);
+        // A reading already on its way when the scale changed lands in the old scale and shows as
+        // a huge jump. Two minutes later, when there is enough history to compare with, such a
+        // reading is brought to the new scale and the totals are rebuilt around it.
+        if (body.adjustHistory && ratio !== 1)
+          setTimeout(() => {
             void (async () => {
               try {
                 const fixed = await db.query(
@@ -523,11 +569,9 @@ export async function createApp(
                 });
               }
             })();
-          },
-          120_000,
-        ).unref();
-      return { places: result.places, rescaled: result.rescaled };
-    });
+          }, 120_000).unref();
+        return { places: result.places, rescaled: result.rescaled };
+      });
   });
 
   app.get('/api/devices/:id/signals', async (req, reply) => {
@@ -1656,7 +1700,8 @@ export async function createApp(
         'SELECT 1 FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
         [current.tenantId, view.widgets[index].device_id, body.tagId],
       );
-      if (!tag.rows.length) return reply.code(400).send({ error: 'Tag does not belong to this device' });
+      if (!tag.rows.length)
+        return reply.code(400).send({ error: 'Tag does not belong to this device' });
     }
     const updated = {
       ...view.widgets[index],

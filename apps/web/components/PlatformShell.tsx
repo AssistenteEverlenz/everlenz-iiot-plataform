@@ -55,6 +55,7 @@ const defaultBranding: Branding = {
 
 const PlatformContext = createContext<PlatformContextValue | null>(null);
 const navigation = [
+  { href: '/operations', label: 'Operação', short: 'Operação', icon: 'map' },
   { href: '/', label: 'Centro de comando', short: 'Início', icon: 'home' },
   { href: '/dashboards', label: 'Painéis', short: 'Painéis', icon: 'panels' },
   { href: '/devices', label: 'Dispositivos', short: 'Ativos', icon: 'device' },

@@ -12,6 +12,382 @@
   background: #f2f5f6;
   font-synthesis: none;
 }
+
+/* Fleet map and multi-plant management board. */
+.operations-page {
+  display: grid;
+  gap: 18px;
+  padding: 30px 34px 60px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+.operations-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+}
+.operations-heading h1 {
+  margin: 5px 0 4px;
+  font-size: 32px;
+  font-weight: 550;
+  letter-spacing: -0.035em;
+}
+.operations-heading p {
+  margin: 0;
+  color: #6c828b;
+}
+.operations-updated {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #66808a;
+  font-size: 12px;
+}
+.operations-kpis {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(4, 1fr);
+  gap: 10px;
+}
+.operations-kpis button {
+  display: grid;
+  gap: 7px;
+  text-align: left;
+  padding: 16px 18px;
+  border: 1px solid #d9e4e7;
+  border-radius: 13px;
+  background: #fff;
+  color: #173640;
+}
+.operations-kpis button:hover,
+.operations-kpis button.active {
+  border-color: var(--state, var(--brand-accent));
+  box-shadow: 0 5px 20px rgba(26, 66, 75, 0.08);
+}
+.operations-kpis b {
+  font-size: 27px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.operations-kpis span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #6c828b;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.operations-kpis i,
+.state-pill i,
+.map-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state);
+  display: inline-block;
+}
+.operations-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 520px;
+  flex: 1;
+  border: 1px solid #d5e2e5;
+  border-radius: 9px;
+  background: #fff;
+  padding: 0 12px;
+}
+.search-field input {
+  width: 100%;
+  padding: 11px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+.operations-toolbar > span {
+  font-size: 12px;
+  color: #72868e;
+}
+.operations-main {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.9fr) minmax(580px, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+.map-panel {
+  position: sticky;
+  top: 82px;
+  background: #fff;
+  border: 1px solid #d9e4e7;
+  border-radius: 15px;
+  overflow: hidden;
+}
+.plant-map {
+  height: min(63vh, 650px);
+  min-height: 470px;
+  background: #e8f0f1;
+  z-index: 0;
+}
+.plant-map-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #71878f;
+}
+.plant-map-marker-wrap {
+  background: none !important;
+  border: 0 !important;
+}
+.plant-map-marker {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: 4px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--pin);
+  box-shadow: 0 4px 14px rgba(6, 29, 35, 0.3);
+}
+.plant-map-marker span {
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: #fff;
+}
+.plant-map-marker.selected {
+  transform: rotate(-45deg) scale(1.3);
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--pin) 25%, transparent),
+    0 5px 18px rgba(6, 29, 35, 0.35);
+}
+.leaflet-popup-content strong,
+.leaflet-popup-content small {
+  display: block;
+}
+.leaflet-popup-content small {
+  margin-top: 4px;
+  color: #70858d;
+}
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  padding: 13px 16px;
+  font-size: 11px;
+  color: #516b74;
+  border-top: 1px solid #e2eaec;
+}
+.map-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.map-missing {
+  margin: 0;
+  padding: 0 16px 13px;
+  color: #9a6b13;
+  font-size: 11px;
+}
+.plant-list {
+  display: grid;
+  gap: 11px;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
+  padding: 1px 5px 10px 1px;
+}
+.plant-summary {
+  border: 1px solid #d9e4e7;
+  border-radius: 15px;
+  background: #fff;
+  padding: 17px 18px;
+  transition: 0.15s;
+}
+.plant-summary:hover,
+.plant-summary.selected {
+  border-color: #83bab8;
+  box-shadow: 0 8px 24px rgba(20, 67, 74, 0.08);
+}
+.plant-summary > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+.plant-summary h2 {
+  font-size: 18px;
+  margin: 7px 0 2px;
+}
+.plant-summary small {
+  color: #72858d;
+}
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--state);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.plant-actions button,
+.machine-row > a {
+  border: 1px solid #d7e3e6;
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: #fff;
+  color: #24505a;
+  font-size: 11px;
+}
+.machine-grid {
+  display: grid;
+  gap: 9px;
+  margin-top: 15px;
+}
+.machine-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.35fr) repeat(5, minmax(90px, 1fr)) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 13px;
+  border-radius: 10px;
+  background: #f4f8f8;
+}
+.machine-title,
+.machine-metric {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.machine-title strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.machine-title span,
+.machine-metric span {
+  font-size: 9px;
+  color: #788d94;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.machine-metric b {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.machine-row > a {
+  text-decoration: none;
+  white-space: nowrap;
+}
+.plant-summary footer {
+  margin-top: 11px;
+  font-size: 10px;
+  color: #7b9097;
+}
+.location-modal {
+  width: min(620px, calc(100vw - 30px));
+}
+.location-modal > p {
+  color: #687e86;
+  font-size: 13px;
+}
+.location-modal label {
+  display: grid;
+  gap: 5px;
+  font-size: 11px;
+  color: #637981;
+}
+.location-modal input {
+  padding: 10px 11px;
+  border: 1px solid #cfdee2;
+  border-radius: 7px;
+}
+.location-modal .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.empty {
+  padding: 34px;
+  text-align: center;
+  color: #71868e;
+  border: 1px dashed #cadadd;
+  border-radius: 13px;
+}
+@media (max-width: 1200px) {
+  .operations-main {
+    grid-template-columns: 1fr;
+  }
+  .map-panel {
+    position: relative;
+    top: auto;
+  }
+  .plant-map {
+    height: 430px;
+    min-height: 0;
+  }
+  .plant-list {
+    max-height: none;
+  }
+  .machine-row {
+    grid-template-columns: 1.3fr repeat(3, 1fr);
+  }
+  .machine-row .machine-metric:nth-of-type(n + 4) {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .operations-page {
+    padding: 18px 14px 90px;
+  }
+  .operations-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+  .operations-heading h1 {
+    font-size: 26px;
+  }
+  .operations-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .operations-kpis button:first-child {
+    grid-column: 1/-1;
+  }
+  .operations-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .operations-main {
+    display: block;
+  }
+  .map-panel {
+    margin-bottom: 14px;
+  }
+  .plant-map {
+    height: 330px;
+  }
+  .machine-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .machine-title {
+    grid-column: 1/-1;
+  }
+  .machine-row > a {
+    grid-column: 1/-1;
+    text-align: center;
+  }
+  .location-modal .form-row {
+    grid-template-columns: 1fr;
+  }
+}
 * {
   box-sizing: border-box;
 }
@@ -4936,7 +5312,8 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   min-width: 0;
 }
 /* A card from the default model before its variable is chosen: only the notice shows. */
-.dashboard-widget.variable-unbound > :not(.widget-head):not(.widget-unbound):not([class*='resize']) {
+.dashboard-widget.variable-unbound
+  > :not(.widget-head):not(.widget-unbound):not([class*='resize']) {
   display: none;
 }
 .shift-board.no-head > .shift-board-head {
@@ -6660,7 +7037,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 /* Behind each number of the production board: the shift hour by hour and pallet by pallet. */
 .shift-kpi.clickable {
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
 }
 .shift-kpi.clickable:hover,
 .shift-kpi.clickable:focus-visible {
@@ -6823,7 +7202,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   white-space: normal;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.14s ease, transform 0.14s ease;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
   z-index: 5;
 }
 .hint::before {

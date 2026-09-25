@@ -5,6 +5,122 @@
     color: #d4dcdf;
     background: #192326;
   }
+  :root[data-theme='dark'] .operations-heading p {
+    color: #8ea1a7;
+  }
+  :root[data-theme='dark'] .operations-updated {
+    color: #8fa5ac;
+  }
+  :root[data-theme='dark'] .operations-kpis button {
+    border: 1px solid #253439;
+    background: #12191c;
+    color: #d1dadd;
+  }
+  :root[data-theme='dark'] .operations-kpis button:hover,
+  :root[data-theme='dark'] .operations-kpis button.active {
+    border-color: var(--state, var(--brand-accent));
+    box-shadow: 0 5px 20px rgba(26, 66, 75, 0.08);
+  }
+  :root[data-theme='dark'] .operations-kpis span {
+    color: #8ea1a7;
+  }
+  :root[data-theme='dark'] .operations-kpis i,
+  :root[data-theme='dark'] .state-pill i,
+  :root[data-theme='dark'] .map-legend i {
+    background: var(--state);
+  }
+  :root[data-theme='dark'] .search-field {
+    border: 1px solid #27373c;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .search-field input {
+    border: 0;
+    outline: 0;
+    background: transparent;
+  }
+  :root[data-theme='dark'] .operations-toolbar > span {
+    color: #8c9da3;
+  }
+  :root[data-theme='dark'] .map-panel {
+    background: #12191c;
+    border: 1px solid #253439;
+  }
+  :root[data-theme='dark'] .plant-map {
+    background: #1d292e;
+  }
+  :root[data-theme='dark'] .plant-map-loading {
+    color: #8b9da4;
+  }
+  :root[data-theme='dark'] .plant-map-marker-wrap {
+    background: none !important;
+    border: 0 !important;
+  }
+  :root[data-theme='dark'] .plant-map-marker {
+    border: 4px solid #12191c;
+    background: var(--pin);
+    box-shadow: 0 4px 14px rgba(6, 29, 35, 0.3);
+  }
+  :root[data-theme='dark'] .plant-map-marker span {
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .plant-map-marker.selected {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--pin) 25%, transparent),
+    0 5px 18px rgba(6, 29, 35, 0.35);
+  }
+  :root[data-theme='dark'] .leaflet-popup-content small {
+    color: #8d9ea4;
+  }
+  :root[data-theme='dark'] .map-legend {
+    color: #a1b4ba;
+    border-top: 1px solid #212e33;
+  }
+  :root[data-theme='dark'] .map-missing {
+    color: #e5c280;
+  }
+  :root[data-theme='dark'] .plant-summary {
+    border: 1px solid #253439;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .plant-summary:hover,
+  :root[data-theme='dark'] .plant-summary.selected {
+    border-color: #4d6d78;
+    box-shadow: 0 8px 24px rgba(20, 67, 74, 0.08);
+  }
+  :root[data-theme='dark'] .plant-summary small {
+    color: #8d9da3;
+  }
+  :root[data-theme='dark'] .state-pill {
+    color: var(--state);
+  }
+  :root[data-theme='dark'] .plant-actions button,
+  :root[data-theme='dark'] .machine-row > a {
+    border: 1px solid #26363b;
+    background: #12191c;
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .machine-row {
+    background: #172125;
+  }
+  :root[data-theme='dark'] .machine-title span,
+  :root[data-theme='dark'] .machine-metric span {
+    color: #86999f;
+  }
+  :root[data-theme='dark'] .plant-summary footer {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .location-modal > p {
+    color: #92a4aa;
+  }
+  :root[data-theme='dark'] .location-modal label {
+    color: #96a8ae;
+  }
+  :root[data-theme='dark'] .location-modal input {
+    border: 1px solid #293b41;
+  }
+  :root[data-theme='dark'] .empty {
+    color: #8c9ea3;
+    border: 1px dashed #2c3f45;
+  }
   :root[data-theme='dark'] a {
     color: inherit;
   }

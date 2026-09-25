@@ -442,7 +442,8 @@ async function palletEvents(
     .sort((a, b) => a.at - b.at);
   let reading: number | null = null;
   let previousAt: number | null = null;
-  const events: { at: string; seconds: number | null; pallets: number; product: string | null }[] = [];
+  const events: { at: string; seconds: number | null; pallets: number; product: string | null }[] =
+    [];
   for (const row of ordered) {
     const step = counterStep(reading, row.value);
     reading = step.reading;
@@ -495,10 +496,7 @@ async function buildBoard(
       item.breaks.reduce(
         (sum, pause) =>
           sum +
-          Math.max(
-            0,
-            Math.min(pause.end.getTime(), until.getTime()) - pause.start.getTime(),
-          ) /
+          Math.max(0, Math.min(pause.end.getTime(), until.getTime()) - pause.start.getTime()) /
             1000,
         0,
       ),
@@ -621,7 +619,9 @@ async function buildBoard(
       ['offline', offline],
     ] as const;
     const mix = Object.fromEntries(
-      ranked.filter(([, seconds]) => seconds >= 1).map(([state, seconds]) => [state, Math.round(seconds)]),
+      ranked
+        .filter(([, seconds]) => seconds >= 1)
+        .map(([state, seconds]) => [state, Math.round(seconds)]),
     );
     timeline.push({
       t: start.toISOString(),
@@ -1016,7 +1016,10 @@ export async function backfillProduction(
      WHERE ps.blocks_tag_id IS NOT NULL OR ps.pallets_tag_id IS NOT NULL`,
   );
   for (const device of devices.rows) {
-    const span = await db.query<{ first_sample: Date | string | null; first_bucket: Date | string | null }>(
+    const span = await db.query<{
+      first_sample: Date | string | null;
+      first_bucket: Date | string | null;
+    }>(
       `SELECT (SELECT min(received_at) FROM telemetry_samples WHERE tenant_id=$1 AND device_id=$2
                  AND received_at>=$3) first_sample,
               (SELECT min(bucket) FROM production_buckets WHERE device_id=$2) first_bucket`,
@@ -1162,11 +1165,11 @@ export async function closeShiftReports(
         // The target this shift had (kept on a recount), else its target at the end of it.
         target: options.targets?.get(occurrence.start.getTime()) ??
           reopened.get(occurrence.start.getTime()) ?? {
-          metric: device.target_metric,
-          value:
-            (await targetFor(db, device.tenant_id, device.id, device, occurrence.end))?.value ??
-            null,
-        },
+            metric: device.target_metric,
+            value:
+              (await targetFor(db, device.tenant_id, device.id, device, occurrence.end))?.value ??
+              null,
+          },
         planned: occurrence.plannedSeconds,
         summary: summarize(
           buckets,
@@ -1206,6 +1209,174 @@ export async function closeShiftReports(
 }
 
 export function registerShiftProductionRoutes(app: FastifyInstance, db: Database, access: Access) {
+  // One compact query powers the map and the multi-plant board. It deliberately reads the
+  // pre-aggregated five-minute buckets: 100 plants still cost one round trip, not 100 boards.
+  app.get('/api/operations/overview', async (req) => {
+    const current = access.principal(req);
+    const deviceIds = await access.accessibleDeviceIds(req);
+    const now = new Date();
+    const from = plantInstant(plantDate(now), '00:00');
+    const result = await db.query<{
+      site_id: string;
+      site_name: string;
+      site_reference: string;
+      address: string | null;
+      city: string | null;
+      region: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      device_id: string;
+      device_name: string;
+      device_code: string;
+      dashboard_id: string | null;
+      last_at: Date | string | null;
+      last_increment_at: Date | string | null;
+      auto: boolean | null;
+      product_code: string | null;
+      idle_seconds: number | null;
+      target_metric: Metric | null;
+      target_value: number | null;
+      pieces: number;
+      pallets: number;
+      tons: number;
+      producing: number;
+      idle: number;
+      manual: number;
+    }>(
+      `SELECT s.id site_id,s.name site_name,s.reference site_reference,s.address,s.city,s.state region,
+         s.latitude,s.longitude,d.id device_id,d.name device_name,d.device_code,
+         (SELECT da.id FROM dashboards da WHERE da.tenant_id=d.tenant_id AND da.device_id=d.id
+          ORDER BY da.is_default DESC,da.created_at LIMIT 1) dashboard_id,
+         pr.last_at,pr.last_increment_at,pr.auto,pr.product_code,coalesce(ps.idle_seconds,60) idle_seconds,
+         ps.target_metric,ps.target_per_shift target_value,
+         coalesce(sum(pb.pieces),0) pieces,coalesce(sum(pb.pallets),0) pallets,
+         coalesce(sum(pb.tons),0) tons,coalesce(sum(pb.producing_s),0) producing,
+         coalesce(sum(pb.idle_s),0) idle,coalesce(sum(pb.manual_s),0) manual
+       FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
+       LEFT JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
+       LEFT JOIN production_runtime pr ON pr.device_id=d.id AND pr.tenant_id=d.tenant_id
+       LEFT JOIN production_buckets pb ON pb.device_id=d.id AND pb.tenant_id=d.tenant_id
+         AND pb.bucket >= $3 AND pb.bucket < $4
+       WHERE d.tenant_id=$1 AND d.archived_at IS NULL AND d.enabled=true
+         AND ($2::uuid[] IS NULL OR d.id=ANY($2))
+       GROUP BY s.id,s.name,s.reference,s.address,s.city,s.state,s.latitude,s.longitude,
+         d.id,d.name,d.device_code,pr.last_at,pr.last_increment_at,pr.auto,pr.product_code,
+         ps.idle_seconds,ps.target_metric,ps.target_per_shift
+       ORDER BY s.name,d.name`,
+      [current.tenantId, deviceIds, from, new Date(from.getTime() + DAY_MS)],
+    );
+    const shiftRows = await db.query<{
+      id: string;
+      site_id: string;
+      name: string;
+      weekdays: number[];
+      start_time: string;
+      end_time: string;
+      breaks: Array<{ start: string; end: string }>;
+    }>(
+      `SELECT id,site_id,name,weekdays,start_time,end_time,breaks FROM site_shifts
+       WHERE tenant_id=$1 AND site_id=ANY($2::uuid[]) ORDER BY sort_order,start_time`,
+      [current.tenantId, [...new Set(result.rows.map((row) => row.site_id))]],
+    );
+    const schedule = new Map<string, ShiftDefinition[]>();
+    for (const row of shiftRows.rows) {
+      const entries = schedule.get(row.site_id) ?? [];
+      entries.push({
+        id: row.id,
+        name: row.name,
+        weekdays: row.weekdays.map(Number),
+        start: row.start_time,
+        end: row.end_time,
+        breaks: Array.isArray(row.breaks) ? row.breaks : [],
+      });
+      schedule.set(row.site_id, entries);
+    }
+    const siteWindows = new Map(
+      [...new Set(result.rows.map((row) => row.site_id))].map((siteId) => [
+        siteId,
+        expandShifts(
+          schedule.get(siteId) ?? DEFAULT_SHIFTS,
+          addDays(plantDate(now), -1),
+          plantDate(now),
+        ),
+      ]),
+    );
+    const machines = result.rows.map((row) => {
+      const lastAt = row.last_at ? new Date(row.last_at).getTime() : 0;
+      const increment = row.last_increment_at ? new Date(row.last_increment_at).getTime() : lastAt;
+      let state =
+        !lastAt || now.getTime() - lastAt > env.DEVICE_OFFLINE_SECONDS * 1000
+          ? 'offline'
+          : row.auto === false
+            ? 'manual'
+            : now.getTime() - increment > Number(row.idle_seconds ?? 60) * 1000
+              ? 'idle'
+              : 'producing';
+      const occurrences = siteWindows.get(row.site_id) ?? [];
+      const running = occurrences.find((item) => item.start <= now && now < item.end);
+      if (
+        state === 'idle' &&
+        running?.breaks.some((pause) => pause.start <= now && now < pause.end)
+      )
+        state = 'pause';
+      const totals = {
+        pieces: Number(row.pieces),
+        milheiros: Number(row.pieces) / 1000,
+        pallets: Number(row.pallets),
+        tons: Number(row.tons),
+      };
+      const metric = row.target_metric ?? (Number(row.pallets) > 0 ? 'pallets' : 'milheiros');
+      const actual = metric === 'blocks' ? totals.pieces : totals[metric];
+      const elapsed = Number(row.producing) + Number(row.idle);
+      const pacePerHour = elapsed > 0 ? actual / (elapsed / 3600) : 0;
+      return {
+        siteId: row.site_id,
+        siteName: row.site_name,
+        siteReference: row.site_reference,
+        location: {
+          address: row.address,
+          city: row.city,
+          state: row.region,
+          latitude: row.latitude == null ? null : Number(row.latitude),
+          longitude: row.longitude == null ? null : Number(row.longitude),
+        },
+        deviceId: row.device_id,
+        deviceName: row.device_name,
+        deviceCode: row.device_code,
+        dashboardId: row.dashboard_id,
+        state,
+        product: row.product_code,
+        updatedAt: row.last_at ? new Date(row.last_at).toISOString() : null,
+        metric,
+        totals,
+        target:
+          row.target_value == null
+            ? null
+            : Number(row.target_value) *
+              occurrences.filter((item) => item.productionDate === plantDate(now)).length,
+        projection:
+          elapsed > 0
+            ? actual + pacePerHour * Math.max(0, 24 - (now.getTime() - from.getTime()) / 3600000)
+            : actual,
+        pacePerHour,
+        utilization: elapsed > 0 ? Number(row.producing) / elapsed : null,
+      };
+    });
+    const rank: Record<string, number> = { offline: 5, manual: 4, idle: 3, producing: 1 };
+    const sites = [...new Set(machines.map((item) => item.siteId))].map((siteId) => {
+      const children = machines.filter((item) => item.siteId === siteId);
+      const first = children[0];
+      return {
+        id: siteId,
+        name: first.siteName,
+        reference: first.siteReference,
+        location: first.location,
+        state: [...children].sort((a, b) => rank[b.state] - rank[a.state])[0].state,
+        machines: children,
+      };
+    });
+    return { generatedAt: now.toISOString(), productionDate: plantDate(now), sites };
+  });
   app.get('/api/sites/:id/shifts', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     const tenantId = access.principal(req).tenantId;
@@ -1328,9 +1499,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       body.autoTagId,
       body.weightTagId,
       body.targetTagId,
-    ].filter(
-      (tag): tag is string => Boolean(tag),
-    );
+    ].filter((tag): tag is string => Boolean(tag));
     const owned = await db.query<{ count: number }>(
       'SELECT count(*)::int count FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=ANY($3::uuid[])',
       [current.tenantId, id, [...new Set(tagIds)]],
@@ -1408,7 +1577,9 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         [current.tenantId, id, body.targetTagId],
       );
       if (!tag.rows.length)
-        return reply.code(400).send({ error: 'A variável da meta precisa ser numérica e deste equipamento.' });
+        return reply
+          .code(400)
+          .send({ error: 'A variável da meta precisa ser numérica e deste equipamento.' });
     }
     await db.transaction(async (sql) => {
       await sql.query(
@@ -1519,7 +1690,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         // Variables a calculated field reads, to chart it over time ("cortes por minuto").
         keys: z.string().max(400).optional(),
         // How long each column of the charts covers, in minutes: 5 to 60.
-        step: z.coerce.number().int().refine((value) => [5, 10, 15, 30, 60].includes(value)).default(60),
+        step: z.coerce
+          .number()
+          .int()
+          .refine((value) => [5, 10, 15, 30, 60].includes(value))
+          .default(60),
       })
       .parse(req.query);
     const mode = query.mode;
@@ -1537,7 +1712,10 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         ? occurrences.filter((item) => item.productionDate === date)
         : running
           ? [running]
-          : [...occurrences].reverse().filter((item) => item.end <= now).slice(0, 1);
+          : [...occurrences]
+              .reverse()
+              .filter((item) => item.end <= now)
+              .slice(0, 1);
     const asked =
       query.from && query.to ? { start: new Date(query.from), end: new Date(query.to) } : null;
     if (!asked && !chosen.length)
@@ -1548,11 +1726,27 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const stepMs = query.step * 60_000;
     const byHour = new Map<
       string,
-      { pieces: number; pallets: number; tons: number; producing: number; idle: number; manual: number }
+      {
+        pieces: number;
+        pallets: number;
+        tons: number;
+        producing: number;
+        idle: number;
+        manual: number;
+      }
     >();
     for (const row of buckets) {
-      const hour = new Date(Math.floor(new Date(row.bucket).getTime() / stepMs) * stepMs).toISOString();
-      const entry = byHour.get(hour) ?? { pieces: 0, pallets: 0, tons: 0, producing: 0, idle: 0, manual: 0 };
+      const hour = new Date(
+        Math.floor(new Date(row.bucket).getTime() / stepMs) * stepMs,
+      ).toISOString();
+      const entry = byHour.get(hour) ?? {
+        pieces: 0,
+        pallets: 0,
+        tons: 0,
+        producing: 0,
+        idle: 0,
+        manual: 0,
+      };
       entry.pieces += Number(row.pieces);
       entry.pallets += Number(row.pallets);
       entry.tons += Number(row.tons);
@@ -1562,7 +1756,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       byHour.set(hour, entry);
     }
     return {
-      span: { start: span.start.toISOString(), end: span.end.toISOString(), until: until.toISOString() },
+      span: {
+        start: span.start.toISOString(),
+        end: span.end.toISOString(),
+        until: until.toISOString(),
+      },
       shiftName: chosen.map((item) => item.name).join(' + ') || 'Período',
       metric: config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets'),
       step: query.step,
@@ -1809,7 +2007,9 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       (item) => item.start <= now && now < item.end,
     );
     if (!running)
-      return reply.code(400).send({ error: 'Nenhum turno em andamento agora para gerar a parcial.' });
+      return reply
+        .code(400)
+        .send({ error: 'Nenhum turno em andamento agora para gerar a parcial.' });
     const windows = productiveWindows(running);
     const buckets = await loadBuckets(db, current.tenantId, id, running.start, now);
     const summary = summarize(buckets, running, windows, now, closingSecondsOf(config));
