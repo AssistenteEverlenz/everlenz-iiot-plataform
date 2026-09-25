@@ -105,9 +105,9 @@ export function PlantMap({
         const map = window.L.map(node.current, { zoomControl: true, scrollWheelZoom: true });
         instance.current = map;
         window.L.tileLayer(
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+          'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
           {
-            maxZoom: 19,
+            maxZoom: 16,
             attribution: 'Tiles © Esri',
           },
         ).addTo(map);
