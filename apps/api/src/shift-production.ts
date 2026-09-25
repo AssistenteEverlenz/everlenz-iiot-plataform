@@ -1243,8 +1243,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       idle: number;
       manual: number;
     }>(
-      `SELECT s.id site_id,s.name site_name,s.reference site_reference,s.address,s.city,s.state region,
-         s.latitude,s.longitude,d.id device_id,d.name device_name,d.device_code,
+      `SELECT s.id site_id,s.name site_name,s.reference site_reference,d.address,d.city,d.state region,
+         d.latitude,d.longitude,d.id device_id,d.name device_name,d.device_code,
          (SELECT da.id FROM dashboards da WHERE da.tenant_id=d.tenant_id AND da.device_id=d.id
           ORDER BY da.is_default DESC,da.created_at LIMIT 1) dashboard_id,
          pr.last_at,pr.last_increment_at,pr.auto,pr.product_code,coalesce(ps.idle_seconds,60) idle_seconds,
@@ -1259,7 +1259,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
          AND pb.bucket >= $3 AND pb.bucket < $4
        WHERE d.tenant_id=$1 AND d.archived_at IS NULL AND d.enabled=true
          AND ($2::uuid[] IS NULL OR d.id=ANY($2))
-       GROUP BY s.id,s.name,s.reference,s.address,s.city,s.state,s.latitude,s.longitude,
+       GROUP BY s.id,s.name,s.reference,d.address,d.city,d.state,d.latitude,d.longitude,
          d.id,d.name,d.device_code,pr.last_at,pr.last_increment_at,pr.auto,pr.product_code,
          ps.idle_seconds,ps.target_metric,ps.target_per_shift
        ORDER BY s.name,d.name`,
@@ -1370,7 +1370,6 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         id: siteId,
         name: first.siteName,
         reference: first.siteReference,
-        location: first.location,
         state: [...children].sort((a, b) => rank[b.state] - rank[a.state])[0].state,
         machines: children,
       };

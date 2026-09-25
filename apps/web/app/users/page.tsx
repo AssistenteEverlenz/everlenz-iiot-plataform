@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { mutate, time, usePoll, type Device } from '../../components/data';
 import { ActionModal } from '../../components/ActionModal';
 
@@ -37,6 +37,20 @@ export default function UsersPage() {
     type: 'toggle' | 'remove' | 'reset';
     user: ManagedUser;
   } | null>(null);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
+  const [deviceFilter, setDeviceFilter] = useState('');
+  const [deviceSearch, setDeviceSearch] = useState('');
+  const filteredUsers = useMemo(() => (users.data ?? []).filter((user) => {
+    const q = query.trim().toLocaleLowerCase('pt-BR');
+    const accessible = user.role === 'master' ? (devices.data ?? []) : (devices.data ?? []).filter((device) => user.device_ids.includes(device.id));
+    return (!q || `${user.full_name} ${user.email} ${accessible.map((device) => `${device.name} ${device.site_name ?? ''}`).join(' ')}`.toLocaleLowerCase('pt-BR').includes(q))
+      && (!deviceFilter || user.role === 'master' || user.device_ids.includes(deviceFilter))
+      && (statusFilter === 'all' || (statusFilter === 'pending' ? user.must_change_password : user.status === statusFilter));
+  }), [users.data, devices.data, query, deviceFilter, statusFilter]);
+  const visibleDevices = useMemo(() => (devices.data ?? []).filter((device) =>
+    `${device.name} ${device.device_code} ${device.site_name ?? ''}`.toLocaleLowerCase('pt-BR').includes(deviceSearch.toLocaleLowerCase('pt-BR'))
+  ), [devices.data, deviceSearch]);
 
   function createUser() {
     setEditing(null);
@@ -111,21 +125,31 @@ export default function UsersPage() {
       </div>
       {users.error && <div className="error-banner">{users.error}</div>}
       <section className="user-summary-grid">
-        <article className="card">
+        <button className="card" onClick={() => setStatusFilter('all')}>
           <span>USUÁRIOS</span>
           <strong>{users.data?.length ?? '—'}</strong>
           <small>incluindo sua conta master</small>
-        </article>
-        <article className="card">
+        </button>
+        <button className="card" onClick={() => setStatusFilter('active')}>
           <span>ATIVOS</span>
           <strong>{users.data?.filter((user) => user.status === 'active').length ?? '—'}</strong>
           <small>com acesso liberado</small>
-        </article>
-        <article className="card">
+        </button>
+        <button className="card" onClick={() => setStatusFilter('pending')}>
           <span>AGUARDANDO TROCA</span>
           <strong>{users.data?.filter((user) => user.must_change_password).length ?? '—'}</strong>
           <small>usando senha provisória</small>
-        </article>
+        </button>
+      </section>
+      <section className="card users-filter-bar">
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome, e-mail, grupo ou cerâmica" />
+        <select value={deviceFilter} onChange={(event) => setDeviceFilter(event.target.value)}>
+          <option value="">Todas as cerâmicas</option>
+          {(devices.data ?? []).map((device) => <option key={device.id} value={device.id}>{device.name} · {device.site_name}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}>
+          <option value="all">Todos os status</option><option value="active">Ativos</option><option value="inactive">Desativados</option><option value="pending">Troca pendente</option>
+        </select>
       </section>
       <section className="card table-scroll">
         <table>
@@ -140,7 +164,7 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.data?.map((user) => (
+            {filteredUsers.map((user) => (
               <tr key={user.id}>
                 <td>
                   <strong>{user.full_name}</strong>
@@ -240,8 +264,10 @@ export default function UsersPage() {
                 <strong>Equipamentos liberados</strong>
                 <small>O usuário verá somente os dados selecionados.</small>
               </div>
-              <div className="device-check-grid">
-                {devices.data?.map((device) => (
+              <input type="search" value={deviceSearch} onChange={(event) => setDeviceSearch(event.target.value)} placeholder="Buscar grupo, cerâmica ou código" />
+              <small>{form.deviceIds.length} selecionado(s) · {visibleDevices.length} exibido(s)</small>
+              <div className="device-check-grid scalable-device-picker">
+                {visibleDevices.map((device) => (
                   <label key={device.id}>
                     <input
                       type="checkbox"
@@ -257,7 +283,7 @@ export default function UsersPage() {
                     />
                     <span>
                       <strong>{device.name}</strong>
-                      <small>{device.device_code}</small>
+                      <small>{device.site_name} · {device.device_code}</small>
                     </span>
                   </label>
                 ))}

@@ -3004,12 +3004,14 @@ input:focus-visible {
   gap: 16px;
   margin-bottom: 20px;
 }
-.user-summary-grid article > span {
+.user-summary-grid article > span,
+.user-summary-grid button > span {
   color: #788d95;
   font-size: 9px;
   letter-spacing: 1.2px;
 }
-.user-summary-grid article > strong {
+.user-summary-grid article > strong,
+.user-summary-grid button > strong {
   display: block;
   margin: 10px 0 2px;
   font-size: 28px;
@@ -3055,6 +3057,10 @@ input:focus-visible {
   gap: 8px;
   margin-top: 14px;
 }
+.user-summary-grid button { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.users-filter-bar { display: grid; grid-template-columns: minmax(260px, 2fr) minmax(220px, 1fr) minmax(160px, .7fr); gap: 12px; margin-bottom: 14px; }
+.users-filter-bar input, .users-filter-bar select, .device-access-box > input { width: 100%; min-height: 42px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: inherit; padding: 0 12px; }
+.scalable-device-picker { max-height: 320px; overflow-y: auto; align-content: start; }
 .device-check-grid label {
   display: flex;
   align-items: center;

@@ -127,6 +127,7 @@ const models = {
   ],
 } as const;
 type Manufacturer = keyof typeof models;
+const states = [['AC','Acre'],['AL','Alagoas'],['AP','Amapá'],['AM','Amazonas'],['BA','Bahia'],['CE','Ceará'],['DF','Distrito Federal'],['ES','Espírito Santo'],['GO','Goiás'],['MA','Maranhão'],['MT','Mato Grosso'],['MS','Mato Grosso do Sul'],['MG','Minas Gerais'],['PA','Pará'],['PB','Paraíba'],['PR','Paraná'],['PE','Pernambuco'],['PI','Piauí'],['RJ','Rio de Janeiro'],['RN','Rio Grande do Norte'],['RS','Rio Grande do Sul'],['RO','Rondônia'],['RR','Roraima'],['SC','Santa Catarina'],['SP','São Paulo'],['SE','Sergipe'],['TO','Tocantins']] as const;
 
 export default function Devices() {
   const { user } = usePlatform();
@@ -151,9 +152,22 @@ export default function Devices() {
     manufacturer: 'Haiwell' as Manufacturer,
     model: 'A7',
     serialNumber: '',
+    address: '',
+    city: '',
+    state: '',
     legacyPlainMqtt: false,
     legacyAllowedIps: [] as string[],
   });
+  const [cities, setCities] = useState<string[]>([]);
+  useEffect(() => {
+    if (!form.state) { setCities([]); return; }
+    const controller = new AbortController();
+    void fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${form.state}/municipios?orderBy=nome`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : [])
+      .then((items: Array<{ nome: string }>) => setCities(items.map((item) => item.nome)))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [form.state]);
   // Addresses a legacy HMI was refused from; refreshed while its sheet is open so the first
   // attempt after the download shows up with its "Liberar" button.
   const legacyAttempts = usePoll<LegacyAttempt[]>(
@@ -226,6 +240,9 @@ export default function Devices() {
       manufacturer: device.manufacturer as Manufacturer,
       model: device.model,
       serialNumber: device.serial_number ?? '',
+      address: device.address ?? '',
+      city: device.city ?? '',
+      state: device.state ?? '',
       legacyPlainMqtt: device.legacy_plain_mqtt ?? false,
       legacyAllowedIps: device.legacy_allowed_ips ?? [],
     });
@@ -263,6 +280,12 @@ export default function Devices() {
         ...form,
         serialNumber: form.serialNumber || null,
       });
+      if (form.city && form.state)
+        await mutate(`/devices/${selected.id}/location`, 'PATCH', {
+          address: form.address || null,
+          city: form.city,
+          state: form.state,
+        });
       await devices.refresh();
       close();
     } catch (reason) {
@@ -329,6 +352,9 @@ export default function Devices() {
                   manufacturer: 'Haiwell',
                   model: 'A7',
                   serialNumber: '',
+                  address: '',
+                  city: '',
+                  state: '',
                   legacyPlainMqtt: false,
                   legacyAllowedIps: [],
                 });
@@ -506,6 +532,22 @@ export default function Devices() {
                       onChange={(event) => setForm({ ...form, serialNumber: event.target.value })}
                       placeholder="Opcional"
                     />
+                  </label>
+                  <label className="field full-field">
+                    Endereço da cerâmica
+                    <input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Rodovia, número e bairro" />
+                  </label>
+                  <label className="field">
+                    Estado
+                    <select value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value, city: '' })}>
+                      <option value="">Selecione</option>
+                      {states.map(([code, name]) => <option key={code} value={code}>{name} ({code})</option>)}
+                    </select>
+                  </label>
+                  <label className="field">
+                    Cidade
+                    <input list="device-cities" value={form.city} disabled={!form.state} onChange={(event) => setForm({ ...form, city: event.target.value })} placeholder="Digite para buscar" />
+                    <datalist id="device-cities">{cities.map((city) => <option key={city} value={city} />)}</datalist>
                   </label>
                 </div>
                 <div className="legacy-section">

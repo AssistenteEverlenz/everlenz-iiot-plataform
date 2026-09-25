@@ -23,19 +23,20 @@ type Machine = {
   projection: number;
   pacePerHour: number;
   utilization: number | null;
+  location: Location;
+};
+type Location = {
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 type Site = {
   id: string;
   name: string;
   reference: string;
   state: string;
-  location: {
-    address: string | null;
-    city: string | null;
-    state: string | null;
-    latitude: number | null;
-    longitude: number | null;
-  };
   machines: Machine[];
 };
 type Overview = { generatedAt: string; productionDate: string; sites: Site[] };
@@ -106,14 +107,14 @@ export default function OperationsPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Site | null>(null);
+  const [editing, setEditing] = useState<Machine | null>(null);
   const sites = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('pt-BR');
     return (data?.sites ?? []).filter(
       (site) =>
         (filter === 'all' || site.state === filter) &&
         (!q ||
-          `${site.name} ${site.reference} ${site.location.city ?? ''} ${site.machines.map((m) => `${m.deviceName} ${m.product ?? ''}`).join(' ')}`
+          `${site.name} ${site.reference} ${site.machines.map((m) => `${m.deviceName} ${m.product ?? ''} ${m.location.city ?? ''}`).join(' ')}`
             .toLocaleLowerCase('pt-BR')
             .includes(q)),
     );
@@ -128,9 +129,19 @@ export default function OperationsPage() {
       ),
     [data],
   );
+  const plants = useMemo(
+    () => sites.flatMap((site) => site.machines.map((machine) => ({
+      id: machine.deviceId,
+      name: machine.deviceName,
+      groupName: site.name,
+      state: machine.state,
+      location: machine.location,
+    }))),
+    [sites],
+  );
   const select = useCallback((id: string) => {
     setSelected(id);
-    document.getElementById(`plant-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.getElementById(`machine-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
   return (
     <div className="operations-page">
@@ -201,8 +212,8 @@ export default function OperationsPage() {
               </span>
             </header>
             <div className="operations-map-frame">
-              <PlantMap plants={sites} selected={selected} onSelect={select} />
-              {sites.every((site) => site.location.latitude == null) && (
+              <PlantMap plants={plants} selected={selected} onSelect={select} />
+              {plants.every((plant) => plant.location.latitude == null) && (
                 <div className="operations-map-empty">
                   <span className="operations-section-icon" aria-hidden="true">
                     ⌖
@@ -216,8 +227,8 @@ export default function OperationsPage() {
               <div>
                 <span className="operations-foot-label">Pontos exibidos</span>
                 <strong>
-                  {sites.filter((site) => site.location.latitude != null).length}{' '}
-                  {sites.filter((site) => site.location.latitude != null).length === 1
+                  {plants.filter((plant) => plant.location.latitude != null).length}{' '}
+                  {plants.filter((plant) => plant.location.latitude != null).length === 1
                     ? 'cerâmica no mapa'
                     : 'cerâmicas no mapa'}
                 </strong>
@@ -234,17 +245,17 @@ export default function OperationsPage() {
               </div>
             </footer>
             <div className="operations-location-chips">
-              {sites
-                .filter((site) => site.location.latitude != null)
-                .map((site) => (
-                  <button key={site.id} onClick={() => select(site.id)}>
-                    <i style={{ background: STATES[site.state]?.color ?? STATES.unknown.color }} />
-                    {site.name}
+              {plants
+                .filter((plant) => plant.location.latitude != null)
+                .map((plant) => (
+                  <button key={plant.id} onClick={() => select(plant.id)}>
+                    <i style={{ background: STATES[plant.state]?.color ?? STATES.unknown.color }} />
+                    {plant.name}
                   </button>
                 ))}
-              {sites.some((site) => site.location.latitude == null) && (
+              {plants.some((plant) => plant.location.latitude == null) && (
                 <span className="map-missing">
-                  {sites.filter((site) => site.location.latitude == null).length} sem localização
+                  {plants.filter((plant) => plant.location.latitude == null).length} sem localização
                 </span>
               )}
             </div>
@@ -252,7 +263,7 @@ export default function OperationsPage() {
           <div className="operations-list-head">
             <div>
               <span className="eyebrow">VISÃO CONSOLIDADA</span>
-              <h2>Produção por cerâmica</h2>
+              <h2>Produção por grupo e cerâmica</h2>
             </div>
             <span>{sites.length} unidades exibidas</span>
           </div>
@@ -261,8 +272,7 @@ export default function OperationsPage() {
               <article
                 id={`plant-${site.id}`}
                 key={site.id}
-                className={`plant-summary ${selected === site.id ? 'selected' : ''}`}
-                onClick={() => setSelected(site.id)}
+                className={`plant-summary ${site.machines.some((machine) => machine.deviceId === selected) ? 'selected' : ''}`}
               >
                 <header>
                   <div>
@@ -277,31 +287,18 @@ export default function OperationsPage() {
                       <i />
                       {STATES[site.state]?.label ?? 'Sem dados'}
                     </span>
+                    <small>GRUPO / CLIENTE</small>
                     <h2>{site.name}</h2>
-                    <small>
-                      {[site.location.city, site.location.state].filter(Boolean).join(' · ') ||
-                        site.reference}
-                    </small>
-                  </div>
-                  <div className="plant-actions">
-                    {user.role === 'master' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditing(site);
-                        }}
-                      >
-                        Localização
-                      </button>
-                    )}
+                    <small>{site.reference}</small>
                   </div>
                 </header>
                 <div className="machine-grid">
                   {site.machines.map((machine) => (
-                    <div className="machine-row" key={machine.deviceId}>
+                    <div className="machine-row" id={`machine-${machine.deviceId}`} key={machine.deviceId}>
                       <div className="machine-title">
+                        <span>CERÂMICA</span>
                         <strong>{machine.deviceName}</strong>
-                        <span>{machine.product || 'Produto não informado'}</span>
+                        <span>{[machine.location.city, machine.location.state].filter(Boolean).join(' · ') || machine.product || 'Localização não informada'}</span>
                       </div>
                       <Metric
                         label="Produzido hoje"
@@ -339,6 +336,11 @@ export default function OperationsPage() {
                           Abrir painel →
                         </Link>
                       )}
+                      {user.role === 'master' && (
+                        <button onClick={(event) => { event.stopPropagation(); setEditing(machine); }}>
+                          Localização
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -362,7 +364,7 @@ export default function OperationsPage() {
       )}
       {editing && (
         <LocationModal
-          site={editing}
+          machine={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -382,20 +384,20 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 function LocationModal({
-  site,
+  machine,
   onClose,
   onSaved,
 }: {
-  site: Site;
+  machine: Machine;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState({
-    address: site.location.address ?? '',
-    city: site.location.city ?? '',
-    state: stateLabel(site.location.state),
-    latitude: site.location.latitude?.toString() ?? '',
-    longitude: site.location.longitude?.toString() ?? '',
+    address: machine.location.address ?? '',
+    city: machine.location.city ?? '',
+    state: stateLabel(machine.location.state),
+    latitude: machine.location.latitude?.toString() ?? '',
+    longitude: machine.location.longitude?.toString() ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -443,7 +445,7 @@ function LocationModal({
         (longitude !== null && !Number.isFinite(longitude))
       )
         throw new Error('Informe latitude e longitude válidas.');
-      await mutate(`/sites/${site.id}/location`, 'PATCH', {
+      await mutate(`/devices/${machine.deviceId}/location`, 'PATCH', {
         ...form,
         city,
         state: region,
@@ -463,12 +465,12 @@ function LocationModal({
         <div className="modal-head">
           <div>
             <span className="eyebrow">LOCALIZAÇÃO DA CERÂMICA</span>
-            <h2>{site.name}</h2>
+            <h2>{machine.deviceName}</h2>
           </div>
           <button onClick={onClose}>×</button>
         </div>
         <p>
-          As coordenadas são salvas uma vez e usadas no mapa. Você pode copiá-las do Google Maps.
+          Informe endereço, estado e cidade. A plataforma localizará a cerâmica automaticamente no mapa.
         </p>
         <label>
           Endereço
@@ -481,13 +483,13 @@ function LocationModal({
           <label>
             Estado
             <input
-              list={`states-${site.id}`}
+              list={`states-${machine.deviceId}`}
               value={form.state}
               autoComplete="off"
               placeholder="Digite para buscar"
               onChange={(e) => setForm({ ...form, state: e.target.value, city: '' })}
             />
-            <datalist id={`states-${site.id}`}>
+            <datalist id={`states-${machine.deviceId}`}>
               {BRAZIL_STATES.map(([code, name]) => (
                 <option key={code} value={`${name} (${code})`} />
               ))}
@@ -496,7 +498,7 @@ function LocationModal({
           <label>
             Cidade
             <input
-              list={`cities-${site.id}`}
+              list={`cities-${machine.deviceId}`}
               value={form.city}
               autoComplete="off"
               disabled={!selectedState || loadingCities}
@@ -509,7 +511,7 @@ function LocationModal({
               }
               onChange={(e) => setForm({ ...form, city: e.target.value })}
             />
-            <datalist id={`cities-${site.id}`}>
+            <datalist id={`cities-${machine.deviceId}`}>
               {cities.map((city) => (
                 <option key={city} value={city} />
               ))}

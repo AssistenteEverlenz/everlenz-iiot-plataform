@@ -16,6 +16,11 @@ export interface Device {
   provisioning_status?: string;
   site_name?: string;
   site_reference?: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   mqtt_topic?: string;
   mqtt_username?: string;
   /** Legacy HMI on the plain compatibility port instead of TLS (migration 016). */

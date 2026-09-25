@@ -15,6 +15,37 @@ import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 import { registerTvRoutes } from './tv-screens.js';
 const uuid = z.uuid();
+type LocationInput = {
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+};
+async function locate(input: LocationInput) {
+  if (input.latitude != null && input.longitude != null)
+    return { latitude: input.latitude, longitude: input.longitude };
+  const query = [input.address, input.city, input.state, 'Brasil'].filter(Boolean).join(', ');
+  if (!input.city || !input.state) return { latitude: null, longitude: null };
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('limit', '1');
+  url.searchParams.set('countrycodes', 'br');
+  url.searchParams.set('q', query);
+  try {
+    const response = await fetch(url, {
+      headers: { 'user-agent': 'Everlenz-IIoT/1.0 (https://everlenz.com.br)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return { latitude: null, longitude: null };
+    const [match] = (await response.json()) as Array<{ lat: string; lon: string }>;
+    return match
+      ? { latitude: Number(match.lat), longitude: Number(match.lon) }
+      : { latitude: null, longitude: null };
+  } catch {
+    return { latitude: null, longitude: null };
+  }
+}
 /** How long a PLC reset bit stays at 1 before the platform writes it back to 0. */
 const COMMAND_PULSE_MS = 2000;
 const pagination = z.object({
@@ -354,6 +385,37 @@ export async function createApp(
       return result.rows[0];
     });
     return updated ?? reply.code(404).send({ error: 'Cerâmica não encontrada' });
+  });
+  app.patch('/api/devices/:id/location', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const body = z
+      .object({
+        address: z.string().trim().max(240).nullable().optional(),
+        city: z.string().trim().min(2).max(100),
+        state: z.string().trim().length(2),
+        latitude: z.number().min(-90).max(90).nullable().optional(),
+        longitude: z.number().min(-180).max(180).nullable().optional(),
+      })
+      .refine((v) => (v.latitude == null) === (v.longitude == null), {
+        message: 'Informe latitude e longitude juntas',
+      })
+      .parse(req.body);
+    const coordinates = await locate(body);
+    if (coordinates.latitude == null)
+      return reply.code(422).send({
+        error: 'Não foi possível localizar esse endereço. Revise endereço, cidade e estado.',
+      });
+    const updated = await db.query(
+      `UPDATE devices SET address=$3,city=$4,state=upper($5),latitude=$6,longitude=$7,
+       location_updated_at=now(),updated_at=now()
+       WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING *`,
+      [current.tenantId, id, body.address || null, body.city, body.state,
+       coordinates.latitude, coordinates.longitude],
+    );
+    if (!updated.rows[0]) return reply.code(404).send({ error: 'Device not found' });
+    return updated.rows[0];
   });
   // `d.*` reaches the browser. Never add a secret column to `devices`: the plaintext
   // mqtt_password used to be exposed exactly this way (SECURITY.md item 12). Any new
@@ -850,6 +912,9 @@ export async function createApp(
         manufacturer: z.enum(['Haiwell', 'Weintek', 'Delta']),
         model: z.string().min(1).max(80),
         serialNumber: z.string().max(120).nullable().optional(),
+        address: z.string().trim().max(240).nullable().optional(),
+        city: z.string().trim().max(100).nullable().optional(),
+        state: z.string().trim().length(2).nullable().optional(),
         // Legacy HMI whose TLS client cannot reach the broker: plain MQTT on the compatibility
         // port, from addresses released on the device page (apps/api/src/legacy-mqtt.ts).
         legacyPlainMqtt: z.boolean().optional(),
@@ -876,12 +941,13 @@ export async function createApp(
     const mqttUsername = code.toLowerCase();
     const mqttPassword = deviceSecret();
     const dashboardId = randomUUID();
+    const coordinates = body.city && body.state ? await locate(body) : { latitude: null, longitude: null };
     const row = await db.transaction(async (sql) => {
       // The generated password is never stored: it is returned once, here, and can only
       // be replaced afterwards through POST /api/devices/:id/mqtt-credential.
       const created = await sql.query(
-        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_credential_rotated_at,legacy_plain_mqtt)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,now(),$13) RETURNING *`,
+        `INSERT INTO devices(id,tenant_id,site_id,slug,device_code,name,manufacturer,model,serial_number,mqtt_identifier,adapter_type,provisioning_status,mqtt_username,mqtt_credential_rotated_at,legacy_plain_mqtt,address,city,state,latitude,longitude,location_updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'awaiting_connection',$12,now(),$13,$14,$15,upper($16),$17,$18,CASE WHEN $15 IS NULL THEN NULL ELSE now() END) RETURNING *`,
         [
           id,
           current.tenantId,
@@ -896,6 +962,11 @@ export async function createApp(
           adapterType,
           mqttUsername,
           body.legacyPlainMqtt ?? false,
+          body.address || null,
+          body.city || null,
+          body.state || null,
+          coordinates.latitude,
+          coordinates.longitude,
         ],
       );
       await sql.query(

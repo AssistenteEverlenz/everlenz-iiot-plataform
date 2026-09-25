@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 export interface MapPlant {
   id: string;
   name: string;
+  groupName?: string;
   state: string;
   location: {
     latitude: number | null;
@@ -119,7 +120,7 @@ export function PlantMap({
           window.L.marker(point, { icon })
             .addTo(map)
             .bindPopup(
-              `<strong>${esc(plant.name)}</strong><small>${esc([plant.location.city, plant.location.state].filter(Boolean).join(' · '))}</small>`,
+              `<strong>${esc(plant.name)}</strong><small>${esc([plant.groupName, plant.location.city, plant.location.state].filter(Boolean).join(' · '))}</small>`,
             )
             .on('click', () => onSelect(plant.id));
         }
