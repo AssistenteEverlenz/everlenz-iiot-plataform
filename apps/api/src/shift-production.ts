@@ -1287,6 +1287,345 @@ async function cachedPanelBoard(db: Database, tenantId: string, deviceId: string
   return board;
 }
 
+type LoadedConfig = NonNullable<Awaited<ReturnType<typeof loadConfig>>>;
+
+/** The counter minute by minute over [from, to): the close zoom of the S curve. */
+async function minuteCurve(
+  db: Database,
+  tenantId: string,
+  id: string,
+  config: LoadedConfig,
+  metric: Metric,
+  from: Date,
+  to: Date,
+) {
+    const tagId =
+      metric === 'pallets'
+        ? config.pallets_tag_id
+        : metric === 'tons'
+          ? (config.tons_total_tag_id ?? config.blocks_tag_id)
+          : config.blocks_tag_id;
+    if (!tagId) return { minutes: [], metric };
+    const rows = await db.query<{ at: Date | string; value: number | null }>(
+      `(SELECT received_at at,value_number value FROM telemetry_samples
+        WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at<$4
+        ORDER BY received_at DESC LIMIT 1)
+       UNION ALL
+       (SELECT received_at,value_number FROM telemetry_samples
+        WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at>=$4 AND received_at<$5
+        ORDER BY received_at)`,
+      [tenantId, id, tagId, from, to],
+    );
+    const ordered = rows.rows
+      .map((row) => ({
+        at: new Date(row.at).getTime(),
+        value: row.value == null ? null : Number(row.value),
+      }))
+      .sort((a, b) => a.at - b.at);
+    const perMinute = new Map<number, number>();
+    let reading: number | null = null;
+    for (const row of ordered) {
+      const step = counterStep(reading, row.value);
+      reading = step.reading;
+      if (step.delta <= 0 || row.at < from.getTime()) continue;
+      const minute = Math.floor(row.at / 60000) * 60000;
+      perMinute.set(minute, (perMinute.get(minute) ?? 0) + step.delta);
+    }
+    const weight =
+      metric === 'tons'
+        ? config.tons_total_tag_id
+          ? 1
+          : (config.weight_per_unit_kg ?? 0) / 1000
+        : metric === 'milheiros'
+          ? 1 / 1000
+          : 1;
+    const minutes: Array<{ t: string; value: number }> = [];
+    for (let at = Math.floor(from.getTime() / 60000) * 60000; at < to.getTime(); at += 60000)
+      minutes.push({ t: new Date(at).toISOString(), value: (perMinute.get(at) ?? 0) * weight });
+    return { minutes, metric };
+}
+
+/**
+ * What is behind each number of the board: production period by period, the machine's time in
+ * each and every pallet with how long it took.
+ */
+async function shiftDetailData(
+  db: Database,
+  tenantId: string,
+  id: string,
+  config: LoadedConfig,
+  query: {
+    mode: 'shift' | 'day';
+    from?: Date;
+    to?: Date;
+    keys?: string;
+    step: number;
+    log?: { warn: (payload: object) => void };
+  },
+) {
+  const mode = query.mode;
+    const now = new Date();
+    const { shifts } = await loadShifts(db, tenantId, config.site_id);
+    const today = plantDate(now);
+    const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 1));
+    const running = occurrences.find((item) => item.start <= now && now < item.end) ?? null;
+    const date = running?.productionDate ?? today;
+    const chosen =
+      mode === 'day'
+        ? occurrences.filter((item) => item.productionDate === date)
+        : running
+          ? [running]
+          : [...occurrences]
+              .reverse()
+              .filter((item) => item.end <= now)
+              .slice(0, 1);
+    const asked =
+      query.from && query.to ? { start: query.from, end: query.to } : null;
+    if (!asked && !chosen.length)
+      return { span: null, hours: [], pallets: [], metric: config.target_metric };
+    const span = asked ?? spanOf(chosen);
+    const until = new Date(Math.min(span.end.getTime(), now.getTime()));
+    const buckets = await loadBuckets(db, tenantId, id, span.start, until);
+    const stepMs = query.step * 60_000;
+    const byHour = new Map<
+      string,
+      {
+        pieces: number;
+        pallets: number;
+        tons: number;
+        producing: number;
+        idle: number;
+        manual: number;
+      }
+    >();
+    for (const row of buckets) {
+      const hour = new Date(
+        Math.floor(new Date(row.bucket).getTime() / stepMs) * stepMs,
+      ).toISOString();
+      const entry = byHour.get(hour) ?? {
+        pieces: 0,
+        pallets: 0,
+        tons: 0,
+        producing: 0,
+        idle: 0,
+        manual: 0,
+      };
+      entry.pieces += Number(row.pieces);
+      entry.pallets += Number(row.pallets);
+      entry.tons += Number(row.tons);
+      entry.producing += Number(row.producing_s);
+      entry.idle += Number(row.idle_s);
+      entry.manual += Number(row.manual_s);
+      byHour.set(hour, entry);
+    }
+    return {
+      span: {
+        start: span.start.toISOString(),
+        end: span.end.toISOString(),
+        until: until.toISOString(),
+      },
+      shiftName: chosen.map((item) => item.name).join(' + ') || 'Período',
+      metric: config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets'),
+      step: query.step,
+      hours: [...byHour.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([hour, entry]) => ({ hour, ...entry })),
+      pallets: config.pallets_tag_id
+        ? await palletEvents(db, tenantId, id, config.pallets_tag_id, span.start, until)
+        : [],
+      // A problem reading the variables of a calculated field must not cost the whole detail.
+      variables: await hourlyVariables(db, tenantId, id, query.keys, span.start, until).catch(
+        (error: unknown) => {
+          query.log?.warn({
+            event: 'shift_detail_variables_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+          return {};
+        },
+      ),
+    };
+}
+
+/** The board of one history row (shift, day or off-shift day) as it was. */
+async function productionDetailData(
+  db: Database,
+  tenantId: string,
+  id: string,
+  config: LoadedConfig,
+  query: { date: string; kind: 'shift' | 'day' | 'off_shift'; start?: string; end?: string },
+) {
+    const now = new Date();
+    const { shifts, isDefault } = await loadShifts(db, tenantId, config.site_id);
+    const ofDay = expandShifts(shifts, addDays(query.date, -1), query.date).filter(
+      (item) => item.productionDate === query.date,
+    );
+    let occurrences: ShiftOccurrence[] = query.kind === 'day' ? ofDay : [];
+    let fallback: TimeWindow = {
+      start: plantInstant(query.date, '00:00'),
+      end: plantInstant(addDays(query.date, 1), '00:00'),
+    };
+    if (query.kind === 'shift' && query.start) {
+      const start = new Date(query.start).getTime();
+      const match = ofDay.find((item) => item.start.getTime() === start);
+      if (match) occurrences = [match];
+      else if (query.end) fallback = { start: new Date(query.start), end: new Date(query.end) };
+    }
+    const until =
+      query.kind === 'shift' && query.end
+        ? new Date(Math.min(now.getTime(), new Date(query.end).getTime()))
+        : now;
+    const board = await buildBoard(db, tenantId, id, config, occurrences, fallback, until);
+    const spanEnd = occurrences.length
+      ? Math.max(...occurrences.map((item) => item.end.getTime()))
+      : fallback.end.getTime();
+    return {
+      configured: Boolean(config.blocks_tag_id || config.pallets_tag_id),
+      missing: [],
+      mode: query.kind === 'day' ? 'day' : 'shift',
+      defaultShifts: isDefault,
+      now: until.toISOString(),
+      state: 'unknown',
+      product: null,
+      next: null,
+      status: until.getTime() < spanEnd ? 'running' : 'finished',
+      productionDate: query.date,
+      shifts: occurrences.map(occurrenceJson),
+      board,
+    };
+}
+
+// Shift photos (migration 028): the history of a closed period, written once while its readings
+// exist, so the readings can go after the grace period (retention.ts) and the history still
+// shows the same board, charts, pallets and minute curve.
+type PhotoKind = 'shift' | 'day' | 'off_shift';
+const PHOTO_BATCH = 12;
+/** A closed period "has readings" when any is stored inside it: only those can be photographed. */
+export const HAS_READINGS_SQL = (device: string, start: string, end: string) =>
+  `EXISTS (SELECT 1 FROM telemetry_samples s WHERE s.device_id=${device}
+     AND s.timestamp>=${start} AND s.timestamp<${end} LIMIT 1)`;
+
+async function buildPhoto(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  kind: PhotoKind,
+  date: string,
+  start: Date,
+  end: Date,
+) {
+  const config = await loadConfig(db, tenantId, deviceId);
+  if (!config) return null;
+  const detail = await productionDetailData(db, tenantId, deviceId, config, {
+    date,
+    kind,
+    start: start.toISOString(),
+    end: end.toISOString(),
+  });
+  const charts = await shiftDetailData(db, tenantId, deviceId, config, {
+    mode: kind === 'day' ? 'day' : 'shift',
+    from: start,
+    to: end,
+    step: 60,
+  });
+  const metric: Metric = config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets');
+  const curve = await minuteCurve(db, tenantId, deviceId, config, metric, start, end);
+  // Only the minutes that moved: the rest are zero and are filled back in when read.
+  return { detail, charts, minutes: curve.minutes.filter((item) => item.value !== 0) };
+}
+
+async function savePhoto(
+  db: Database,
+  item: { tenant_id: string; device_id: string; kind: PhotoKind; date: string; start: Date; end: Date },
+) {
+  const photo = await buildPhoto(db, item.tenant_id, item.device_id, item.kind, item.date, item.start, item.end);
+  if (!photo) return false;
+  const json = JSON.stringify(photo);
+  await db.query(
+    `INSERT INTO production_photos(tenant_id,device_id,kind,period_start,period_end,production_date,photo,bytes)
+     VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+     ON CONFLICT(device_id,kind,period_start) DO UPDATE SET period_end=EXCLUDED.period_end,
+       production_date=EXCLUDED.production_date,photo=EXCLUDED.photo,bytes=EXCLUDED.bytes,created_at=now()`,
+    [item.tenant_id, item.device_id, item.kind, item.start, item.end, item.date, json, Buffer.byteLength(json)],
+  );
+  return true;
+}
+
+/**
+ * Photographs, a few per run and oldest first, every closed shift, off-shift day and finished
+ * production day that has readings and no photo yet (or a photo of a different span: a shift
+ * whose end was moved).
+ */
+export async function captureProductionPhotos(db: Database, now = new Date()) {
+  const settled = new Date(now.getTime() - 2 * 60_000);
+  const today = plantDate(now);
+  const periods = await db.query<{
+    tenant_id: string;
+    device_id: string;
+    kind: 'shift' | 'off_shift';
+    production_date: string;
+    planned_start: Date;
+    planned_end: Date;
+  }>(
+    `SELECT r.tenant_id,r.device_id,r.kind,r.production_date::text production_date,r.planned_start,r.planned_end
+     FROM shift_reports r
+     WHERE r.source='auto' AND r.deleted_at IS NULL AND r.kind IN ('shift','off_shift')
+       AND r.planned_end<$1
+       AND NOT EXISTS (SELECT 1 FROM production_photos p WHERE p.device_id=r.device_id
+         AND p.kind=r.kind AND p.period_start=r.planned_start AND p.period_end=r.planned_end)
+       AND ${HAS_READINGS_SQL('r.device_id', 'r.planned_start', 'r.planned_end')}
+     ORDER BY r.planned_start LIMIT $2`,
+    [settled, PHOTO_BATCH],
+  );
+  let written = 0;
+  for (const row of periods.rows)
+    if (
+      await savePhoto(db, {
+        tenant_id: row.tenant_id,
+        device_id: row.device_id,
+        kind: row.kind,
+        date: row.production_date,
+        start: new Date(row.planned_start),
+        end: new Date(row.planned_end),
+      })
+    )
+      written += 1;
+  // Whole production days, once every shift of the day is over.
+  const days = await db.query<{ tenant_id: string; device_id: string; production_date: string }>(
+    `SELECT r.tenant_id,r.device_id,r.production_date::text production_date
+     FROM shift_reports r
+     WHERE r.source='auto' AND r.deleted_at IS NULL AND r.kind='shift' AND r.production_date<$2
+       AND NOT EXISTS (SELECT 1 FROM production_photos p WHERE p.device_id=r.device_id
+         AND p.kind='day' AND p.production_date=r.production_date)
+       AND ${HAS_READINGS_SQL('r.device_id', 'r.planned_start', 'r.planned_end')}
+     GROUP BY r.tenant_id,r.device_id,r.production_date
+     HAVING max(r.planned_end)<$1
+     ORDER BY r.production_date LIMIT $3`,
+    [settled, today, PHOTO_BATCH],
+  );
+  for (const row of days.rows)
+    if (
+      await savePhoto(db, {
+        tenant_id: row.tenant_id,
+        device_id: row.device_id,
+        kind: 'day',
+        date: row.production_date,
+        start: plantInstant(row.production_date, '00:00'),
+        end: plantInstant(addDays(row.production_date, 1), '00:00'),
+      })
+    )
+      written += 1;
+  return written;
+}
+
+/** A stored photo with its minute curve filled back to one entry per minute. */
+function expandPhoto(photo: { minutes?: Array<{ t: string; value: number }> } & Record<string, unknown>, start: Date, end: Date) {
+  const moved = new Map((photo.minutes ?? []).map((item) => [new Date(item.t).getTime(), item.value]));
+  const minutes: Array<{ t: string; value: number }> = [];
+  for (let at = Math.floor(start.getTime() / 60000) * 60000; at < end.getTime(); at += 60000)
+    minutes.push({ t: new Date(at).toISOString(), value: moved.get(at) ?? 0 });
+  return { ...photo, minutes };
+}
+
 export function registerShiftProductionRoutes(app: FastifyInstance, db: Database, access: Access) {
   // One compact query powers the map and the multi-plant board. It deliberately reads the
   // pre-aggregated five-minute buckets: 100 plants still cost one round trip, not 100 boards.
@@ -1788,50 +2127,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       (query.metric as Metric | undefined) ??
       config.target_metric ??
       (config.blocks_tag_id ? 'milheiros' : 'pallets');
-    const tagId =
-      metric === 'pallets'
-        ? config.pallets_tag_id
-        : metric === 'tons'
-          ? (config.tons_total_tag_id ?? config.blocks_tag_id)
-          : config.blocks_tag_id;
-    if (!tagId) return { minutes: [], metric };
-    const rows = await db.query<{ at: Date | string; value: number | null }>(
-      `(SELECT received_at at,value_number value FROM telemetry_samples
-        WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at<$4
-        ORDER BY received_at DESC LIMIT 1)
-       UNION ALL
-       (SELECT received_at,value_number FROM telemetry_samples
-        WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND received_at>=$4 AND received_at<$5
-        ORDER BY received_at)`,
-      [tenantId, id, tagId, from, to],
-    );
-    const ordered = rows.rows
-      .map((row) => ({
-        at: new Date(row.at).getTime(),
-        value: row.value == null ? null : Number(row.value),
-      }))
-      .sort((a, b) => a.at - b.at);
-    const perMinute = new Map<number, number>();
-    let reading: number | null = null;
-    for (const row of ordered) {
-      const step = counterStep(reading, row.value);
-      reading = step.reading;
-      if (step.delta <= 0 || row.at < from.getTime()) continue;
-      const minute = Math.floor(row.at / 60000) * 60000;
-      perMinute.set(minute, (perMinute.get(minute) ?? 0) + step.delta);
-    }
-    const weight =
-      metric === 'tons'
-        ? config.tons_total_tag_id
-          ? 1
-          : (config.weight_per_unit_kg ?? 0) / 1000
-        : metric === 'milheiros'
-          ? 1 / 1000
-          : 1;
-    const minutes: Array<{ t: string; value: number }> = [];
-    for (let at = Math.floor(from.getTime() / 60000) * 60000; at < to.getTime(); at += 60000)
-      minutes.push({ t: new Date(at).toISOString(), value: (perMinute.get(at) ?? 0) * weight });
-    return { minutes, metric };
+    return minuteCurve(db, tenantId, id, config, metric, from, to);
   });
 
   /**
@@ -1861,86 +2157,14 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const tenantId = access.principal(req).tenantId;
     const config = await loadConfig(db, tenantId, id);
     if (!config) return reply.code(404).send({ error: 'Device not found' });
-    const now = new Date();
-    const { shifts } = await loadShifts(db, tenantId, config.site_id);
-    const today = plantDate(now);
-    const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 1));
-    const running = occurrences.find((item) => item.start <= now && now < item.end) ?? null;
-    const date = running?.productionDate ?? today;
-    const chosen =
-      mode === 'day'
-        ? occurrences.filter((item) => item.productionDate === date)
-        : running
-          ? [running]
-          : [...occurrences]
-              .reverse()
-              .filter((item) => item.end <= now)
-              .slice(0, 1);
-    const asked =
-      query.from && query.to ? { start: new Date(query.from), end: new Date(query.to) } : null;
-    if (!asked && !chosen.length)
-      return { span: null, hours: [], pallets: [], metric: config.target_metric };
-    const span = asked ?? spanOf(chosen);
-    const until = new Date(Math.min(span.end.getTime(), now.getTime()));
-    const buckets = await loadBuckets(db, tenantId, id, span.start, until);
-    const stepMs = query.step * 60_000;
-    const byHour = new Map<
-      string,
-      {
-        pieces: number;
-        pallets: number;
-        tons: number;
-        producing: number;
-        idle: number;
-        manual: number;
-      }
-    >();
-    for (const row of buckets) {
-      const hour = new Date(
-        Math.floor(new Date(row.bucket).getTime() / stepMs) * stepMs,
-      ).toISOString();
-      const entry = byHour.get(hour) ?? {
-        pieces: 0,
-        pallets: 0,
-        tons: 0,
-        producing: 0,
-        idle: 0,
-        manual: 0,
-      };
-      entry.pieces += Number(row.pieces);
-      entry.pallets += Number(row.pallets);
-      entry.tons += Number(row.tons);
-      entry.producing += Number(row.producing_s);
-      entry.idle += Number(row.idle_s);
-      entry.manual += Number(row.manual_s);
-      byHour.set(hour, entry);
-    }
-    return {
-      span: {
-        start: span.start.toISOString(),
-        end: span.end.toISOString(),
-        until: until.toISOString(),
-      },
-      shiftName: chosen.map((item) => item.name).join(' + ') || 'Período',
-      metric: config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets'),
+    return shiftDetailData(db, tenantId, id, config, {
+      mode,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+      keys: query.keys,
       step: query.step,
-      hours: [...byHour.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([hour, entry]) => ({ hour, ...entry })),
-      pallets: config.pallets_tag_id
-        ? await palletEvents(db, tenantId, id, config.pallets_tag_id, span.start, until)
-        : [],
-      // A problem reading the variables of a calculated field must not cost the whole detail.
-      variables: await hourlyVariables(db, tenantId, id, query.keys, span.start, until).catch(
-        (error: unknown) => {
-          req.log.warn({
-            event: 'shift_detail_variables_failed',
-            message: error instanceof Error ? error.message : String(error),
-          });
-          return {};
-        },
-      ),
-    };
+      log: req.log,
+    });
   });
 
   // The live shift board. mode=shift follows the running shift (or the last / next one);
@@ -2013,6 +2237,29 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     };
   });
 
+  // The photo of one history row, when it has one: the history reads it instead of the readings.
+  app.get('/api/devices/:id/production-photo', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = z
+      .object({
+        date: z.iso.date(),
+        kind: z.enum(['shift', 'day', 'off_shift']).default('shift'),
+        start: z.iso.datetime({ offset: true }).optional(),
+      })
+      .parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const start =
+      query.kind === 'shift' && query.start ? new Date(query.start) : plantInstant(query.date, '00:00');
+    const row = await db.query<{ photo: Record<string, unknown>; period_end: Date }>(
+      `SELECT photo,period_end FROM production_photos
+       WHERE tenant_id=$1 AND device_id=$2 AND kind=$3 AND period_start=$4`,
+      [tenantId, id, query.kind, start],
+    );
+    if (!row.rows[0]) return { photo: null };
+    return { photo: expandPhoto(row.rows[0].photo, start, new Date(row.rows[0].period_end)) };
+  });
+
   // Detail of one history row: the board of any shift, day or off-shift day, as it was (a
   // partial snapshot is shown up to the moment it was taken).
   app.get('/api/devices/:id/production-detail', async (req, reply) => {
@@ -2029,44 +2276,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const tenantId = access.principal(req).tenantId;
     const config = await loadConfig(db, tenantId, id);
     if (!config) return reply.code(404).send({ error: 'Device not found' });
-    const now = new Date();
-    const { shifts, isDefault } = await loadShifts(db, tenantId, config.site_id);
-    const ofDay = expandShifts(shifts, addDays(query.date, -1), query.date).filter(
-      (item) => item.productionDate === query.date,
-    );
-    let occurrences: ShiftOccurrence[] = query.kind === 'day' ? ofDay : [];
-    let fallback: TimeWindow = {
-      start: plantInstant(query.date, '00:00'),
-      end: plantInstant(addDays(query.date, 1), '00:00'),
-    };
-    if (query.kind === 'shift' && query.start) {
-      const start = new Date(query.start).getTime();
-      const match = ofDay.find((item) => item.start.getTime() === start);
-      if (match) occurrences = [match];
-      else if (query.end) fallback = { start: new Date(query.start), end: new Date(query.end) };
-    }
-    const until =
-      query.kind === 'shift' && query.end
-        ? new Date(Math.min(now.getTime(), new Date(query.end).getTime()))
-        : now;
-    const board = await buildBoard(db, tenantId, id, config, occurrences, fallback, until);
-    const spanEnd = occurrences.length
-      ? Math.max(...occurrences.map((item) => item.end.getTime()))
-      : fallback.end.getTime();
-    return {
-      configured: Boolean(config.blocks_tag_id || config.pallets_tag_id),
-      missing: [],
-      mode: query.kind === 'day' ? 'day' : 'shift',
-      defaultShifts: isDefault,
-      now: until.toISOString(),
-      state: 'unknown',
-      product: null,
-      next: null,
-      status: until.getTime() < spanEnd ? 'running' : 'finished',
-      productionDate: query.date,
-      shifts: occurrences.map(occurrenceJson),
-      board,
-    };
+    return productionDetailData(db, tenantId, id, config, query);
   });
 
   // History: closed shifts (and off-shift days) of a period, plus the running shift as a
@@ -2252,6 +2462,14 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       toDate: body.to,
       targets,
     });
+    // The recount changed these periods: their photos are taken again, but only where the
+    // readings still exist (an older photo is all that is left of its period).
+    await db.query(
+      `DELETE FROM production_photos p WHERE p.tenant_id=$1 AND p.device_id=$2
+       AND p.production_date BETWEEN $3 AND $4
+       AND ${HAS_READINGS_SQL('p.device_id', 'p.period_start', 'p.period_end')}`,
+      [current.tenantId, id, body.from, body.to],
+    );
     await recordAudit(db, req, current, {
       action: 'shift_report.recalculate',
       targetType: 'device',

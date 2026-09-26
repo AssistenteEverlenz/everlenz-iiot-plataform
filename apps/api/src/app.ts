@@ -14,7 +14,6 @@ import { registerShiftProductionRoutes, scheduleProductionRebuild } from './shif
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 import { registerTvRoutes } from './tv-screens.js';
-import { registerLabRoutes } from './lab.js';
 const uuid = z.uuid();
 type LocationInput = {
   address?: string | null;
@@ -468,27 +467,52 @@ export async function createApp(
       await db.query(
         // One index lookup per tag (samples_tag_time): joining every sample and keeping the
         // newest took 4.7 s on a device with months of history, on every dashboard poll.
-        `SELECT t.id tag_id,t.key,t.unit,t.data_type,s.timestamp,s.value_number,s.value_text,s.value_boolean,s.quality
+        // A device silent for longer than the readings are kept (retention.ts) still shows its
+        // last number, from the state the rollups keep.
+        `SELECT t.id tag_id,t.key,t.unit,t.data_type,coalesce(s.timestamp,ns.last_timestamp) "timestamp",
+           CASE WHEN s.timestamp IS NULL THEN ns.last_value ELSE s.value_number END value_number,
+           s.value_text,s.value_boolean,coalesce(s.quality,CASE WHEN ns.last_value IS NOT NULL THEN 'good' END) quality
          FROM tags t LEFT JOIN LATERAL (
            SELECT timestamp,value_number,value_text,value_boolean,quality FROM telemetry_samples x
            WHERE x.tag_id=t.id AND x.tenant_id=t.tenant_id ORDER BY x.timestamp DESC,x.id DESC LIMIT 1
          ) s ON true
+         LEFT JOIN telemetry_numeric_state ns ON ns.device_id=t.device_id AND ns.tag_id=t.id
          WHERE t.tenant_id=$1 AND t.device_id=$2 AND t.enabled=true ORDER BY t.id`,
         [access.principal(req).tenantId, id],
       )
     ).rows;
   });
-  /** Rebuilds a variable's hourly rollups from its readings (migrations 010/011 arithmetic). */
+  /**
+   * Rebuilds a variable's hourly rollups from its readings (migrations 010/011 arithmetic).
+   * Readings are kept only for the last days (retention.ts): hours before the first one stay
+   * as stored, only brought to a new scale when `ratio` says the comma moved.
+   */
   async function rebuildTagRollups(
     sql: { query: Database['query'] },
     tenantId: string,
     deviceId: string,
     tagId: string,
+    ratio = 1,
   ) {
     const scope = [tenantId, deviceId, tagId];
-    await sql.query(
-      'DELETE FROM telemetry_hourly_rollups WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3',
+    const first = await sql.query<{ from: Date | null }>(
+      `SELECT date_trunc('hour',min(timestamp)) "from" FROM telemetry_samples
+       WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND value_number IS NOT NULL`,
       scope,
+    );
+    const from = first.rows[0]?.from ?? null;
+    if (ratio !== 1)
+      await sql.query(
+        `UPDATE telemetry_hourly_rollups SET value_sum=value_sum*$5,value_min=value_min*$5,
+           value_max=value_max*$5,first_value=first_value*$5,last_value=last_value*$5,
+           positive_delta=positive_delta*$5
+         WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND ($4::timestamptz IS NULL OR bucket<$4)`,
+        [...scope, from, ratio],
+      );
+    if (!from) return;
+    await sql.query(
+      'DELETE FROM telemetry_hourly_rollups WHERE tenant_id=$1 AND device_id=$2 AND tag_id=$3 AND bucket>=$4',
+      [...scope, from],
     );
     await sql.query(
       `WITH readings AS (
@@ -573,7 +597,7 @@ export async function createApp(
           // The hourly rollups are rebuilt from the readings, never multiplied: the hour the comma
           // moved in holds a fake "counter went back" (139 then 13,9) that would count a whole
           // day twice.
-          await rebuildTagRollups(sql, current.tenantId, id, tagId);
+          await rebuildTagRollups(sql, current.tenantId, id, tagId, ratio);
         }
         // The counter baseline the ingestor compares the next reading against lives in the old
         // scale, and would read as a reset: it follows the newest stored reading.
@@ -663,7 +687,6 @@ export async function createApp(
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
   registerTvRoutes(app, db, access);
-  registerLabRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;

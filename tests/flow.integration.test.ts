@@ -5,6 +5,8 @@ import { seed, TENANT, HAIWELL, GENERIC } from '../packages/database/src/seed.js
 import { IngestionPipeline } from '../apps/ingestor/src/pipeline.js';
 import { simulatedMessage } from '../apps/simulator/src/messages.js';
 import { createApp } from '../apps/api/src/app.js';
+import { captureProductionPhotos } from '../apps/api/src/shift-production.js';
+import { pruneReadings } from '../apps/api/src/retention.js';
 import type { Database } from '../packages/database/src/index.js';
 import { hashPassword, sessionTokenHash } from '../packages/shared/src/index.js';
 let db: Database, close: () => Promise<void>, pipeline: IngestionPipeline;
@@ -1636,6 +1638,85 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       expect(after.widgets.map((widget: { id: string }) => widget.id)).toEqual(reversed);
     } finally {
       await api.close();
+    }
+  });
+  it('photographs closed shifts and discards their readings only after the grace period', async () => {
+    const site = '22222222-2222-4222-8222-222222222222';
+    const pallets = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type,unit)
+         VALUES($1,$2,'PaletesFoto','Paletes (foto)','number','paletes') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    await db.query(
+      'INSERT INTO production_settings(device_id,tenant_id,pallets_tag_id) VALUES($1,$2,$3)',
+      [HAIWELL, TENANT, pallets],
+    );
+    const now = new Date('2026-09-20T15:00:00Z');
+    // Two closed shifts: one 5 days back (past the grace), one 1 day back (inside it).
+    const shift = async (start: string) => {
+      const from = new Date(start);
+      const to = new Date(from.getTime() + 2 * 3600_000);
+      for (let minute = 0; minute <= 100; minute += 10)
+        await db.query(
+          `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality,product_code)
+           VALUES($1,$2,$3,$4,$5,$5,$6,'good','BLOCO A')`,
+          [TENANT, site, HAIWELL, pallets, new Date(from.getTime() + minute * 60_000), minute / 10],
+        );
+      await db.query(
+        `INSERT INTO shift_reports(tenant_id,device_id,site_id,kind,shift_name,production_date,
+           planned_start,planned_end,planned_seconds,pieces,pallets,tons,producing_s,idle_s,manual_s,
+           offline_s,products)
+         VALUES($1,$2,$3,'shift','Turno teste',$4,$5,$6,7200,0,10,0,6000,1200,0,0,'[]'::jsonb)`,
+        [TENANT, HAIWELL, site, start.slice(0, 10), from, to],
+      );
+      return { from, to };
+    };
+    const old = await shift('2026-09-15T11:00:00Z');
+    const recent = await shift('2026-09-19T11:00:00Z');
+    const count = async (window: { from: Date; to: Date }) =>
+      (
+        await db.query<{ n: number }>(
+          'SELECT count(*)::int n FROM telemetry_samples WHERE tag_id=$1 AND timestamp>=$2 AND timestamp<$3',
+          [pallets, window.from, window.to],
+        )
+      ).rows[0].n;
+    try {
+      // Without a photo the readings of the old shift are held back, whatever their age.
+      await pruneReadings(db, now);
+      expect(await count(old)).toBe(11);
+      // Photos of both shifts and of their days, then the old readings may go.
+      let taken = 0;
+      for (let run = 0; run < 5; run += 1) taken += await captureProductionPhotos(db, now);
+      expect(taken).toBeGreaterThanOrEqual(2);
+      await pruneReadings(db, now);
+      expect(await count(old)).toBe(0);
+      expect(await count(recent)).toBe(11);
+      // The history reads the photo: the same shift, with its minute curve back to every minute.
+      const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
+      try {
+        const response = await api.inject(
+          `/api/devices/${HAIWELL}/production-photo?date=2026-09-15&kind=shift&start=${encodeURIComponent(old.from.toISOString())}`,
+        );
+        const body = response.json();
+        expect(body.photo.detail.board.totals.pallets).toBeGreaterThanOrEqual(0);
+        expect(body.photo.minutes).toHaveLength(120);
+        const missing = (
+          await api.inject(
+            `/api/devices/${HAIWELL}/production-photo?date=2026-09-10&kind=shift&start=${encodeURIComponent('2026-09-10T11:00:00Z')}`,
+          )
+        ).json();
+        expect(missing.photo).toBeNull();
+      } finally {
+        await api.close();
+      }
+    } finally {
+      await db.query('DELETE FROM production_photos WHERE device_id=$1', [HAIWELL]);
+      await db.query("DELETE FROM shift_reports WHERE device_id=$1 AND shift_name='Turno teste'", [HAIWELL]);
+      await db.query('DELETE FROM production_settings WHERE device_id=$1', [HAIWELL]);
+      await db.query('DELETE FROM telemetry_samples WHERE tag_id=$1', [pallets]);
+      await db.query('DELETE FROM tags WHERE id=$1', [pallets]);
     }
   });
 });

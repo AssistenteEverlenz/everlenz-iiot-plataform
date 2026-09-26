@@ -2,7 +2,12 @@ import { createApp } from './app.js';
 import { env } from '@iiot/shared';
 import { database, pool } from '@iiot/database';
 import { startLegacyMqttProxy, type LegacyDevice } from './legacy-mqtt.js';
-import { backfillProduction, closeShiftReports } from './shift-production.js';
+import {
+  backfillProduction,
+  captureProductionPhotos,
+  closeShiftReports,
+} from './shift-production.js';
+import { pruneReadings } from './retention.js';
 const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
 
@@ -90,6 +95,9 @@ async function closeShifts() {
   try {
     const written = await closeShiftReports(database);
     if (written) app.log.info({ event: 'shift_reports_closed', written });
+    // Right after the close, while the readings are there: the photo the history will read.
+    const photos = await captureProductionPhotos(database);
+    if (photos) app.log.info({ event: 'production_photos_taken', photos });
   } catch (error) {
     app.log.warn({
       event: 'shift_report_close_failed',
@@ -115,6 +123,27 @@ setTimeout(
     ),
   40_000,
 ).unref();
+
+// Readings of closed, photographed periods past the grace period, and old raw copies
+// (apps/api/src/retention.ts). Every 15 minutes, in small batches.
+let pruning = false;
+async function prune() {
+  if (pruning) return;
+  pruning = true;
+  try {
+    const removed = await pruneReadings(database);
+    if (removed.readings || removed.raw) app.log.info({ event: 'readings_pruned', ...removed });
+  } catch (error) {
+    app.log.warn({
+      event: 'readings_prune_failed',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    pruning = false;
+  }
+}
+setInterval(() => void prune(), 15 * 60 * 1000).unref();
+setTimeout(() => void prune(), 5 * 60 * 1000).unref();
 
 let stopping = false;
 async function shutdown() {

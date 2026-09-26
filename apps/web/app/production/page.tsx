@@ -1227,16 +1227,31 @@ function DetailModal({
   });
   if (view !== 'day' && row.start) params.set('start', row.start);
   if (view !== 'day' && row.end) params.set('end', row.end);
-  const detail = usePoll<ShiftBoardResponse>(
-    `/devices/${deviceId}/production-detail?${params.toString()}`,
+  // A closed period is read from its photo (taken at the close, migration 028): its readings
+  // may be gone. The running shift, and a period without a photo yet, are built live.
+  const photo = usePoll<{
+    photo: {
+      detail: ShiftBoardResponse;
+      charts: DetailData;
+      minutes: Array<{ t: string; value: number }>;
+    } | null;
+  }>(row.open ? null : `/devices/${deviceId}/production-photo?${params.toString()}`, 600000);
+  const live = row.open || (photo.data != null && photo.data.photo == null) || Boolean(photo.error);
+  const liveDetail = usePoll<ShiftBoardResponse>(
+    live ? `/devices/${deviceId}/production-detail?${params.toString()}` : null,
     row.open ? 30000 : 600000,
   );
   // Hour by hour and pallet by pallet of this very shift, the same charts the board opens.
   const window = row.start && row.end ? `&from=${encodeURIComponent(row.start)}&to=${encodeURIComponent(row.end)}` : '';
-  const charts = usePoll<DetailData>(
-    `/devices/${deviceId}/shift-detail?mode=${view === 'day' ? 'day' : 'shift'}${window}`,
+  const liveCharts = usePoll<DetailData>(
+    live ? `/devices/${deviceId}/shift-detail?mode=${view === 'day' ? 'day' : 'shift'}${window}` : null,
     row.open ? 60000 : 600000,
   );
+  const stored = photo.data?.photo ?? null;
+  const detail = stored
+    ? { data: stored.detail, error: null }
+    : { data: liveDetail.data, error: liveDetail.error ?? photo.error };
+  const charts = { data: stored ? stored.charts : liveCharts.data };
   const reached = attainment(row);
   const machine = utilization(row);
   const products = [...row.products].sort((a, b) => b.pieces - a.pieces || b.pallets - a.pallets);
@@ -1338,7 +1353,12 @@ function DetailModal({
             produzido fora dos turnos.
           </p>
         )}
-        <ShiftBoardView data={detail.data} deviceId={deviceId} historical />
+        <ShiftBoardView
+          data={detail.data}
+          deviceId={deviceId}
+          historical
+          minuteSeries={stored?.minutes}
+        />
         <div className="production-detail-charts">
           <div className="shift-section-title">Como foi a produção</div>
           <ShiftDetailCharts data={charts.data} focus="produced" />

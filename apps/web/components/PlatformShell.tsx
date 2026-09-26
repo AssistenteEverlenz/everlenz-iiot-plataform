@@ -117,7 +117,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (
       session?.user.role === 'user' &&
-      ['/users', '/settings', '/mqtt-inspector', '/lab'].some((path) => pathname.startsWith(path))
+      ['/users', '/settings', '/mqtt-inspector'].some((path) => pathname.startsWith(path))
     )
       router.replace('/');
   }, [pathname, router, session]);
@@ -173,7 +173,6 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             short: 'MQTT',
             icon: 'mqtt' as const,
           },
-          { href: '/lab', label: 'Laboratório', short: 'Lab', icon: 'production' as const },
         ]
       : [...navigation, productionNavigation];
 
