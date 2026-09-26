@@ -88,6 +88,21 @@ const legacyProxy = env.MQTT_LEGACY_PORT
 
 // Closes finished shifts into immutable reports (apps/api/src/shift-production.ts). Every 5
 // minutes is enough: a report only has to exist before someone reads the history.
+// The API log is not reachable from outside (only the ingestor's is): a background job that
+// fails leaves its reason in the audit trail, where it can be read from the database.
+async function recordJobFailure(job: string, error: unknown) {
+  await database
+    .query(
+      `INSERT INTO audit_log(tenant_id,actor_email,actor_role,action,target_type,target_id,summary)
+       SELECT id,'sistema@plataforma','master','system.job_failed','job',$1,$2::jsonb FROM tenants`,
+      [
+        job,
+        JSON.stringify({ error: error instanceof Error ? error.message.slice(0, 500) : String(error) }),
+      ],
+    )
+    .catch(() => undefined);
+}
+
 let closingShifts = false;
 async function closeShifts() {
   if (closingShifts) return;
@@ -103,6 +118,7 @@ async function closeShifts() {
       event: 'shift_report_close_failed',
       message: error instanceof Error ? error.message : String(error),
     });
+    await recordJobFailure('close_and_photograph', error);
   } finally {
     closingShifts = false;
   }
@@ -138,6 +154,7 @@ async function prune() {
       event: 'readings_prune_failed',
       message: error instanceof Error ? error.message : String(error),
     });
+    await recordJobFailure('prune_readings', error);
   } finally {
     pruning = false;
   }

@@ -1533,7 +1533,43 @@ async function buildPhoto(
   return { detail, charts, minutes: curve.minutes.filter((item) => item.value !== 0) };
 }
 
+// A period whose photo failed waits this long before another try, so it never holds the rest back.
+const PHOTO_RETRY_MS = 6 * 3600_000;
+const photoFailures = new Map<string, number>();
+
 async function savePhoto(
+  db: Database,
+  item: { tenant_id: string; device_id: string; kind: PhotoKind; date: string; start: Date; end: Date },
+) {
+  const key = `${item.device_id}|${item.kind}|${item.start.getTime()}`;
+  const failed = photoFailures.get(key);
+  if (failed && Date.now() - failed < PHOTO_RETRY_MS) return false;
+  try {
+    return await writePhoto(db, item);
+  } catch (error) {
+    photoFailures.set(key, Date.now());
+    // The API's own log is not reachable from outside: the audit trail keeps the reason, where
+    // it can be read from the database.
+    await db
+      .query(
+        `INSERT INTO audit_log(tenant_id,actor_email,actor_role,action,target_type,target_id,summary)
+         VALUES($1,'sistema@plataforma','master','system.photo_failed','device',$2,$3::jsonb)`,
+        [
+          item.tenant_id,
+          item.device_id,
+          JSON.stringify({
+            kind: item.kind,
+            start: item.start.toISOString(),
+            error: error instanceof Error ? error.message.slice(0, 500) : String(error),
+          }),
+        ],
+      )
+      .catch(() => undefined);
+    return false;
+  }
+}
+
+async function writePhoto(
   db: Database,
   item: { tenant_id: string; device_id: string; kind: PhotoKind; date: string; start: Date; end: Date },
 ) {
