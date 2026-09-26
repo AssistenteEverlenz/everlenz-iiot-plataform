@@ -10,6 +10,7 @@ import {
   OperationCardEditor,
   type CardConfig,
 } from '../../components/OperationCard';
+import type { PanelSource } from '../../components/variables';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, time, usePoll } from '../../components/data';
 
@@ -32,6 +33,7 @@ type Machine = {
   utilization: number | null;
   location: Location;
   readings: Record<string, number>;
+  board: PanelSource | null;
 };
 type Location = {
   address: string | null;
@@ -156,7 +158,7 @@ export default function OperationsPage() {
     document.getElementById(`machine-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
   const clearSelection = useCallback(() => setSelected(null), []);
-  const configFor = useCallback((id: string): CardConfig => normalizeCard(settings.data?.cards[id]), [settings.data]);
+  const configFor = useCallback((machine: Machine): CardConfig => normalizeCard(settings.data?.cards[machine.deviceId], machine.metric), [settings.data]);
   return (
     <div className="operations-page">
       <header className="operations-heading">
@@ -325,7 +327,7 @@ export default function OperationsPage() {
                     <div className="machine-slot" id={`machine-${machine.deviceId}`} key={machine.deviceId}>
                       <OperationCardBody
                         machine={machine}
-                        config={configFor(machine.deviceId)}
+                        config={configFor(machine)}
                         actions={site.machines.length > 1 && <div className="plant-card-actions">
                           {user.role === 'master' && <button title="Editar cartão" onClick={() => configure(machine, site.name)}>✎</button>}
                           <button title="Relatório de produção" onClick={() => setDetail(machine)}>▤</button>
@@ -380,7 +382,7 @@ export default function OperationsPage() {
           machine={configuring.machine}
           siteName={configuring.siteName}
           width={configuring.width}
-          initial={configFor(configuring.machine.deviceId)}
+          initial={configFor(configuring.machine)}
           onClose={() => setConfiguring(null)}
           onSaved={async () => {
             setConfiguring(null);

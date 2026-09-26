@@ -1208,6 +1208,47 @@ export async function closeShiftReports(
   return written;
 }
 
+// The production board of a device as the dashboard shows it (running shift, else the last one
+// of the past 12 hours, else the next), trimmed to what a formula reads: the operations page
+// offers the same painel.* variables as the dashboard. Kept 30 s per device, so the fleet view
+// costs one board per device and half-minute, whatever the number of viewers.
+const BOARD_CACHE_MS = 30_000;
+const boardCache = new Map<string, { at: number; board: Awaited<ReturnType<typeof panelBoard>> }>();
+async function panelBoard(db: Database, tenantId: string, deviceId: string, now: Date) {
+  const config = await loadConfig(db, tenantId, deviceId);
+  if (!config || !(config.blocks_tag_id || config.pallets_tag_id)) return null;
+  const { shifts } = await loadShifts(db, tenantId, config.site_id);
+  const today = plantDate(now);
+  const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 7));
+  const selected =
+    occurrences.find((item) => item.start <= now && now < item.end) ??
+    [...occurrences]
+      .reverse()
+      .find((item) => item.end <= now && now.getTime() - item.end.getTime() < 12 * 3600 * 1000) ??
+    occurrences.find((item) => item.start > now);
+  if (!selected) return null;
+  const board = await buildBoard(db, tenantId, deviceId, config, [selected], selected, now);
+  return {
+    metric: board.metric,
+    totals: board.totals,
+    time: board.time,
+    utilization: board.utilization,
+    pacePerHour: board.pacePerHour,
+    target: board.target
+      ? { value: board.target.value, actual: board.target.actual, projected: board.target.projected }
+      : null,
+    palletTiming: board.palletTiming ? { averageSeconds: board.palletTiming.averageSeconds } : null,
+  };
+}
+async function cachedPanelBoard(db: Database, tenantId: string, deviceId: string, now: Date) {
+  const key = `${tenantId}:${deviceId}`;
+  const hit = boardCache.get(key);
+  if (hit && now.getTime() - hit.at < BOARD_CACHE_MS) return hit.board;
+  const board = await panelBoard(db, tenantId, deviceId, now).catch(() => null);
+  boardCache.set(key, { at: now.getTime(), board });
+  return board;
+}
+
 export function registerShiftProductionRoutes(app: FastifyInstance, db: Database, access: Access) {
   // One compact query powers the map and the multi-plant board. It deliberately reads the
   // pre-aggregated five-minute buckets: 100 plants still cost one round trip, not 100 boards.
@@ -1305,7 +1346,10 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         ),
       ]),
     );
-    const machines = result.rows.map((row) => {
+    const boards = await Promise.all(
+      result.rows.map((row) => cachedPanelBoard(db, current.tenantId, row.device_id, now)),
+    );
+    const machines = result.rows.map((row, rowIndex) => {
       const lastAt = row.last_at ? new Date(row.last_at).getTime() : 0;
       const increment = row.last_increment_at ? new Date(row.last_increment_at).getTime() : lastAt;
       let state =
@@ -1365,6 +1409,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         pacePerHour,
         utilization: elapsed > 0 ? Number(row.producing) / elapsed : null,
         readings: row.readings ?? {},
+        board: boards[rowIndex],
       };
     });
     const rank: Record<string, number> = { offline: 5, manual: 4, idle: 3, pause: 2, producing: 1 };
@@ -1413,24 +1458,24 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     return body;
   });
   // The plant card on the operations page, laid out like a dashboard: an ordered list of blocks
-  // on a 12-column grid, each a platform number (produced, target, ...) or the plant's formula.
+  // on a 12-column grid. Every block is a formula; a single variable (ihm.* or painel.*) is the
+  // simplest one, so a block shows one reading or the plant's own arithmetic.
   app.patch('/api/devices/:id/operation-card', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     const item = z.object({
       id: z.string().min(1).max(80),
-      kind: z.enum(['produced', 'target', 'projection', 'pace', 'efficiency', 'formula']),
-      label: z.string().max(60).optional(),
-      formula: z.string().max(500).optional(),
-      unit: z.string().max(20).optional(),
-      decimals: z.number().int().min(0).max(4).optional(),
+      label: z.string().max(60),
+      formula: z.string().trim().min(1).max(500),
+      unit: z.string().max(20),
+      decimals: z.number().int().min(0).max(4),
       colSpan: z.number().int().min(1).max(12),
       rowSpan: z.number().int().min(1).max(6),
     });
     const body = z
       .object({
-        version: z.literal(2),
+        version: z.literal(3),
         greenPct: z.number().min(0).max(2),
         yellowPct: z.number().min(0).max(2),
         items: z.array(item).min(1).max(16),

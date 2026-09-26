@@ -379,10 +379,16 @@
   border-color: #83bab8;
   box-shadow: 0 8px 24px rgba(20, 67, 74, 0.08);
 }
+/* The global header rule fixes 80px and wide tracking: the group's code spilled past the
+   divider, which then ran through the text. */
 .plant-summary > header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 14px;
+  height: auto;
+  padding-bottom: 12px;
+  letter-spacing: normal;
 }
 .plant-summary h2 {
   font-size: 18px;
@@ -8085,6 +8091,15 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .operation-add-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; display: grid; min-width: 180px; padding: 6px; border: 1px solid #d3e0e3; border-radius: 10px; background: #fff; box-shadow: 0 12px 30px rgba(20, 60, 70, .16); }
 .operation-add-menu button { padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; text-align: left; }
 .operation-add-menu button:hover { background: #eef6f5; }
+.operation-add-menu { max-height: 360px; overflow-y: auto; min-width: 260px; }
+.operation-add-menu strong { padding: 8px 10px 3px; color: #71868e; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+.operation-add-menu button { display: flex; justify-content: space-between; gap: 12px; }
+.operation-add-menu button small { color: #7b9096; font-variant-numeric: tabular-nums; }
+.operation-add-menu .operation-add-formula { color: #0b7d6d; font-weight: 600; }
+.operation-add-empty { padding: 6px 10px; color: #7b9096; }
+.operation-source-toggle { display: inline-flex; margin-top: 10px; padding: 3px; border: 1px solid #cfdee1; border-radius: 9px; background: #fff; }
+.operation-source-toggle button { padding: 6px 14px; border: 0; border-radius: 6px; background: transparent; color: #4d666d; }
+.operation-source-toggle button.active { background: #12b8a6; color: #fff; }
 .operation-editor-stage { margin-top: 12px; padding: 18px; overflow-x: auto; border: 1px dashed #b9d3d3; border-radius: 13px; background: repeating-linear-gradient(45deg, #f4f8f8, #f4f8f8 8px, #f0f5f5 8px, #f0f5f5 16px); }
 .operation-editor-card { max-width: none; margin: 0 auto; }
 .machine-row.editing .machine-card-grid { background-image: linear-gradient(to right, rgba(18, 184, 166, .08) 1px, transparent 1px); background-size: calc((100% + 6px) / 12) 100%; }

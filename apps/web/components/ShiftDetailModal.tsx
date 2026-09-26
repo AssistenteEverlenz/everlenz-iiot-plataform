@@ -15,7 +15,7 @@ import {
 } from 'recharts';
 import { usePoll } from './data';
 import { metricInfo, type ProductionMetric } from './ShiftBoard';
-import { evaluateFormula, formulaVariables, parseFormula } from './formula';
+import { canonicalVariable, evaluateFormula, formulaVariables, parseFormula } from './formula';
 
 /** A formula the master wrote on the card: the modal charts it hour by hour. */
 export interface CalculatedSetting {
@@ -73,7 +73,8 @@ export function formulaKeys(fields: CalculatedSetting[]) {
   for (const field of fields) {
     try {
       for (const name of formulaVariables(parseFormula(field.formula)))
-        if (!name.startsWith('turno.')) keys.add(name);
+        // Only the HMI's variables are read from history; painel.* comes from each hour itself.
+        if (canonicalVariable(name).startsWith('ihm.')) keys.add(canonicalVariable(name).slice('ihm.'.length));
     } catch {
       // A formula still being written asks for nothing.
     }
@@ -86,17 +87,17 @@ function hourVariables(hour: DetailData['hours'][number]): Record<string, number
   const stopped = hour.idle + hour.manual;
   const busy = hour.producing + stopped;
   return {
-    'turno.pecas': hour.pieces,
-    'turno.milheiros': hour.pieces / 1000,
-    'turno.paletes': hour.pallets,
-    'turno.toneladas': hour.tons,
-    'turno.horas_produzindo': hour.producing / 3600,
-    'turno.minutos_produzindo': hour.producing / 60,
-    'turno.horas_paradas': stopped / 3600,
-    'turno.horas_decorridas': busy / 3600,
-    'turno.aproveitamento': busy > 0 ? (hour.producing / busy) * 100 : 0,
-    'turno.ritmo': hour.producing > 0 ? hour.pallets / (hour.producing / 3600) : 0,
-    'turno.paletes_tempo_medio': hour.pallets > 0 ? hour.producing / hour.pallets : 0,
+    'painel.pecas': hour.pieces,
+    'painel.milheiros': hour.pieces / 1000,
+    'painel.paletes': hour.pallets,
+    'painel.toneladas': hour.tons,
+    'painel.horas_produzindo': hour.producing / 3600,
+    'painel.minutos_produzindo': hour.producing / 60,
+    'painel.horas_paradas': stopped / 3600,
+    'painel.horas_decorridas': busy / 3600,
+    'painel.aproveitamento': busy > 0 ? (hour.producing / busy) * 100 : 0,
+    'painel.ritmo': hour.producing > 0 ? hour.pallets / (hour.producing / 3600) : 0,
+    'painel.paletes_tempo_medio': hour.pallets > 0 ? hour.producing / hour.pallets : 0,
   };
 }
 
@@ -330,7 +331,7 @@ export function ShiftDetailCharts({
               const point = points.find(
                 (item) => item.hour === hour.hour || item.hour === inHour.toISOString(),
               );
-              if (point) values[key] = point.value;
+              if (point) values[`ihm.${key}`] = point.value;
             }
             return { hour: clock(hour.hour), value: evaluateFormula(field.formula, values) };
           });

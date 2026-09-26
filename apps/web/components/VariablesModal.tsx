@@ -14,8 +14,8 @@ export function VariablesModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState('');
-  // The platform's own numbers carry a prefix: turno.* on a dashboard, dia.* on the operations page.
-  const isPlatform = (name: string) => name.startsWith('turno.') || name.startsWith('dia.');
+  // painel.* is what the production board works out; ihm.* the HMI's own readings.
+  const isPlatform = (name: string) => name.startsWith('painel.');
   const plant = options.filter((option) => isPlatform(option.name));
   const hmi = options.filter((option) => !isPlatform(option.name));
 
@@ -73,7 +73,7 @@ export function VariablesModal({
             <h2>Variáveis disponíveis</h2>
             <p className="shifts-help">
               Use os nomes abaixo com + - * / ( ) e as funções min, max, round, abs, floor e ceil,
-              separando os argumentos com ;. Exemplo: turno.pecas / turno.horas_produzindo.
+              separando os argumentos com ;. Exemplo: painel.pecas / painel.horas_produzindo.
             </p>
           </div>
           <button type="button" className="icon-button" onClick={onClose}>
@@ -81,9 +81,7 @@ export function VariablesModal({
           </button>
         </div>
         {table(
-          plant.some((option) => option.name.startsWith('dia.'))
-            ? 'Do dia, calculadas pela plataforma'
-            : 'Do turno, calculadas pela plataforma',
+          'Do painel (quadro de produção), calculadas pela plataforma',
           plant,
           'Configure a produção do equipamento para ter os números do turno.',
         )}

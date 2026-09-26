@@ -30,7 +30,8 @@ import { Hint } from './Hint';
 import { FormulaInput, type VariableOption } from './FormulaInput';
 import { VariablesModal } from './VariablesModal';
 import type { ShiftBoardResponse } from './ShiftBoard';
-import { evaluateFormula, formulaError } from './formula';
+import { evaluateFormula, formulaError, modernizeFormula } from './formula';
+import { hmiVariables, knownVariables, panelVariables, variableOptionsFor } from './variables';
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
@@ -245,7 +246,7 @@ type PickerType = DashboardWidget['widget_type'] | 'formula';
 const visualizationHelp: Record<PickerType, string> = {
   value: 'Mostra a leitura atual de uma variável numérica, booleana ou de texto.',
   formula:
-    'O número do card é uma conta sua sobre as variáveis da IHM e do turno, sem precisar de uma variável própria. Exemplo: turno.pecas / turno.horas_produzindo.',
+    'O número do card é uma conta sua sobre as variáveis da IHM (ihm.*) e do quadro de produção (painel.*), sem precisar de uma variável própria. Exemplo: painel.pecas / painel.horas_produzindo.',
   line: 'Usa uma variável numérica e desenha sua evolução dentro da janela do painel.',
   gauge: 'Usa uma variável numérica com escala mínima, máxima e faixas coloridas.',
   status: 'Usa uma variável booleana: verdadeiro representa operação e falso representa parada.',
@@ -315,46 +316,6 @@ function calculatedFields(config: DashboardWidget['config']): CalculatedSetting[
     ];
   return [];
 }
-
-/**
- * What the platform itself knows about the shift, offered to a formula beside the HMI's own
- * variables: "turno.pecas / turno.horas_produzindo" gives the real pieces per hour.
- */
-function shiftVariables(board: ShiftBoardResponse | null): Record<string, number> {
-  const data = board?.board;
-  if (!data) return {};
-  const time = data.time;
-  return {
-    'turno.pecas': data.totals.pieces,
-    'turno.milheiros': data.totals.milheiros,
-    'turno.paletes': data.totals.pallets,
-    'turno.toneladas': data.totals.tons,
-    'turno.horas_produzindo': time.producing / 3600,
-    'turno.horas_paradas': (time.idle + time.manual) / 3600,
-    'turno.horas_decorridas': time.elapsedProductive / 3600,
-    'turno.minutos_produzindo': time.producing / 60,
-    'turno.aproveitamento': data.utilization == null ? 0 : data.utilization * 100,
-    'turno.ritmo': data.pacePerHour,
-    'turno.meta': data.target?.value ?? 0,
-    'turno.meta_feito': data.target?.actual ?? 0,
-    'turno.paletes_tempo_medio': data.palletTiming?.averageSeconds ?? 0,
-  };
-}
-const SHIFT_VARIABLE_HELP: Record<string, string> = {
-  'turno.pecas': 'peças produzidas no turno',
-  'turno.milheiros': 'milheiros no turno',
-  'turno.paletes': 'paletes no turno',
-  'turno.toneladas': 'toneladas no turno',
-  'turno.horas_produzindo': 'horas com a máquina produzindo',
-  'turno.horas_paradas': 'horas ociosa ou em manual',
-  'turno.horas_decorridas': 'horas de turno já decorridas',
-  'turno.minutos_produzindo': 'minutos com a máquina produzindo',
-  'turno.aproveitamento': 'aproveitamento da máquina, em %',
-  'turno.ritmo': 'ritmo atual, na unidade da meta por hora',
-  'turno.meta': 'meta do turno',
-  'turno.meta_feito': 'quanto já foi feito da meta',
-  'turno.paletes_tempo_medio': 'segundos por palete, em média',
-};
 
 // Cards that read no single variable; every other card needs one to show anything.
 const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto']);
@@ -1027,17 +988,12 @@ export function DashboardCanvas({ id }: { id: string }) {
     const map: Record<string, number> = {};
     for (const sample of latest.data ?? [])
       if (typeof sample.value_number === 'number') map[sample.key] = sample.value_number;
-    return { ...map, ...shiftVariables(shift.data ?? null) };
+    return { ...hmiVariables(map), ...panelVariables(shift.data?.board) };
   }, [latest.data, shift.data]);
 
   // What the suggestion list under the formula box offers.
   const variableOptions = useMemo<VariableOption[]>(
-    () =>
-      Object.entries(readings).map(([name, value]) => ({
-        name,
-        description: SHIFT_VARIABLE_HELP[name] ?? 'variável da IHM',
-        value: number(value, Math.abs(value) < 10 ? 2 : 0),
-      })),
+    () => variableOptionsFor(readings),
     [readings],
   );
   const byTag = useMemo(
@@ -1140,8 +1096,11 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMaximum(widget.config.max ?? 100);
     setDecimals(widget.config.decimals ?? 1);
     setCommaPlaces(placesOfScale(widget.scale_multiplier));
-    setCalculatedList(calculatedFields(widget.config));
-    setMainFormula(widget.config.mainFormula ?? '');
+    // Formulas open with the standard names (ihm.*, painel.*), so saving brings them up to date.
+    setCalculatedList(
+      calculatedFields(widget.config).map((field) => ({ ...field, formula: modernizeFormula(field.formula) })),
+    );
+    setMainFormula(modernizeFormula(widget.config.mainFormula ?? ''));
     setMainFormulaUnit(widget.config.mainFormulaUnit ?? '');
     setColSpanInput(spansOf(widget).cols);
     setRowSpanInput(spansOf(widget).rows);
@@ -1667,14 +1626,14 @@ export function DashboardCanvas({ id }: { id: string }) {
                     Fórmula do valor
                     <Hint
                       align="left"
-                      text="Quando preenchida, o número do card é o resultado desta conta e o card não precisa de variável própria. Exemplo: turno.pecas / turno.horas_produzindo."
+                      text="Quando preenchida, o número do card é o resultado desta conta e o card não precisa de variável própria. Exemplo: painel.pecas / painel.horas_produzindo."
                     />
                   </span>
                   <div className="formula-row formula-row-main">
                     <FormulaInput
                       value={mainFormula}
                       options={variableOptions}
-                      placeholder="turno.pecas / turno.horas_produzindo"
+                      placeholder="painel.pecas / painel.horas_produzindo"
                       onChange={setMainFormula}
                     />
                     <input
@@ -1685,9 +1644,9 @@ export function DashboardCanvas({ id }: { id: string }) {
                     />
                   </div>
                   {mainFormula.trim() &&
-                    (formulaError(mainFormula, Object.keys(readings)) ? (
+                    (formulaError(mainFormula, knownVariables(readings)) ? (
                       <small className="formula-error">
-                        {formulaError(mainFormula, Object.keys(readings))}
+                        {formulaError(mainFormula, knownVariables(readings))}
                       </small>
                     ) : (
                       <small className="formula-preview">
@@ -1712,7 +1671,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                 </span>
                 {calculatedList.map((field, index) => {
                   const problem = field.formula.trim()
-                    ? formulaError(field.formula, Object.keys(readings))
+                    ? formulaError(field.formula, knownVariables(readings))
                     : null;
                   const now = field.formula.trim()
                     ? evaluateFormula(field.formula, readings)
@@ -1735,7 +1694,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                         <FormulaInput
                           value={field.formula}
                           options={variableOptions}
-                          placeholder="turno.pecas / turno.horas_produzindo"
+                          placeholder="painel.pecas / painel.horas_produzindo"
                           onChange={(formula) => change({ formula })}
                         />
                         <input

@@ -2350,6 +2350,31 @@
   :root[data-theme='dark'] .operation-add-menu button:hover {
     background: #1c2625;
   }
+  :root[data-theme='dark'] .operation-add-menu strong {
+    color: #8c9ea3;
+  }
+  :root[data-theme='dark'] .operation-add-menu button small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .operation-add-menu .operation-add-formula {
+    color: #7ce9da;
+  }
+  :root[data-theme='dark'] .operation-add-empty {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .operation-source-toggle {
+    border: 1px solid #2a3b41;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .operation-source-toggle button {
+    border: 0;
+    background: transparent;
+    color: #a6b7bd;
+  }
+  :root[data-theme='dark'] .operation-source-toggle button.active {
+    background: #12b8a6;
+    color: #fff;
+  }
   :root[data-theme='dark'] .operation-editor-stage {
     border: 1px dashed #354b52;
     background: repeating-linear-gradient(45deg, #172125, #172125 8px, #1a2428 8px, #1a2428 16px);

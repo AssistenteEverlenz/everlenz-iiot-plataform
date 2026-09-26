@@ -185,7 +185,7 @@ function evaluateNode(node: FormulaNode, values: Record<string, number | null | 
     case 'number':
       return node.value;
     case 'variable': {
-      const value = values[node.name];
+      const value = values[node.name] ?? values[canonicalVariable(node.name)];
       if (value == null || !Number.isFinite(Number(value)))
         throw new Error(`Sem leitura de ${node.name}`);
       return Number(value);
@@ -227,10 +227,51 @@ export function formulaError(input: string, known: string[]): string | null {
   if (!input.trim()) return null;
   try {
     const node = parseFormula(input);
-    const unknown = formulaVariables(node).filter((name) => !known.includes(name));
+    const unknown = formulaVariables(node).filter(
+      (name) => !known.includes(name) && !known.includes(canonicalVariable(name)),
+    );
     if (unknown.length) return `Variável não encontrada: ${unknown.join(', ')}`;
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : 'Fórmula inválida.';
   }
+}
+
+// Variable names: ihm.<key> for the HMI's own readings and painel.<name> for what the platform
+// works out on the production board. Formulas written before the prefixes (a bare HMI key,
+// turno.*, and the first operations card's dia.* and ProduzidoHoje-style names) still read.
+const LEGACY_NAMES: Record<string, string> = {
+  'dia.produzido': 'painel.produzido',
+  'dia.meta': 'painel.meta',
+  'dia.projecao': 'painel.projecao',
+  'dia.ritmo': 'painel.ritmo',
+  'dia.eficiencia': 'painel.aproveitamento',
+  'dia.pecas': 'painel.pecas',
+  'dia.paletes': 'painel.paletes',
+  'dia.toneladas': 'painel.toneladas',
+  ProduzidoHoje: 'painel.produzido',
+  Meta: 'painel.meta',
+  Projecao: 'painel.projecao',
+  Ritmo: 'painel.ritmo',
+  Eficiencia: 'painel.aproveitamento',
+};
+
+/** The standard name of a variable written in any of its older spellings. */
+export function canonicalVariable(name: string) {
+  if (name.startsWith('ihm.') || name.startsWith('painel.')) return name;
+  if (name.startsWith('turno.')) return `painel.${name.slice('turno.'.length)}`;
+  return LEGACY_NAMES[name] ?? `ihm.${name}`;
+}
+
+/** The formula rewritten with the standard names, for an editor to show and save. */
+export function modernizeFormula(input: string) {
+  return input.replace(
+    /(^|[^A-Za-z0-9_.])([A-Za-z_][A-Za-z0-9_.]*)/g,
+    (whole, before: string, name: string, offset: number, text: string) => {
+      const after = text.slice(offset + whole.length).trimStart();
+      // A function call keeps its name: round(...), max(...).
+      if (after.startsWith('(') || name in FORMULA_FUNCTIONS) return whole;
+      return before + canonicalVariable(name);
+    },
+  );
 }

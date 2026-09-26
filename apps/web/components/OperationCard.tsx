@@ -1,157 +1,165 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
-import { FormulaInput, type VariableOption } from './FormulaInput';
-import { evaluateFormula, formulaError } from './formula';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { FormulaInput } from './FormulaInput';
+import { canonicalVariable, evaluateFormula, formulaError, modernizeFormula } from './formula';
 import { Hint } from './Hint';
 import { VariablesModal } from './VariablesModal';
 import { mutate } from './data';
+import {
+  hmiVariables,
+  knownVariables,
+  PANEL_VARIABLES,
+  panelVariables,
+  variableOptionsFor,
+  type PanelSource,
+} from './variables';
 
 // The plant's block on the operations page. The same component draws it in the list and inside
 // the editor, so what is arranged in the editor is exactly what the list shows. Like a dashboard
-// card, it is an ordered list of blocks on a 12-column grid; each block is a platform number
-// (produced, target, projection, pace, efficiency) or one of the plant's own formulas.
+// card it is an ordered list of blocks on a 12-column grid, and every block is a formula: one
+// variable (ihm.* or painel.*, the same names as on the dashboard) or the plant's own arithmetic.
 
+type Metric = 'milheiros' | 'tons' | 'blocks' | 'pallets';
 export type OperationMachine = {
   deviceId: string;
   deviceName: string;
   state: string;
   product: string | null;
-  metric: 'milheiros' | 'tons' | 'blocks' | 'pallets';
-  totals: { pieces: number; milheiros: number; pallets: number; tons: number };
-  target: number | null;
-  projection: number;
-  pacePerHour: number;
-  utilization: number | null;
+  metric: Metric;
   location: { city: string | null; state: string | null };
   readings: Record<string, number>;
+  /** The production board of the running (or last) shift, as the dashboard shows it. */
+  board: PanelSource | null;
 };
-export type ItemKind = 'produced' | 'target' | 'projection' | 'pace' | 'efficiency' | 'formula';
 export type CardItem = {
   id: string;
-  kind: ItemKind;
-  label?: string;
-  formula?: string;
-  unit?: string;
-  decimals?: number;
+  label: string;
+  formula: string;
+  unit: string;
+  decimals: number;
   colSpan: number;
   rowSpan: number;
 };
-export type CardConfig = { version: 2; greenPct: number; yellowPct: number; items: CardItem[] };
+export type CardConfig = { version: 3; greenPct: number; yellowPct: number; items: CardItem[] };
 
 const COLUMNS = 12;
 const MAX_ROWS = 6;
 export const MAX_ITEMS = 16;
-const METRICS = { milheiros: 'milheiros', tons: 't', blocks: 'peças', pallets: 'paletes' };
-export const KIND_LABELS: Record<ItemKind, string> = {
-  produced: 'Produzido hoje',
-  target: 'Meta',
-  projection: 'Projeção',
-  pace: 'Ritmo',
-  efficiency: 'Eficiência',
-  formula: 'Calculado',
-};
-const STANDARD: ItemKind[] = ['produced', 'target', 'projection', 'pace', 'efficiency'];
-const block = (kind: ItemKind, colSpan = 3): CardItem => ({ id: kind, kind, colSpan, rowSpan: 2 });
-export const DEFAULT_CARD: CardConfig = {
-  version: 2,
-  greenPct: 1,
-  yellowPct: 0.95,
-  items: [block('produced'), block('target'), block('projection'), block('pace'), block('efficiency', 12)],
-};
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-type LegacyConfig = {
-  visibleFields?: ItemKind[];
+/** A block reading one variable, titled and with the unit the variable is counted in. */
+function blockFor(name: string, metric: Metric, colSpan = 3): CardItem {
+  const panel = PANEL_VARIABLES[name];
+  return {
+    id: crypto.randomUUID(),
+    label: panel?.label ?? name.replace(/^ihm\./, ''),
+    formula: name,
+    unit: panel?.unit(metric) ?? '',
+    decimals: panel?.decimals ?? 1,
+    colSpan,
+    rowSpan: 2,
+  };
+}
+export function defaultCard(metric: Metric): CardConfig {
+  return {
+    version: 3,
+    greenPct: 1,
+    yellowPct: 0.95,
+    items: [
+      { ...blockFor('painel.produzido', metric), id: 'produced' },
+      { ...blockFor('painel.meta', metric), id: 'target' },
+      { ...blockFor('painel.projecao', metric), id: 'projection' },
+      { ...blockFor('painel.ritmo', metric), id: 'pace' },
+      { ...blockFor('painel.aproveitamento', metric, 12), id: 'efficiency' },
+    ],
+  };
+}
+
+// What the first two versions stored, read into blocks: fixed numbers become their variable.
+const LEGACY_KINDS: Record<string, string> = {
+  produced: 'painel.produzido',
+  target: 'painel.meta',
+  projection: 'painel.projecao',
+  pace: 'painel.ritmo',
+  efficiency: 'painel.aproveitamento',
+};
+type StoredItem = Partial<CardItem> & { kind?: string };
+type Stored = {
+  version?: number;
   greenPct?: number;
   yellowPct?: number;
+  items?: StoredItem[];
+  visibleFields?: string[];
   calculated?: Array<{ id: string; label: string; formula: string; unit: string; decimals: number }>;
   layout?: Array<{ id: string; order: number; colSpan: number; rowSpan: number }>;
 };
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-/** Reads what is stored, including the first version (4-column grid, fields + formulas). */
-export function normalizeCard(raw: unknown): CardConfig {
-  const stored = (raw ?? {}) as Partial<CardConfig> & LegacyConfig;
-  const greenPct = stored.greenPct ?? DEFAULT_CARD.greenPct;
-  const yellowPct = stored.yellowPct ?? DEFAULT_CARD.yellowPct;
-  if (stored.version === 2 && stored.items?.length) return { version: 2, greenPct, yellowPct, items: stored.items };
-  if (!stored.visibleFields && !stored.calculated) return { ...DEFAULT_CARD, greenPct, yellowPct };
-  const fields = stored.visibleFields ?? ['produced', 'target', 'projection', 'pace'];
-  const ids = [...fields, ...(stored.calculated ?? []).map((item) => item.id), 'efficiency'];
-  // The first version measured on 4 columns and 1-3 rows: three times wider, twice as tall.
+export function normalizeCard(raw: unknown, metric: Metric): CardConfig {
+  const stored = (raw ?? {}) as Stored;
+  const base = defaultCard(metric);
+  const greenPct = stored.greenPct ?? base.greenPct;
+  const yellowPct = stored.yellowPct ?? base.yellowPct;
+  const fromKind = (id: string, kind: string, extra: StoredItem): CardItem => {
+    const variable = LEGACY_KINDS[kind];
+    const block = variable ? blockFor(variable, metric) : blockFor('', metric);
+    return {
+      ...block,
+      id,
+      label: extra.label || (variable ? block.label : 'Calculado'),
+      formula: modernizeFormula(variable ?? extra.formula ?? ''),
+      unit: variable ? (extra.unit ?? block.unit) : (extra.unit ?? ''),
+      decimals: extra.decimals ?? block.decimals,
+      colSpan: clamp(extra.colSpan ?? 3, 1, COLUMNS),
+      rowSpan: clamp(extra.rowSpan ?? 2, 1, MAX_ROWS),
+    };
+  };
+  if (stored.version === 3 && stored.items?.length)
+    return {
+      version: 3,
+      greenPct,
+      yellowPct,
+      items: stored.items.map((item) => ({ ...(item as CardItem), formula: modernizeFormula(item.formula ?? '') })),
+    };
+  if (stored.version === 2 && stored.items?.length)
+    return {
+      version: 3,
+      greenPct,
+      yellowPct,
+      items: stored.items.map((item) => fromKind(item.id ?? crypto.randomUUID(), item.kind ?? 'formula', item)),
+    };
+  if (!stored.visibleFields && !stored.calculated) return { ...base, greenPct, yellowPct };
+  // The first version: fixed fields plus formulas on a 4-column grid of 1-3 rows.
+  const ids = [...(stored.visibleFields ?? []), ...(stored.calculated ?? []).map((item) => item.id), 'efficiency'];
   const layoutOf = (id: string) => stored.layout?.find((item) => item.id === id);
-  const items: CardItem[] = ids.map((id) => {
+  const items = ids.map((id) => {
     const layout = layoutOf(id);
     const formula = stored.calculated?.find((item) => item.id === id);
-    return {
-      id,
-      kind: formula ? 'formula' : (id as ItemKind),
-      ...(formula ? { label: formula.label, formula: formula.formula, unit: formula.unit, decimals: formula.decimals } : {}),
-      colSpan: clamp((layout?.colSpan ?? 1) * 3, 1, COLUMNS),
-      rowSpan: clamp((layout?.rowSpan ?? 1) * 2, 1, MAX_ROWS),
-    };
+    return fromKind(id, formula ? 'formula' : id, {
+      ...(formula ?? {}),
+      colSpan: (layout?.colSpan ?? 1) * 3,
+      rowSpan: (layout?.rowSpan ?? 1) * 2,
+    });
   });
   const order = (id: string) => layoutOf(id)?.order ?? ids.indexOf(id);
-  return { version: 2, greenPct, yellowPct, items: items.sort((a, b) => order(a.id) - order(b.id)) };
+  return { version: 3, greenPct, yellowPct, items: items.sort((a, b) => order(a.id) - order(b.id)) };
 }
 
 function number(value: number, decimals = 0) {
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: decimals }).format(value);
 }
-export function producedOf(machine: OperationMachine) {
-  return machine.metric === 'blocks' ? machine.totals.pieces : machine.totals[machine.metric];
-}
 
-/** What a formula can read: the HMI's variables and the day's numbers the platform works out. */
+/** What a block reads: the HMI's latest readings and the production board's numbers. */
 export function formulaValues(machine: OperationMachine): Record<string, number> {
-  const day = {
-    'dia.produzido': producedOf(machine),
-    'dia.meta': machine.target ?? 0,
-    'dia.projecao': machine.projection,
-    'dia.ritmo': machine.pacePerHour,
-    'dia.eficiencia': (machine.utilization ?? 0) * 100,
-    'dia.pecas': machine.totals.pieces,
-    'dia.paletes': machine.totals.pallets,
-    'dia.toneladas': machine.totals.tons,
-  };
-  // The names of the first version stay readable, so formulas written with them keep working.
-  const legacy = {
-    ProduzidoHoje: day['dia.produzido'],
-    Meta: day['dia.meta'],
-    Projecao: day['dia.projecao'],
-    Ritmo: day['dia.ritmo'],
-    Eficiencia: day['dia.eficiencia'],
-  };
-  return { ...machine.readings, ...legacy, ...day };
-}
-const DAY_HELP: Record<string, string> = {
-  'dia.produzido': 'produzido hoje, na unidade da meta',
-  'dia.meta': 'meta do dia (meta por turno × turnos de hoje)',
-  'dia.projecao': 'projeção de fechamento do dia',
-  'dia.ritmo': 'produção por hora hoje',
-  'dia.eficiencia': 'tempo produzindo sobre o tempo em operação, em %',
-  'dia.pecas': 'peças produzidas hoje',
-  'dia.paletes': 'paletes produzidos hoje',
-  'dia.toneladas': 'toneladas produzidas hoje',
-};
-export function variableOptions(machine: OperationMachine): VariableOption[] {
-  const values = formulaValues(machine);
-  return [
-    ...Object.keys(DAY_HELP).map((name) => ({ name, description: DAY_HELP[name], value: number(values[name], 1) })),
-    ...Object.entries(machine.readings).map(([name, value]) => ({
-      name,
-      description: 'variável da IHM',
-      value: number(value, Math.abs(value) < 10 ? 2 : 0),
-    })),
-  ];
+  return { ...hmiVariables(machine.readings), ...panelVariables(machine.board) };
 }
 
 export type Health = 'offline' | 'green' | 'yellow' | 'red' | 'online';
-/** The block's colour: grey without communication, else how the day's projection meets the target. */
+/** Grey without communication, else how the shift's projection meets its target. */
 export function healthOf(machine: OperationMachine, config: CardConfig): Health {
   if (machine.state === 'offline' || machine.state === 'unknown') return 'offline';
-  if (!machine.target || machine.target <= 0) return 'online';
-  const ratio = machine.projection / machine.target;
+  const target = machine.board?.target;
+  if (!target || target.value <= 0) return 'online';
+  const ratio = target.projected / target.value;
   return ratio >= config.greenPct ? 'green' : ratio >= config.yellowPct ? 'yellow' : 'red';
 }
 export const HEALTH_LABELS: Record<Health, string> = {
@@ -162,24 +170,9 @@ export const HEALTH_LABELS: Record<Health, string> = {
   red: 'Fora da meta',
 };
 
-function itemValue(item: CardItem, machine: OperationMachine, values: Record<string, number>) {
-  const unit = METRICS[machine.metric];
-  switch (item.kind) {
-    case 'produced':
-      return `${number(producedOf(machine), machine.metric === 'tons' ? 1 : 0)} ${unit}`;
-    case 'target':
-      return machine.target ? `${number(machine.target)} ${unit}` : '—';
-    case 'projection':
-      return `${number(machine.projection)} ${unit}`;
-    case 'pace':
-      return `${number(machine.pacePerHour, 1)} ${unit}/h`;
-    case 'efficiency':
-      return machine.utilization == null ? '—' : `${number(machine.utilization * 100, 1)}%`;
-    case 'formula': {
-      const result = item.formula?.trim() ? evaluateFormula(item.formula, values) : null;
-      return result == null ? '—' : `${number(result, item.decimals ?? 1)} ${item.unit ?? ''}`.trim();
-    }
-  }
+function itemValue(item: CardItem, values: Record<string, number>) {
+  const result = item.formula.trim() ? evaluateFormula(item.formula, values) : null;
+  return result == null ? '—' : `${number(result, item.decimals)} ${item.unit}`.trim();
 }
 
 type EditHandlers = {
@@ -273,10 +266,11 @@ export function OperationCardBody({
         {config.items.map((item, index) => {
           const span = live?.id === item.id ? live : item;
           const isSelected = edit?.selected === item.id;
+          const single = /^[A-Za-z_][A-Za-z0-9_.]*$/.test(item.formula.trim());
           return (
             <div
               key={item.id}
-              className={`operation-block kind-${item.kind} ${isSelected ? 'selected' : ''} ${dragging && dragging !== item.id ? 'drop-zone' : ''}`}
+              className={`operation-block ${single ? '' : 'kind-formula'} ${isSelected ? 'selected' : ''} ${dragging && dragging !== item.id ? 'drop-zone' : ''}`}
               style={{ gridColumn: `span ${span.colSpan}`, gridRow: `span ${span.rowSpan}` }}
               draggable={Boolean(edit)}
               onClick={edit ? (event) => { event.stopPropagation(); edit.select(item.id); } : undefined}
@@ -302,8 +296,8 @@ export function OperationCardBody({
               }
               onDragEnd={edit ? () => setDragging(null) : undefined}
             >
-              <span className="operation-block-label">{item.label || KIND_LABELS[item.kind]}</span>
-              <b>{itemValue(item, machine, values)}</b>
+              <span className="operation-block-label">{item.label || 'Calculado'}</span>
+              <b>{itemValue(item, values)}</b>
               {edit && (
                 <>
                   <span className="operation-block-grip" aria-hidden="true">⠿</span>
@@ -335,7 +329,8 @@ export function OperationCardBody({
 
 /**
  * The editor: the plant's card as the list draws it, at the list's width, with its blocks
- * movable and resizable in place. Below it, the selected block's own settings.
+ * movable and resizable in place. Below it, the selected block: its title and what it reads,
+ * either one variable picked from the list or a formula.
  */
 export function OperationCardEditor({
   machine,
@@ -356,15 +351,20 @@ export function OperationCardEditor({
   const [form, setForm] = useState<CardConfig>(initial);
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [freeFormula, setFreeFormula] = useState<Set<string>>(new Set());
   const [showingVariables, setShowingVariables] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const frame = useRef<HTMLDivElement>(null);
   const [fits, setFits] = useState(true);
-  const options = variableOptions(machine);
-  const known = Object.keys(formulaValues(machine));
+  const values = useMemo(() => formulaValues(machine), [machine]);
+  const options = useMemo(() => variableOptionsFor(values), [values]);
+  const known = knownVariables(values);
   const current = form.items.find((item) => item.id === selected) ?? null;
-  const missing = STANDARD.filter((kind) => !form.items.some((item) => item.kind === kind));
+  const currentIsVariable =
+    current != null &&
+    !freeFormula.has(current.id) &&
+    options.some((option) => option.name === canonicalVariable(current.formula.trim()));
 
   // Narrower modal than the list card (a phone): the preview takes the modal's width instead.
   useLayoutEffect(() => {
@@ -380,11 +380,13 @@ export function OperationCardEditor({
     select: setSelected,
     move: (source, target) => {
       if (source === target) return;
-      const moving = form.items.find((item) => item.id === source);
-      if (!moving) return;
-      const rest = form.items.filter((item) => item.id !== source);
-      rest.splice(rest.findIndex((item) => item.id === target) + (form.items.findIndex((item) => item.id === source) < form.items.findIndex((item) => item.id === target) ? 1 : 0), 0, moving);
-      setItems(rest);
+      const from = form.items.findIndex((item) => item.id === source);
+      const to = form.items.findIndex((item) => item.id === target);
+      if (from < 0 || to < 0) return;
+      const items = [...form.items];
+      const [moving] = items.splice(from, 1);
+      items.splice(to, 0, moving);
+      setItems(items);
     },
     shift: (id, by) => {
       const at = form.items.findIndex((item) => item.id === id);
@@ -400,22 +402,34 @@ export function OperationCardEditor({
       setSelected(null);
     },
   };
-  function add(kind: ItemKind) {
-    const item: CardItem =
-      kind === 'formula'
-        ? { id: crypto.randomUUID(), kind, label: 'Calculado', formula: '', unit: '', decimals: 1, colSpan: 3, rowSpan: 2 }
-        : block(kind);
+  function add(name: string | null) {
+    const item = name
+      ? blockFor(name, machine.metric)
+      : { ...blockFor('', machine.metric), label: 'Calculado', decimals: 1 };
+    if (!name) setFreeFormula((set) => new Set(set).add(item.id));
     setItems([...form.items, item]);
     setSelected(item.id);
     setAdding(false);
+  }
+  /** Picking a variable for the block: its title and unit follow unless they were written. */
+  function pick(name: string) {
+    if (!current) return;
+    const previous = PANEL_VARIABLES[current.formula]?.label ?? current.formula.replace(/^ihm\./, '');
+    const next = blockFor(name, machine.metric);
+    patch(current.id, {
+      formula: name,
+      label: !current.label || current.label === previous ? next.label : current.label,
+      unit: next.unit || current.unit,
+      decimals: next.decimals,
+    });
   }
   async function save() {
     setSaving(true);
     setError('');
     try {
       if (form.yellowPct > form.greenPct) throw new Error('O limite amarelo deve ser menor que o verde.');
-      for (const item of form.items.filter((entry) => entry.kind === 'formula')) {
-        if (!item.formula?.trim()) throw new Error(`Escreva a fórmula de “${item.label || 'Calculado'}”.`);
+      for (const item of form.items) {
+        if (!item.formula.trim()) throw new Error(`Escolha a variável ou escreva a fórmula de “${item.label || 'Calculado'}”.`);
         const problem = formulaError(item.formula, known);
         if (problem) throw new Error(`${item.label || 'Calculado'}: ${problem}`);
       }
@@ -427,6 +441,8 @@ export function OperationCardEditor({
       setSaving(false);
     }
   }
+  const panelOptions = options.filter((option) => option.name.startsWith('painel.'));
+  const hmiOptions = options.filter((option) => option.name.startsWith('ihm.'));
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -443,15 +459,27 @@ export function OperationCardEditor({
           <button type="button" className="icon-button" onClick={onClose}>×</button>
         </div>
         <div className="operation-editor-bar">
-          <small>Clique em um bloco para mover e redimensionar. Arraste pelo bloco para trocar de lugar, ou pelo canto para mudar o tamanho.</small>
+          <small>Clique em um bloco para configurar, mover e redimensionar. Arraste pelo bloco para trocar de lugar, ou pelo canto para mudar o tamanho.</small>
           <div className="operation-add">
             <button type="button" className="primary" disabled={form.items.length >= MAX_ITEMS} onClick={() => setAdding(!adding)}>＋ Adicionar bloco</button>
             {adding && (
               <div className="operation-add-menu">
-                {missing.map((kind) => (
-                  <button type="button" key={kind} onClick={() => add(kind)}>{KIND_LABELS[kind]}</button>
+                <button type="button" className="operation-add-formula" onClick={() => add(null)}>ƒ Fórmula livre</button>
+                {panelOptions.length > 0 && <strong>Quadro de produção</strong>}
+                {panelOptions.map((option) => (
+                  <button type="button" key={option.name} onClick={() => add(option.name)}>
+                    <span>{PANEL_VARIABLES[option.name]?.label ?? option.name}</span>
+                    <small>{option.value}</small>
+                  </button>
                 ))}
-                <button type="button" onClick={() => add('formula')}>ƒ Fórmula</button>
+                {hmiOptions.length > 0 && <strong>IHM</strong>}
+                {hmiOptions.map((option) => (
+                  <button type="button" key={option.name} onClick={() => add(option.name)}>
+                    <span>{option.name.replace(/^ihm\./, '')}</span>
+                    <small>{option.value}</small>
+                  </button>
+                ))}
+                {!options.length && <small className="operation-add-empty">Sem variáveis lidas ainda: use uma fórmula livre.</small>}
               </div>
             )}
           </div>
@@ -472,39 +500,60 @@ export function OperationCardEditor({
         {current && (
           <div className="operation-editor-section">
             <div className="operation-editor-title">
-              <strong>{current.kind === 'formula' ? 'Fórmula do bloco' : KIND_LABELS[current.kind]}</strong>
+              <strong>{current.label || 'Bloco'}</strong>
               <small>{current.colSpan} de 12 colunas · {current.rowSpan} {current.rowSpan === 1 ? 'linha' : 'linhas'}</small>
+            </div>
+            <div className="operation-source-toggle" role="radiogroup" aria-label="O que o bloco mostra">
+              <button type="button" className={currentIsVariable ? 'active' : ''} onClick={() => {
+                setFreeFormula((set) => { const next = new Set(set); next.delete(current.id); return next; });
+                if (!options.some((option) => option.name === canonicalVariable(current.formula.trim())) && options[0]) pick(options[0].name);
+              }}>Variável</button>
+              <button type="button" className={currentIsVariable ? '' : 'active'} onClick={() => setFreeFormula((set) => new Set(set).add(current.id))}>Fórmula</button>
             </div>
             <div className="operation-formula-row">
               <label>
                 Título
-                <input value={current.label ?? ''} maxLength={60} placeholder={KIND_LABELS[current.kind]} onChange={(event) => patch(current.id, { label: event.target.value })} />
+                <input value={current.label} maxLength={60} onChange={(event) => patch(current.id, { label: event.target.value })} />
               </label>
-              {current.kind === 'formula' && (
-                <>
-                  <label className="operation-formula-main">
-                    <span className="operation-formula-label">
-                      Fórmula
-                      <button type="button" className="operation-variables-link" onClick={() => setShowingVariables(true)}>Ver variáveis disponíveis</button>
-                    </span>
-                    <FormulaInput value={current.formula ?? ''} options={options} placeholder="dia.produzido / dia.meta * 100" onChange={(formula) => patch(current.id, { formula })} />
-                  </label>
-                  <label>
-                    Unidade
-                    <input value={current.unit ?? ''} maxLength={20} onChange={(event) => patch(current.id, { unit: event.target.value })} />
-                  </label>
-                  <label>
-                    Casas
-                    <select value={current.decimals ?? 1} onChange={(event) => patch(current.id, { decimals: Number(event.target.value) })}>
-                      {[0, 1, 2, 3, 4].map((places) => <option key={places} value={places}>{places}</option>)}
-                    </select>
-                  </label>
-                </>
-              )}
+              <label className="operation-formula-main">
+                <span className="operation-formula-label">
+                  {currentIsVariable ? 'Variável' : 'Fórmula'}
+                  <button type="button" className="operation-variables-link" onClick={() => setShowingVariables(true)}>Ver variáveis disponíveis</button>
+                </span>
+                {currentIsVariable ? (
+                  <select value={canonicalVariable(current.formula.trim())} onChange={(event) => pick(event.target.value)}>
+                    <optgroup label="Quadro de produção (painel.*)">
+                      {panelOptions.map((option) => (
+                        <option key={option.name} value={option.name}>{option.name} — {option.value}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="IHM (ihm.*)">
+                      {hmiOptions.map((option) => (
+                        <option key={option.name} value={option.name}>{option.name} — {option.value}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                ) : (
+                  <FormulaInput value={current.formula} options={options} placeholder="painel.pecas / painel.horas_produzindo" onChange={(formula) => patch(current.id, { formula })} />
+                )}
+              </label>
+              <label>
+                Unidade
+                <input value={current.unit} maxLength={20} onChange={(event) => patch(current.id, { unit: event.target.value })} />
+              </label>
+              <label>
+                Casas
+                <select value={current.decimals} onChange={(event) => patch(current.id, { decimals: Number(event.target.value) })}>
+                  {[0, 1, 2, 3, 4].map((places) => <option key={places} value={places}>{places}</option>)}
+                </select>
+              </label>
             </div>
-            {current.kind === 'formula' && current.formula?.trim() && (
+            {current.formula.trim() && (
               <small className={formulaError(current.formula, known) ? 'formula-error' : 'formula-preview'}>
-                {formulaError(current.formula, known) ?? `Agora daria ${itemValue(current, machine, formulaValues(machine))}`}
+                {formulaError(current.formula, known) ??
+                  (currentIsVariable
+                    ? `${options.find((option) => option.name === canonicalVariable(current.formula.trim()))?.description ?? ''} · agora ${itemValue(current, values)}`
+                    : `Agora daria ${itemValue(current, values)}`)}
               </small>
             )}
           </div>
@@ -513,7 +562,7 @@ export function OperationCardEditor({
           <div className="operation-editor-title">
             <strong>
               Cor do cartão
-              <Hint align="left" text="Cinza sem comunicação. Com comunicação, a cor compara a projeção do dia com a meta: verde a partir do primeiro limite, amarelo a partir do segundo e vermelho abaixo dele. Sem meta cadastrada, fica verde enquanto houver comunicação." />
+              <Hint align="left" text="Cinza sem comunicação. Com comunicação, a cor compara a projeção do turno com a meta do turno (as mesmas do quadro de produção): verde a partir do primeiro limite, amarelo a partir do segundo e vermelho abaixo dele. Sem meta cadastrada, fica verde enquanto houver comunicação." />
             </strong>
           </div>
           <div className="operation-health-row">
@@ -523,7 +572,7 @@ export function OperationCardEditor({
         </div>
         {error && <div className="notice error">{error}</div>}
         <div className="modal-actions">
-          <button onClick={() => { setForm(DEFAULT_CARD); setSelected(null); }}>Restaurar padrão</button>
+          <button onClick={() => { setForm(defaultCard(machine.metric)); setSelected(null); }}>Restaurar padrão</button>
           <button onClick={onClose}>Cancelar</button>
           <button className="primary" disabled={saving || !form.items.length} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar cartão'}</button>
         </div>
@@ -532,3 +581,4 @@ export function OperationCardEditor({
     </div>
   );
 }
+
