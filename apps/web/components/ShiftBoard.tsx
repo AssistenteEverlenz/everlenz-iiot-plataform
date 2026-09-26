@@ -210,11 +210,14 @@ export function ShiftCurve({
   board,
   fontSize = 10,
   deviceId,
+  minuteSeries,
 }: {
   board: BoardData;
   fontSize?: number;
   /** With the device, a close zoom reads the counter minute by minute. */
   deviceId?: string;
+  /** The whole shift minute by minute, already at hand (a shift photo): no reading is fetched. */
+  minuteSeries?: Array<{ t: string; value: number }>;
 }) {
   const reactId = useId();
   const info = metricInfo[board.metric];
@@ -234,18 +237,21 @@ export function ShiftCurve({
   const MIN_POINTS = 6;
   const DRAG_THRESHOLD_PX = 8;
   // Under about an hour on screen, each 5-minute step hides more than it shows.
-  const wantsMinutes = Boolean(deviceId) && view != null && coarse.length > 1 && coarse.length <= 13;
+  const wantsMinutes =
+    (Boolean(deviceId) || Boolean(minuteSeries)) && view != null && coarse.length > 1 && coarse.length <= 13;
   const windowFrom = coarse[0]?.t ?? null;
   const windowTo = coarse.at(-1)?.t ?? null;
   const minutes = usePoll<{ minutes: Array<{ t: string; value: number }> }>(
-    wantsMinutes && windowFrom && windowTo
+    wantsMinutes && windowFrom && windowTo && !minuteSeries
       ? `/devices/${deviceId}/shift-minutes?from=${encodeURIComponent(windowFrom)}&to=${encodeURIComponent(windowTo)}`
       : null,
     60000,
   );
   // The minute curve carries on from where the coarse curve was at the start of the window.
   const detailed = useMemo(() => {
-    const rows = minutes.data?.minutes;
+    const rows = minuteSeries
+      ? minuteSeries.filter((row) => windowFrom && windowTo && row.t >= windowFrom && row.t <= windowTo)
+      : minutes.data?.minutes;
     if (!wantsMinutes || !rows?.length) return null;
     const base = coarse[0];
     let running = base?.actual ?? 0;
@@ -546,7 +552,10 @@ export function ShiftBoardView({
   hideHead = false,
   calculated = [],
   calculatedSettings = [],
+  minuteSeries,
 }: {
+  /** A shift photo's minute curve: the zoom reads it instead of the readings. */
+  minuteSeries?: Array<{ t: string; value: number }>;
   calculated?: CalculatedField[];
   calculatedSettings?: CalculatedSetting[];
   /** The TV draws its own header (shift, state, clock). */
@@ -785,7 +794,7 @@ export function ShiftBoardView({
                 </span>
               </div>
               <div className="shift-chart">
-                <ShiftCurve board={board} deviceId={deviceId} />
+                <ShiftCurve board={board} deviceId={minuteSeries ? undefined : deviceId} minuteSeries={minuteSeries} />
               </div>
             </div>
             <div className="shift-availability">
