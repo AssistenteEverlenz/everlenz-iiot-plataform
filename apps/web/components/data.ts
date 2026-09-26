@@ -11,6 +11,8 @@ export interface Device {
   online: boolean;
   last_message_at: string | null;
   adapter_type: string;
+  /** Until when raw messages are recorded for diagnosis; null when off. */
+  raw_capture_until?: string | null;
   serial_number?: string | null;
   mqtt_identifier?: string | null;
   provisioning_status?: string;
@@ -50,7 +52,7 @@ export interface Raw {
   qos: number;
   retain: boolean;
   payload_text: string | null;
-  payload_hex: string;
+  payload_hex: string | null;
   parsed_json: unknown;
   parser_used: string | null;
   processing_status: string;

@@ -38,17 +38,15 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       const samples = await db.query<{
         value_number: number | null;
         value_boolean: boolean | null;
-      }>('SELECT * FROM telemetry_samples WHERE raw_message_id=$1', [result.rawId]);
+      }>('SELECT * FROM telemetry_samples WHERE raw_message_id=$1', [result.messageId]);
       expect(samples.rows).toHaveLength(4);
       expect(samples.rows.some((s) => s.value_number === 70)).toBe(true);
       expect(samples.rows.some((s) => s.value_boolean === true)).toBe(true);
-      const raw = await db.query<{
-        payload_hex: string;
-        processing_status: string;
-        processed_at: string | null;
-      }>('SELECT * FROM mqtt_messages_raw WHERE id=$1', [result.rawId]);
-      expect(raw.rows[0].payload_hex).toBe(Buffer.from(m.payload).toString('hex'));
-      expect(raw.rows[0].processed_at).not.toBeNull();
+      // Outside diagnosis a processed message leaves no raw copy (migration 027).
+      expect(result.rawId).toBeNull();
+      expect(
+        (await db.query('SELECT 1 FROM mqtt_messages_raw WHERE id=$1', [result.messageId])).rows,
+      ).toHaveLength(0);
       const api = await createApp(db, { tenantId: TENANT, operatorRaw: false });
       try {
         const response = await api.inject(
@@ -61,6 +59,56 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       }
     },
   );
+  it('stores a reading only when it changes, with an hourly keyframe and a heartbeat', async () => {
+    const lean = new IngestionPipeline(db);
+    const base = new Date('2026-09-20T10:00:00Z').getTime();
+    const send = (temperatura: string, status: string, seconds: number) =>
+      lean.ingest({
+        topic: 'data/POC/group1/A7-001',
+        payload: Buffer.from(
+          JSON.stringify({
+            _terminalTime: new Date(base + seconds * 1000).toISOString(),
+            _groupName: 'group1',
+            temperatura,
+            status,
+          }),
+        ),
+        qos: 1,
+        retain: false,
+        receivedAt: new Date(base + seconds * 1000),
+      });
+    // First sight: every reading. Same values 3 s later: nothing. One change: only that one.
+    expect((await send('61', '1', 0)).samples).toBe(2);
+    expect((await send('61', '1', 3)).samples).toBe(0);
+    expect((await send('62', '1', 6)).samples).toBe(1);
+    // Nothing changed for longer than half the offline limit: one reading proves the link.
+    expect((await send('62', '1', 30)).samples).toBe(1);
+    // A new hour keeps one value of every variable, so each hour can be averaged and charted.
+    expect((await send('62', '1', 3600)).samples).toBe(2);
+    // Diagnosis: the raw copy and every reading, changed or not.
+    await db.query(
+      "UPDATE devices SET raw_capture_until=now()+interval '100 days' WHERE id=$1",
+      [HAIWELL],
+    );
+    const lean2 = new IngestionPipeline(db);
+    await lean2.ingest({
+      topic: 'data/POC/group1/A7-001',
+      payload: Buffer.from(JSON.stringify({ _terminalTime: 'x', _groupName: 'g', temperatura: '62' })),
+      qos: 1,
+      retain: false,
+      receivedAt: new Date(base + 3603_000),
+    });
+    const captured = await lean2.ingest({
+      topic: 'data/POC/group1/A7-001',
+      payload: Buffer.from(JSON.stringify({ _terminalTime: 'x', _groupName: 'g', temperatura: '62' })),
+      qos: 1,
+      retain: false,
+      receivedAt: new Date(base + 3606_000),
+    });
+    expect(captured.rawId).not.toBeNull();
+    expect(captured.samples).toBe(1);
+    await db.query('UPDATE devices SET raw_capture_until=NULL WHERE id=$1', [HAIWELL]);
+  });
   it('processes a burst without leaving a RAW backlog', async () => {
     const results = [];
     for (let step = 0; step < 20; step += 1) {
@@ -379,7 +427,8 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       'SELECT * FROM mqtt_messages_raw WHERE id=$1',
       [result.rawId],
     );
-    expect(raw.rows[0].payload_hex).toBe(Buffer.from(payload).toString('hex'));
+    // Readable text is kept once, as text; hex only for payloads that are not.
+    expect((raw.rows[0] as { payload_text?: string }).payload_text).toBe(payload);
     expect(raw.rows[0].tenant_id).toBe(TENANT);
     const good = simulatedMessage('haiwell', 5);
     expect((await ingest(good.topic, good.payload)).status).toBe('processed');
@@ -388,11 +437,11 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
     const payload = '['.repeat(15000) + '0' + ']'.repeat(15000);
     const result = await ingest('unknown/deep', payload);
     expect(['error', 'unrecognized']).toContain(result.status);
-    const raw = await db.query<{ payload_hex: string }>(
-      'SELECT payload_hex FROM mqtt_messages_raw WHERE id=$1',
+    const raw = await db.query<{ payload_text: string }>(
+      'SELECT payload_text FROM mqtt_messages_raw WHERE id=$1',
       [result.rawId],
     );
-    expect(raw.rows[0].payload_hex).toBe(Buffer.from(payload).toString('hex'));
+    expect(raw.rows[0].payload_text).toBe(payload);
   });
   it('tenant scope cannot be bypassed with a header or query parameter', async () => {
     const api = await createApp(db, {

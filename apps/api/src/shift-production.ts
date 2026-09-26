@@ -866,22 +866,60 @@ export async function rebuildProductionBuckets(
     );
   const number = (value: unknown) =>
     value == null || !Number.isFinite(Number(value)) ? null : Number(value);
-  const observationOf = (item: ReplayRow) => ({
-    at: new Date(item.at).getTime(),
-    pieces: number(item.pieces),
-    pallets: number(item.pallets),
-    tons: number(item.tons),
-    auto: item.auto == null ? null : Number(item.auto) !== 0,
-    productCode: item.product_code ?? 'Sem produto',
-    weightKg: number(item.weight),
-  });
+  // Readings are stored only when they change (migration 027): a message carries the signals
+  // that moved, and every other one still holds its last value.
+  const carried: {
+    pieces: number | null;
+    pallets: number | null;
+    tons: number | null;
+    auto: boolean | null;
+    weightKg: number | null;
+  } = { pieces: null, pallets: null, tons: null, auto: null, weightKg: null };
+  const observationOf = (item: ReplayRow) => {
+    const auto = item.auto == null ? null : Number(item.auto) !== 0;
+    carried.pieces = number(item.pieces) ?? carried.pieces;
+    carried.pallets = number(item.pallets) ?? carried.pallets;
+    carried.tons = number(item.tons) ?? carried.tons;
+    carried.auto = auto ?? carried.auto;
+    carried.weightKg = number(item.weight) ?? carried.weightKg;
+    return {
+      at: new Date(item.at).getTime(),
+      ...carried,
+      productCode: item.product_code ?? 'Sem produto',
+    };
+  };
 
   // Starting mid-history, the message just before carries the counters to compare with.
   let runtime: Runtime | null = null;
   if (start > firstAt) {
+    // Each signal's own last value before the start: with change-only storage the message just
+    // before may carry only one of them.
+    const lastBefore = await db.query<{ tag_id: string; value: number | null }>(
+      `SELECT DISTINCT ON (tag_id) tag_id,
+         coalesce(value_number,CASE WHEN value_boolean THEN 1 WHEN NOT value_boolean THEN 0 END) value
+       FROM telemetry_samples
+       WHERE tenant_id=$1 AND device_id=$2 AND tag_id=ANY($3::uuid[]) AND received_at<$4
+         AND received_at>=$5
+       ORDER BY tag_id,received_at DESC`,
+      [
+        tenantId,
+        deviceId,
+        [row.blocks_tag_id, row.pallets_tag_id, row.tons_total_tag_id, row.auto_tag_id, row.weight_tag_id].filter(Boolean),
+        new Date(start),
+        new Date(start - 2 * DAY_MS),
+      ],
+    );
+    const lastOf = (tagId: string | null) =>
+      tagId ? number(lastBefore.rows.find((item) => item.tag_id === tagId)?.value) : null;
+    carried.pieces = lastOf(row.blocks_tag_id);
+    carried.pallets = lastOf(row.pallets_tag_id);
+    carried.tons = lastOf(row.tons_total_tag_id);
+    const autoBefore = lastOf(row.auto_tag_id);
+    carried.auto = autoBefore == null ? null : autoBefore !== 0;
+    carried.weightKg = lastOf(row.weight_tag_id);
     const before = await replay(new Date(start - 2 * DAY_MS), new Date(start), 'DESC', 'LIMIT 1');
     if (before.rows[0]) {
-      const seed = observationOf(before.rows[0]);
+      const seed = { ...observationOf({ ...before.rows[0], pieces: null, pallets: null, tons: null, auto: null, weight: null }) };
       runtime = {
         lastAt: seed.at,
         lastPieces: seed.pieces,

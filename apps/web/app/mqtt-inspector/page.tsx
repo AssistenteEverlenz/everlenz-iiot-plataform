@@ -1,6 +1,76 @@
 'use client';
 import { useState } from 'react';
-import { usePoll, type Raw, type Topic, time } from '../../components/data';
+import { mutate, usePoll, type Device, type Raw, type Topic, time } from '../../components/data';
+
+// Raw messages are no longer all stored: only unknown topics and messages that fail. To look at a
+// device's traffic, switch its recording on for a while; the readings are then kept in full too.
+function CaptureControl() {
+  const devices = usePoll<Device[]>('/devices?limit=200&offset=0', 15000);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  async function capture(id: string, minutes: number) {
+    setBusy(id);
+    setError('');
+    try {
+      await mutate(`/devices/${id}/raw-capture`, 'POST', { minutes });
+      await devices.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao alterar a gravação.');
+    } finally {
+      setBusy(null);
+    }
+  }
+  const now = Date.now();
+  return (
+    <section className="card capture-card">
+      <h2>Gravação para diagnóstico</h2>
+      <p className="shifts-help">
+        As mensagens brutas só ficam guardadas enquanto a gravação estiver ligada. Tópicos
+        desconhecidos e mensagens com erro são sempre guardados.
+      </p>
+      {error && <div className="error-banner">{error}</div>}
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>EQUIPAMENTO</th>
+              <th>GRAVAÇÃO</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {devices.data?.map((device) => {
+              const until = device.raw_capture_until ? new Date(device.raw_capture_until).getTime() : 0;
+              const on = until > now;
+              return (
+                <tr key={device.id}>
+                  <td>{device.name}</td>
+                  <td>{on ? `Ligada até ${time(device.raw_capture_until)}` : 'Desligada'}</td>
+                  <td className="capture-actions">
+                    {on ? (
+                      <button disabled={busy === device.id} onClick={() => void capture(device.id, 0)}>
+                        Desligar
+                      </button>
+                    ) : (
+                      <>
+                        <button disabled={busy === device.id} onClick={() => void capture(device.id, 60)}>
+                          Gravar 1 h
+                        </button>
+                        <button disabled={busy === device.id} onClick={() => void capture(device.id, 24 * 60)}>
+                          Gravar 24 h
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 function processingLabel(raw: Raw) {
   if (raw.processing_status === 'pending') return 'Processando agora';
   if (raw.processing_status === 'processed') return 'Processada';
@@ -47,6 +117,7 @@ export default function Inspector() {
           OPERATOR_RAW_ACCESS no ambiente local.
         </p>
       )}
+      <CaptureControl />
       {(raw.error || topics.error) && (
         <div className="error-banner">{raw.error || topics.error}</div>
       )}
@@ -219,12 +290,15 @@ export default function Inspector() {
                   ? JSON.stringify(selected.parsed_json, null, 2)
                   : (selected.payload_text ?? `HEX: ${selected.payload_hex}`)}
               </pre>
-              <details>
-                <summary className="muted" style={{ fontSize: 11, cursor: 'pointer' }}>
-                  Bytes originais (hexadecimal)
-                </summary>
-                <pre className="payload">{selected.payload_hex}</pre>
-              </details>
+              {/* Hex is kept only for payloads that are not valid text (migration 027). */}
+              {selected.payload_hex && (
+                <details>
+                  <summary className="muted" style={{ fontSize: 11, cursor: 'pointer' }}>
+                    Bytes originais (hexadecimal)
+                  </summary>
+                  <pre className="payload">{selected.payload_hex}</pre>
+                </details>
+              )}
             </>
           ) : (
             <div className="empty">Selecione uma mensagem para inspecionar.</div>

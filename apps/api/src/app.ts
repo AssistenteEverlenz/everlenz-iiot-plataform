@@ -2030,6 +2030,30 @@ export async function createApp(
       )
     ).rows;
   });
+  // Diagnosis: records the device's raw messages (and every reading, changed or not) for a
+  // while. Off by default: only unknown topics and messages that fail are always kept.
+  app.post('/api/devices/:id/raw-capture', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const { minutes } = z
+      .object({ minutes: z.number().int().min(0).max(7 * 24 * 60) })
+      .parse(req.body);
+    const updated = await db.query<{ raw_capture_until: Date | null }>(
+      `UPDATE devices SET raw_capture_until=CASE WHEN $3::int=0 THEN NULL
+         ELSE now()+($3::int * interval '1 minute') END
+       WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING raw_capture_until`,
+      [current.tenantId, id, minutes],
+    );
+    if (!updated.rows[0]) return reply.code(404).send({ error: 'Device not found' });
+    await recordAudit(db, req, current, {
+      action: 'device.raw_capture',
+      targetType: 'device',
+      targetId: id,
+      summary: { minutes },
+    });
+    return { rawCaptureUntil: updated.rows[0].raw_capture_until };
+  });
   app.get('/api/mqtt/topics', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const q = pagination.parse(req.query);
@@ -2047,10 +2071,15 @@ export async function createApp(
       'SELECT count(*)::int count FROM devices WHERE tenant_id=$1 AND archived_at IS NULL AND ($2::uuid[] IS NULL OR id=ANY($2))',
       [current.tenantId, deviceIds],
     );
+    // The last complete minute (or this one, once it is busier), counted by the ingestor: raw
+    // messages are kept only for
+    // diagnosis now, so they no longer tell the message rate.
     const raw = await db.query<{ messages_per_minute: number }>(
-      `SELECT count(*)::int messages_per_minute FROM mqtt_messages_raw
-       WHERE ${rawScope} AND ($2::uuid[] IS NULL OR device_id=ANY($2))
-       AND received_at >= now()-interval '1 minute'`,
+      `SELECT coalesce(sum(CASE
+         WHEN minute_bucket=date_trunc('minute',now()) THEN greatest(previous_minute_count,minute_count)
+         WHEN minute_bucket=date_trunc('minute',now())-interval '1 minute' THEN minute_count
+         ELSE 0 END),0)::int messages_per_minute
+       FROM device_status WHERE tenant_id=$1 AND ($2::uuid[] IS NULL OR device_id=ANY($2))`,
       [current.tenantId, deviceIds],
     );
     const last = await db.query<{ last_message_at: string | null }>(

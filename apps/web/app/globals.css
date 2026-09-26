@@ -8134,3 +8134,4 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .operation-editor-bar { flex-direction: column; align-items: stretch; }
   .operation-editor-stage { padding: 8px; }
 }
+.capture-actions { display: flex; gap: 6px; justify-content: flex-end; }

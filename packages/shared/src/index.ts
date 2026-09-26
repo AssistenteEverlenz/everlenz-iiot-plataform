@@ -185,6 +185,8 @@ export interface Device {
   site_slug: string;
   adapter_type: string;
   enabled: boolean;
+  /** Until when the raw messages are recorded for diagnosis (migration 027). */
+  raw_capture_until?: Date | string | null;
 }
 export interface TopicMapping {
   device_id: string;
