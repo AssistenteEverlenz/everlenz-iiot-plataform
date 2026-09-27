@@ -10,7 +10,8 @@ export type NavIconName =
   | 'edit'
   | 'report'
   | 'pin'
-  | 'more';
+  | 'more'
+  | 'tv';
 
 export function NavIcon({ name }: { name: NavIconName }) {
   const common = {
@@ -94,6 +95,12 @@ export function NavIcon({ name }: { name: NavIconName }) {
           <circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
           <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
           <circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {name === 'tv' && (
+        <>
+          <rect x="2.5" y="5" width="19" height="13" rx="2" />
+          <path d="M9 21h6M12 18v3" />
         </>
       )}
       {name === 'mqtt' && (

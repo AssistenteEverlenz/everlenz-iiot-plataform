@@ -170,9 +170,15 @@ export const HEALTH_LABELS: Record<Health, string> = {
   red: 'Fora da meta',
 };
 
-function itemValue(item: CardItem, values: Record<string, number>) {
+/** The number and its unit apart: a block draws the unit smaller, so the number stays big. */
+function itemParts(item: CardItem, values: Record<string, number>) {
   const result = item.formula.trim() ? evaluateFormula(item.formula, values) : null;
-  return result == null ? '—' : `${number(result, item.decimals)} ${item.unit}`.trim();
+  if (result == null) return { value: '—', unit: '' };
+  return { value: number(result, item.decimals), unit: item.unit.trim() };
+}
+function itemValue(item: CardItem, values: Record<string, number>) {
+  const { value, unit } = itemParts(item, values);
+  return unit ? `${value} ${unit}` : value;
 }
 
 type EditHandlers = {
@@ -284,7 +290,10 @@ export function OperationCardBody({
               onDragEnd={edit ? () => setDragging(null) : undefined}
             >
               <span className="operation-block-label">{item.label || 'Calculado'}</span>
-              <b>{itemValue(item, values)}</b>
+              <b>
+                {itemParts(item, values).value}
+                {itemParts(item, values).unit && <small>{itemParts(item, values).unit}</small>}
+              </b>
               {edit && (
                 <>
                   <span className="operation-block-grip" aria-hidden="true">⠿</span>

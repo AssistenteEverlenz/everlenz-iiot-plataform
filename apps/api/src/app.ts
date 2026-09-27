@@ -14,6 +14,7 @@ import { registerShiftProductionRoutes, scheduleProductionRebuild } from './shif
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 import { registerTvRoutes } from './tv-screens.js';
+import { registerOperationTvRoutes } from './operation-tv.js';
 const uuid = z.uuid();
 type LocationInput = {
   address?: string | null;
@@ -687,6 +688,7 @@ export async function createApp(
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
   registerTvRoutes(app, db, access);
+  registerOperationTvRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;

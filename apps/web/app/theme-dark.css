@@ -2334,6 +2334,9 @@
   :root[data-theme='dark'] .operation-block-label {
     color: #86999f;
   }
+  :root[data-theme='dark'] .operation-block > b small {
+    color: #84979e;
+  }
   :root[data-theme='dark'] .operation-block.kind-efficiency > b {
     color: #7ce9da;
   }
@@ -2455,5 +2458,52 @@
   }
   :root[data-theme='dark'] .plant-summary:has(.health-red) footer .machine-health {
     color: #dc9589;
+  }
+  :root[data-theme='dark'] .operations-tv-link {
+    border: 1px solid #2f4349;
+    background: #12191c;
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .operations-tv-link:hover {
+    border-color: #4d6d78;
+  }
+  :root[data-theme='dark'] .tv-plant {
+    border: 1px solid #ffffff1f;
+    border-left: 0.35vw solid var(--health, #4b6a75);
+    background: #ffffff0a;
+  }
+  :root[data-theme='dark'] .tv-plant > header {
+    border: 0;
+  }
+  :root[data-theme='dark'] .tv-plant > header strong {
+    color: inherit;
+  }
+  :root[data-theme='dark'] .tv-plant .machine-row {
+    border: 0;
+    background: transparent;
+  }
+  :root[data-theme='dark'] .tv-plant .operation-block {
+    border-color: #ffffff24;
+    background: #ffffff12;
+  }
+  :root[data-theme='dark'] .tv-plant .operation-block-label {
+    color: #b9cfd4;
+  }
+  :root[data-theme='dark'] .tv-plant .operation-block > b small {
+    color: #9fb8bd;
+  }
+  :root[data-theme='dark'] .tv-plant-missing {
+    color: #8fa6ac;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-plant {
+    border-color: #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-plant .operation-block {
+    border-color: #212e33;
+    background: #161f22;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-plant .operation-block-label {
+    color: #91a1a6;
   }
 }

@@ -334,6 +334,15 @@ export default function OperationsPage() {
             </div>
             <div className="operations-layout-control">
               <span>{sites.length} unidades exibidas</span>
+              {/* Every plant on a wall display at once, and its editor for the master. */}
+              <a className="operations-tv-link" href="/operations/tv" target="_blank" rel="noreferrer">
+                <NavIcon name="tv" /> Modo TV
+              </a>
+              {user.role === 'master' && (
+                <Link className="operations-tv-link" href="/operations/tv/editor">
+                  Configurar TV
+                </Link>
+              )}
               {user.role === 'master' && <label>Distribuição
                 <select value={layoutColumns} onChange={async (event) => { const next = Number(event.target.value) as 1 | 2 | 3; setLayoutColumns(next); try { await mutate('/operations/settings', 'PATCH', { layoutColumns: next }); await settings.refresh(); } catch { setLayoutColumns(settings.data?.layoutColumns ?? 2); } }}>
                   <option value="1">1 por linha</option><option value="2">2 colunas</option><option value="3">3 colunas</option>

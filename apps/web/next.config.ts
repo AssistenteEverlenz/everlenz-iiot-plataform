@@ -51,6 +51,7 @@ const config: NextConfig = {
     return [
       { source: '/:path*', headers: securityHeaders },
       { source: '/dashboards/:id/tv', headers: tvFrameHeaders },
+      { source: '/operations/tv', headers: tvFrameHeaders },
     ];
   },
 };
