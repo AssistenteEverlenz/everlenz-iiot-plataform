@@ -1,5 +1,16 @@
 export type NavIconName =
-  'home' | 'panels' | 'device' | 'users' | 'brand' | 'mqtt' | 'production' | 'map';
+  | 'home'
+  | 'panels'
+  | 'device'
+  | 'users'
+  | 'brand'
+  | 'mqtt'
+  | 'production'
+  | 'map'
+  | 'edit'
+  | 'report'
+  | 'pin'
+  | 'more';
 
 export function NavIcon({ name }: { name: NavIconName }) {
   const common = {
@@ -55,6 +66,34 @@ export function NavIcon({ name }: { name: NavIconName }) {
         <>
           <path d="M4 20V10l5 3V10l5 3V6l6 4v10Z" />
           <path d="M8 17h2m4 0h2" />
+        </>
+      )}
+      {name === 'edit' && (
+        <>
+          <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17Z" />
+          <path d="m14.5 7.5 2 2" />
+        </>
+      )}
+      {/* Production report: a clipboard with two ticked lines and a plain one. */}
+      {name === 'report' && (
+        <>
+          <rect x="4" y="4" width="16" height="17" rx="2" />
+          <path d="M9 2.8h6a1 1 0 0 1 1 1V5H8V3.8a1 1 0 0 1 1-1Z" />
+          <path d="m7.5 10.5 1.2 1.2 2-2M7.5 15l1.2 1.2 2-2" />
+          <path d="M13.5 10h3m-3 5h3" />
+        </>
+      )}
+      {name === 'pin' && (
+        <>
+          <path d="M12 21.5s7-6.4 7-11.5a7 7 0 1 0-14 0c0 5.1 7 11.5 7 11.5Z" />
+          <circle cx="12" cy="10" r="2.6" />
+        </>
+      )}
+      {name === 'more' && (
+        <>
+          <circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+          <circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none" />
         </>
       )}
       {name === 'mqtt' && (

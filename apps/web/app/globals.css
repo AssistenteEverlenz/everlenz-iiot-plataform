@@ -135,6 +135,10 @@
   gap: 20px;
 }
 .operations-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
   margin-bottom: 18px;
 }
 .operations-section-title {
@@ -668,7 +672,7 @@ main {
   padding: 0 38px 40px;
   max-width: 1700px;
 }
-header {
+.platform-topbar {
   height: 80px;
   border-bottom: 1px solid #dae3e5;
   display: flex;
@@ -992,6 +996,9 @@ input:focus-visible {
   padding: 8px 10px;
 }
 .live-dot {
+  /* Inline by default, which drops width and height and left a green sliver. */
+  display: inline-block;
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -1777,7 +1784,7 @@ input:focus-visible {
     margin: 0;
     padding: 0 15px 25px;
   }
-  header {
+  .platform-topbar {
     height: 55px;
   }
   .heading {
@@ -4553,10 +4560,9 @@ body.print-layout .dashboard-widget.sized .gauge-v2 {
    Reviewed screen by screen at 390px. The grid returns to automatic heights there, so
    charts that fill "100% of the card" collapsed: they get explicit heights. */
 @media (max-width: 700px) {
-  /* Four destinations, four columns: a fifth empty column made the bar look unfinished. */
   .bottom-navigation {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    padding: 6px 8px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 6px 4px;
   }
   .bottom-navigation a,
   .bottom-navigation button {
@@ -4812,8 +4818,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .equipment-head strong {
     font-size: 15px;
   }
-  .bottom-navigation:has(.bottom-fab) {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* While the page offers its own action, it takes the middle slot from the "Mais" button. */
+  .bottom-navigation:has(.bottom-fab) .bottom-more {
+    display: none;
   }
   .bottom-fab {
     display: grid;
@@ -8135,3 +8142,111 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .operation-editor-stage { padding: 8px; }
 }
 .capture-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* ---------- Phone pass, 2026-09-27 ----------
+   Reviewed page by page at 390 px: touch targets the finger rule must not stretch, headings
+   that are not the platform top bar, filter bars that fitted only on a desktop row, and the
+   plant card's blocks at phone width. */
+@media (max-width: 700px) {
+  /* The finger rule (button { min-height: 42px }) turned these into tall ellipses and boxes. */
+  .plant-map-marker,
+  .operations-kpis button,
+  .lab-shift-list button,
+  .operation-block,
+  .machine-actions-row button,
+  .machine-actions-row a,
+  .plant-card-actions button,
+  .plant-card-actions a {
+    min-height: 0;
+  }
+  .plant-map-marker {
+    padding: 0;
+  }
+  /* A pill against the left edge of the bar lost its first letters. */
+  .platform-topbar {
+    gap: 10px;
+    padding-left: 2px;
+  }
+  /* The phone bar keeps the page title and the theme toggle; the live label crowded it. */
+  .topbar-live {
+    display: none;
+  }
+  .platform-topbar .pill {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Search, plant and status stood in one desktop row and made the whole page scroll sideways. */
+  .users-filter-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .users-filter-bar > * {
+    min-width: 0;
+    width: 100%;
+  }
+  .filter-combobox {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* The plant card at phone width: two blocks per row, with room for the whole label. */
+@media (max-width: 760px) {
+  .machine-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .machine-card-grid {
+    grid-auto-rows: 30px;
+    gap: 7px;
+  }
+  .machine-card-grid > * {
+    grid-column: span 6 !important;
+    grid-row: span 2 !important;
+  }
+  .operation-block {
+    padding: 8px 10px;
+  }
+  .operation-block-label {
+    -webkit-line-clamp: 2;
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+    white-space: normal;
+  }
+  .operation-block > b {
+    font-size: 17px;
+  }
+  .machine-actions-row .plant-card-actions a,
+  .machine-actions-row .plant-card-actions button {
+    width: 38px;
+    height: 38px;
+  }
+  /* The count and the layout select stopped fitting side by side. */
+  .operations-layout-control {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* Last phone pass: targets a finger still could not hit reliably. */
+@media (max-width: 700px) {
+  input[type='checkbox'],
+  input[type='radio'],
+  .production-table .select-column input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+    min-height: 20px;
+    flex: none;
+  }
+  .device-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+  }
+  .drag-handle {
+    padding: 6px 9px;
+  }
+}

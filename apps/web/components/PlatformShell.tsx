@@ -55,19 +55,28 @@ const defaultBranding: Branding = {
 
 const PlatformContext = createContext<PlatformContextValue | null>(null);
 const navigation = [
-  { href: '/operations', label: 'Operação', short: 'Operação', icon: 'map' },
   { href: '/', label: 'Centro de comando', short: 'Início', icon: 'home' },
+  { href: '/operations', label: 'Operação', short: 'Operação', icon: 'map' },
   { href: '/dashboards', label: 'Painéis', short: 'Painéis', icon: 'panels' },
   { href: '/devices', label: 'Dispositivos', short: 'Ativos', icon: 'device' },
 ] satisfies { href: string; label: string; short: string; icon: NavIconName }[];
-// Every user reads production history; on phones it lives in the "Mais" sheet so the bottom
-// bar keeps its four slots.
 const productionNavigation = {
   href: '/production',
   label: 'Produção',
   short: 'Produção',
   icon: 'production' as const,
 };
+/**
+ * The phone's bottom bar: five slots on one line. Início and Operação, then the middle slot,
+ * then Painéis and Produção. Dispositivos and the master's screens live in the "Mais" sheet,
+ * which the middle slot opens whenever the page has no highlighted action of its own.
+ */
+const bottomNavigation = [
+  navigation[0],
+  navigation[1],
+  navigation[2],
+  productionNavigation,
+] satisfies { href: string; label: string; short: string; icon: NavIconName }[];
 
 export function PlatformShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -175,6 +184,10 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
           },
         ]
       : [...navigation, productionNavigation];
+  // The phone's "Mais" sheet: whatever the bottom bar's five slots do not carry.
+  const sheetNavigation = masterNavigation.filter(
+    (item) => !bottomNavigation.some((entry) => entry.href === item.href),
+  );
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -235,7 +248,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             <div className="topbar-page" ref={setHeaderSlot} />
             <span className="topbar-default">PLATAFORMA IIoT</span>
             <div className="topbar-user">
-              <span className="topbar-default">
+              <span className="topbar-default topbar-live">
                 <span className="live-dot" /> Dados em tempo real
               </span>
               <b>{session.user.fullName}</b>
@@ -248,10 +261,26 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
         <nav className="bottom-navigation">
-          {navigation.map((item, index) => (
+          {bottomNavigation.map((item, index) => (
             <Fragment key={item.href}>
-              {/* Between Painéis and Ativos: the page's highlighted action button, if any. */}
-              {index === 2 && <span className="bottom-fab-slot" ref={setFabSlot} />}
+              {/* Middle slot: the page's own action when it has one, else the "Mais" sheet. */}
+              {index === 2 && (
+                <>
+                  <span className="bottom-fab-slot" ref={setFabSlot} />
+                  {/* CSS hides this one while the slot holds a page action, so the bar always
+                      shows exactly five slots without the shell having to watch the portal. */}
+                  <button
+                    className={`bottom-more ${mobileMenu ? 'active' : ''}`}
+                    aria-label="Mais opções"
+                    onClick={() => setMobileMenu(!mobileMenu)}
+                  >
+                    <span>
+                      <NavIcon name="more" />
+                    </span>
+                    Mais
+                  </button>
+                </>
+              )}
               <Link className={active(pathname, item.href) ? 'active' : ''} href={item.href}>
                 <span>
                   <NavIcon name={item.icon} />
@@ -260,9 +289,6 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
               </Link>
             </Fragment>
           ))}
-          <button className={mobileMenu ? 'active' : ''} onClick={() => setMobileMenu(!mobileMenu)}>
-            <span>•••</span>Mais
-          </button>
         </nav>
         {mobileMenu && (
           <div className="mobile-menu-backdrop" onClick={() => setMobileMenu(false)}>
@@ -274,7 +300,7 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
                   <small>{session.user.email}</small>
                 </div>
               </div>
-              {masterNavigation.slice(navigation.length).map((item) => (
+              {sheetNavigation.map((item) => (
                 <Link key={item.href} href={item.href} onClick={() => setMobileMenu(false)}>
                   <NavIcon name={item.icon} /> {item.label}
                 </Link>

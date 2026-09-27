@@ -234,7 +234,7 @@
   :root[data-theme='dark'] .dot {
     background: #32b69e;
   }
-  :root[data-theme='dark'] header {
+  :root[data-theme='dark'] .platform-topbar {
     border-bottom: 1px solid #25353a;
     color: #8c9ea3;
   }

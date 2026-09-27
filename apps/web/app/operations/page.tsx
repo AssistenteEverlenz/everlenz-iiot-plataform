@@ -11,6 +11,7 @@ import {
   type CardConfig,
 } from '../../components/OperationCard';
 import type { PanelSource } from '../../components/variables';
+import { NavIcon } from '../../components/NavIcon';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, time, usePoll } from '../../components/data';
 
@@ -316,10 +317,10 @@ export default function OperationsPage() {
                     <small>{site.reference}</small>
                   </div>
                   {site.machines.length === 1 && <div className="plant-card-actions">
-                    {user.role === 'master' && <button title="Editar cartão" aria-label="Editar cartão" onClick={() => configure(site.machines[0], site.name)}>✎</button>}
-                    <button title="Relatório de produção" aria-label="Relatório de produção" onClick={() => setDetail(site.machines[0])}>▤</button>
-                    {site.machines[0].dashboardId && <Link title="Abrir painel" aria-label="Abrir painel" href={`/dashboards/${site.machines[0].dashboardId}`}>▣</Link>}
-                    {user.role === 'master' && <button title="Editar localização" aria-label="Editar localização" onClick={() => setEditing(site.machines[0])}>⌖</button>}
+                    {user.role === 'master' && <button title="Editar cartão" aria-label="Editar cartão" onClick={() => configure(site.machines[0], site.name)}><NavIcon name="edit" /></button>}
+                    <button title="Relatório de produção" aria-label="Relatório de produção" onClick={() => setDetail(site.machines[0])}><NavIcon name="report" /></button>
+                    {site.machines[0].dashboardId && <Link title="Abrir painel" aria-label="Abrir painel" href={`/dashboards/${site.machines[0].dashboardId}`}><NavIcon name="panels" /></Link>}
+                    {user.role === 'master' && <button title="Editar localização" aria-label="Editar localização" onClick={() => setEditing(site.machines[0])}><NavIcon name="pin" /></button>}
                   </div>}
                 </header>
                 <div className="machine-grid">
@@ -329,10 +330,10 @@ export default function OperationsPage() {
                         machine={machine}
                         config={configFor(machine)}
                         actions={site.machines.length > 1 && <div className="plant-card-actions">
-                          {user.role === 'master' && <button title="Editar cartão" onClick={() => configure(machine, site.name)}>✎</button>}
-                          <button title="Relatório de produção" onClick={() => setDetail(machine)}>▤</button>
-                          {machine.dashboardId && <Link title="Abrir painel" href={`/dashboards/${machine.dashboardId}`}>▣</Link>}
-                          {user.role === 'master' && <button title="Editar localização" onClick={() => setEditing(machine)}>⌖</button>}
+                          {user.role === 'master' && <button title="Editar cartão" onClick={() => configure(machine, site.name)}><NavIcon name="edit" /></button>}
+                          <button title="Relatório de produção" onClick={() => setDetail(machine)}><NavIcon name="report" /></button>
+                          {machine.dashboardId && <Link title="Abrir painel" href={`/dashboards/${machine.dashboardId}`}><NavIcon name="panels" /></Link>}
+                          {user.role === 'master' && <button title="Editar localização" onClick={() => setEditing(machine)}><NavIcon name="pin" /></button>}
                         </div>}
                       />
                     </div>
