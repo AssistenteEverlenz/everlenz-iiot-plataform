@@ -75,6 +75,11 @@ export function PlantMap({
   onSelect: (id: string) => void;
   onClear?: () => void;
 }) {
+  // The map is torn down and rebuilt whenever this effect runs, so it must not depend on the
+  // callbacks: a caller that rebuilds them each render (the TV, whose clock ticks every second)
+  // made the map blink. They are read from a ref instead, always the latest.
+  const handlers = useRef({ onSelect, onClear });
+  handlers.current = { onSelect, onClear };
   const node = useRef<HTMLDivElement>(null);
   const instance = useRef<LeafletMap | null>(null);
   const viewport = useRef<{ center: [number, number]; zoom: number } | null>(null);
@@ -89,7 +94,7 @@ export function PlantMap({
         if (!active || !node.current || !window.L) return;
         instance.current?.remove();
         const map = window.L.map(node.current, { zoomControl: true, scrollWheelZoom: true });
-        map.on('click', () => onClear?.());
+        map.on('click', () => handlers.current.onClear?.());
         instance.current = map;
         window.L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
@@ -116,7 +121,7 @@ export function PlantMap({
             .bindPopup(
               `<strong>${esc(plant.name)}</strong><small>${esc([plant.groupName, plant.location.city, plant.location.state].filter(Boolean).join(' · '))}</small>`,
             )
-            .on('click', () => onSelect(plant.id));
+            .on('click', () => handlers.current.onSelect(plant.id));
         }
         if (viewport.current) map.setView(viewport.current.center, viewport.current.zoom);
         else if (points.length === 0) map.setView([-14.2, -51.9], 4);
@@ -133,7 +138,7 @@ export function PlantMap({
       }
       instance.current = null;
     };
-  }, [signature, onSelect, onClear]);
+  }, [signature]);
   useEffect(() => {
     node.current?.querySelectorAll('.plant-map-marker').forEach((marker) => {
       marker.classList.toggle('selected', marker.getAttribute('data-plant-id') === selected);

@@ -92,10 +92,16 @@ export function OperationsTvGrid({
 }) {
   const byId = new Map(data.machines.map((machine) => [machine.deviceId, machine]));
   // A block of the group reads the plants of this screen, so four ceramics total those four.
-  const onScreen = screen.cards
-    .filter((card) => card.kind === 'plant' && card.device_id)
-    .map((card) => byId.get(card.device_id!))
-    .filter((machine): machine is Machine => Boolean(machine));
+  const onScreen = [
+    ...new Map(
+      screen.cards
+        .filter((card) => card.kind === 'plant' && card.device_id)
+        .map((card) => byId.get(card.device_id!))
+        .filter((machine): machine is Machine => Boolean(machine))
+        // A plant placed twice on a screen must not be counted twice.
+        .map((machine) => [machine.deviceId, machine] as const),
+    ).values(),
+  ];
   const fleet = onScreen.length ? onScreen : data.machines;
   return (
     <div
