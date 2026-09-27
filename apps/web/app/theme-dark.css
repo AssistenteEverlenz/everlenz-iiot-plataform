@@ -2506,4 +2506,75 @@
   :root[data-theme='dark'] .tv3.light .tv-plant .operation-block-label {
     color: #91a1a6;
   }
+  :root[data-theme='dark'] .tv-fleet {
+    border: 1px solid #ffffff1f;
+    background: #ffffff0a;
+  }
+  :root[data-theme='dark'] .tv-fleet-title {
+    color: #9fb8bd;
+  }
+  :root[data-theme='dark'] .tv-fleet-kpis span {
+    color: #9fb8bd;
+  }
+  :root[data-theme='dark'] .tv-fleet-kpis i {
+    background: var(--dot);
+  }
+  :root[data-theme='dark'] .tv-fleet-totals span {
+    color: #9fb8bd;
+  }
+  :root[data-theme='dark'] .tv-fleet-totals b small {
+    color: #9fb8bd;
+  }
+  :root[data-theme='dark'] .tv-fleet-chart {
+    color: #d9e8ea;
+  }
+  :root[data-theme='dark'] .tv-fleet-legend span {
+    color: #b9cfd4;
+  }
+  :root[data-theme='dark'] .tv-fleet-legend b {
+    color: #eef7f8;
+  }
+  :root[data-theme='dark'] .tv-fleet-map-empty {
+    background: #07171dcc;
+    color: #c7dade;
+  }
+  :root[data-theme='dark'] .tv-fleet-alert {
+    border-color: #e4572e55;
+    background: #e4572e14;
+  }
+  :root[data-theme='dark'] .tv-fleet-alert.ok {
+    border-color: #1fbf7a45;
+    background: #1fbf7a12;
+  }
+  :root[data-theme='dark'] .tv-fleet-alert small {
+    color: #b6c8cc;
+  }
+  :root[data-theme='dark'] .tv-fleet-alert-rest {
+    color: #b6c8cc;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-fleet {
+    border-color: #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-fleet-title,
+  :root[data-theme='dark'] .tv3.light .tv-fleet-kpis span,
+  :root[data-theme='dark'] .tv3.light .tv-fleet-totals span,
+  :root[data-theme='dark'] .tv3.light .tv-fleet-totals b small,
+  :root[data-theme='dark'] .tv3.light .tv-fleet-legend span {
+    color: #91a1a6;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-fleet-chart {
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-fleet-legend b {
+    color: #d3dcdf;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-fleet-alert {
+    border-color: #4f3027;
+    background: #2c1813;
+  }
+  :root[data-theme='dark'] .tv3.light .tv-fleet-alert.ok {
+    border-color: #314d41;
+    background: #192a22;
+  }
 }

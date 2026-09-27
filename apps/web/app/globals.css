@@ -8109,6 +8109,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .operation-block-label { display: -webkit-box; overflow: hidden; color: #788d94; font-size: 9px; letter-spacing: .06em; line-height: 1.25; text-transform: uppercase; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .operation-block > b { overflow: hidden; font-size: clamp(13px, min(30cqh, 30cqw), 34px); font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 /* The unit sits under the number, so a narrow block keeps the number big and whole. */
+/* A word (the recipe) reads better a little smaller and without figure spacing. */
+.operation-block > b.is-text { font-size: clamp(12px, min(22cqh, 15cqw), 26px); font-variant-numeric: normal; }
+.tv-plant .operation-block > b.is-text { font-size: clamp(12px, min(24cqh, 16cqw), 32px); }
 .operation-block > b small { display: block; margin: 0.08em 0 0; color: #7b9097; font-size: 0.46em; font-weight: 500; letter-spacing: 0; line-height: 1.15; }
 .operation-block.kind-efficiency > b { color: #0b7d6d; }
 .operation-block.kind-formula { border-style: dashed; }
@@ -8444,3 +8447,98 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3.light .tv-plant { border-color: #dbe6e8; background: #fff; }
 .tv3.light .tv-plant .operation-block { border-color: #e2ebec; background: #f7fafa; }
 .tv3.light .tv-plant .operation-block-label { color: #6d8087; }
+
+/* Blocks of the operations TV that speak for the group, beside the plant cards. */
+.tv-fleet {
+  display: grid;
+  gap: 0.6vh;
+  min-height: 0;
+  height: 100%;
+  padding: 0.9vh 0.8vw;
+  border: 1px solid #ffffff1f;
+  border-radius: 0.9vw;
+  background: #ffffff0a;
+  overflow: hidden;
+}
+.tv-fleet-title {
+  color: #9fb8bd;
+  font-size: clamp(9px, 1.25vh, 17px);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.tv-fleet-kpis {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8vw;
+}
+.tv-fleet-kpis > div { display: grid; gap: 0.2vh; min-width: 0; }
+.tv-fleet-kpis b { font-size: clamp(20px, 5.2vh, 70px); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.tv-fleet-kpis span {
+  display: flex;
+  align-items: center;
+  gap: 0.45vw;
+  overflow: hidden;
+  color: #9fb8bd;
+  font-size: clamp(9px, 1.35vh, 18px);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tv-fleet-kpis i { flex: none; width: 0.8vh; height: 0.8vh; border-radius: 50%; background: var(--dot); }
+.tv-fleet-totals { grid-template-rows: auto minmax(0, 1fr); }
+.tv-fleet-totals > div {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 0.8vw;
+}
+.tv-fleet-totals > div > div { display: grid; gap: 0.2vh; min-width: 0; }
+.tv-fleet-totals span { overflow: hidden; color: #9fb8bd; font-size: clamp(8px, 1.2vh, 16px); letter-spacing: .06em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.tv-fleet-totals b { font-size: clamp(18px, 4.4vh, 58px); font-weight: 600; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.tv-fleet-totals b small { display: block; margin-top: 0.1em; color: #9fb8bd; font-size: 0.42em; font-weight: 500; letter-spacing: 0; }
+.tv-fleet-chart { grid-template-rows: auto minmax(0, 1fr) auto; color: #d9e8ea; }
+.tv-fleet-chart-body { min-height: 0; }
+.tv-fleet-legend { display: flex; flex-wrap: wrap; gap: 0.3vh 0.9vw; font-size: clamp(9px, 1.25vh, 16px); }
+.tv-fleet-legend span { display: inline-flex; align-items: center; gap: 0.35vw; color: #b9cfd4; }
+.tv-fleet-legend i { width: 0.8vh; height: 0.8vh; border-radius: 50%; }
+.tv-fleet-legend b { color: #eef7f8; }
+.tv-fleet-map { grid-template-rows: auto minmax(0, 1fr); }
+.tv-fleet-map-frame { position: relative; min-height: 0; border-radius: 0.6vw; overflow: hidden; }
+.tv-fleet-map-frame .plant-map { height: 100%; min-height: 0; }
+.tv-fleet-map-empty {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 0.6vh;
+  background: #07171dcc;
+  color: #c7dade;
+  font-size: clamp(9px, 1.2vh, 15px);
+  text-align: center;
+}
+.tv-fleet-alert {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: center;
+
+  gap: 1.4vw;
+  overflow-x: hidden;
+  border-color: #e4572e55;
+  background: #e4572e14;
+  font-size: clamp(10px, 1.7vh, 22px);
+}
+.tv-fleet-alert.ok { border-color: #1fbf7a45; background: #1fbf7a12; }
+/* Every name shares the strip and shortens if it must: none is ever cut at the edge. */
+.tv-fleet-alert span { display: inline-flex; align-items: center; gap: 0.45vw; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-fleet-alert span small { overflow: hidden; text-overflow: ellipsis; }
+.tv-fleet-alert i { flex: none; width: 1vh; height: 1vh; border-radius: 50%; }
+.tv-fleet-alert small { color: #b6c8cc; font-size: 0.72em; }
+.tv-fleet-alert-rest { color: #b6c8cc; font-weight: 600; }
+/* Light theme of the TV. */
+.tv3.light .tv-fleet { border-color: #dbe6e8; background: #fff; }
+.tv3.light .tv-fleet-title, .tv3.light .tv-fleet-kpis span, .tv3.light .tv-fleet-totals span,
+.tv3.light .tv-fleet-totals b small, .tv3.light .tv-fleet-legend span { color: #6d8087; }
+.tv3.light .tv-fleet-chart { color: #24505a; }
+.tv3.light .tv-fleet-legend b { color: #14343d; }
+.tv3.light .tv-fleet-alert { border-color: #f0bfb1; background: #fdefeb; }
+.tv3.light .tv-fleet-alert.ok { border-color: #b5e3cf; background: #ebf8f2; }

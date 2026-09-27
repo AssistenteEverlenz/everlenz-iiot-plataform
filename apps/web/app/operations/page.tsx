@@ -36,6 +36,7 @@ type Machine = {
   utilization: number | null;
   location: Location;
   readings: Record<string, number>;
+  texts?: Record<string, string>;
   board: PanelSource | null;
 };
 type Location = {

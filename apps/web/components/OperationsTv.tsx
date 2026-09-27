@@ -12,6 +12,14 @@ import {
   type OperationMachine,
 } from './OperationCard';
 import { defaultScreens, TV_COLUMNS, type OperationTvScreen } from './operationsTvConfig';
+import {
+  FleetAlert,
+  FleetKpis,
+  FleetMap,
+  FleetRanking,
+  FleetStates,
+  FleetTotals,
+} from './OperationsTvBlocks';
 
 // Modo TV da operação ("Gestão à Vista · multicerâmicas"): every plant of the group on the wall
 // at once, each a card of the operations page filling its cell, with no scrolling. The screens
@@ -83,16 +91,22 @@ export function OperationsTvGrid({
   data: OperationsTvData;
 }) {
   const byId = new Map(data.machines.map((machine) => [machine.deviceId, machine]));
+  // A block of the group reads the plants of this screen, so four ceramics total those four.
+  const onScreen = screen.cards
+    .filter((card) => card.kind === 'plant' && card.device_id)
+    .map((card) => byId.get(card.device_id!))
+    .filter((machine): machine is Machine => Boolean(machine));
+  const fleet = onScreen.length ? onScreen : data.machines;
   return (
     <div
       className="tv-grid operations-tv-grid"
       style={{ gridTemplateRows: `repeat(${screen.rows}, minmax(0, 1fr))` }}
     >
       {screen.cards.map((card, index) => {
-        const machine = byId.get(card.device_id);
+        const machine = card.device_id ? byId.get(card.device_id) : undefined;
         return (
           <div
-            key={`${card.device_id}-${index}`}
+            key={`${card.kind}-${card.device_id ?? index}-${index}`}
             className="tv-cell"
             data-card={index}
             style={{
@@ -100,7 +114,19 @@ export function OperationsTvGrid({
               gridRow: `${card.y} / span ${card.h}`,
             }}
           >
-            {machine ? (
+            {card.kind === 'fleet_kpis' ? (
+              <FleetKpis machines={fleet} />
+            ) : card.kind === 'fleet_totals' ? (
+              <FleetTotals machines={fleet} />
+            ) : card.kind === 'fleet_ranking' ? (
+              <FleetRanking machines={fleet} />
+            ) : card.kind === 'fleet_states' ? (
+              <FleetStates machines={fleet} />
+            ) : card.kind === 'fleet_map' ? (
+              <FleetMap machines={fleet} />
+            ) : card.kind === 'fleet_alert' ? (
+              <FleetAlert machines={fleet} configFor={data.configFor} />
+            ) : machine ? (
               <TvPlantCard machine={machine} config={data.configFor(machine)} />
             ) : (
               <div className="tv-plant tv-plant-missing">Cerâmica sem acesso ou removida</div>

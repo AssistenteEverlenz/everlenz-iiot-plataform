@@ -1697,6 +1697,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       idle: number;
       manual: number;
       readings: Record<string, number>;
+      texts: Record<string, string>;
     }>(
       `SELECT s.id site_id,s.name site_name,s.reference site_reference,d.address,d.city,d.state region,
          d.latitude,d.longitude,d.id device_id,d.name device_name,d.device_code,
@@ -1709,7 +1710,18 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
          coalesce(sum(pb.idle_s),0) idle,coalesce(sum(pb.manual_s),0) manual,
          coalesce((SELECT jsonb_object_agg(t.key,ns.last_value)
            FROM tags t JOIN telemetry_numeric_state ns ON ns.tag_id=t.id AND ns.device_id=t.device_id
-           WHERE t.tenant_id=d.tenant_id AND t.device_id=d.id AND t.enabled=true),'{}'::jsonb) readings
+           WHERE t.tenant_id=d.tenant_id AND t.device_id=d.id AND t.enabled=true),'{}'::jsonb) readings,
+         -- The variables that are words, the recipe above all: no counter state holds those, so
+         -- each one's latest reading is looked up by its own index (samples_tag_time).
+         coalesce((SELECT jsonb_object_agg(t.key,x.value_text)
+           FROM tags t JOIN LATERAL (
+             SELECT s.value_text FROM telemetry_samples s
+             WHERE s.tenant_id=t.tenant_id AND s.device_id=t.device_id AND s.tag_id=t.id
+               AND s.value_text IS NOT NULL
+             ORDER BY s.timestamp DESC,s.id DESC LIMIT 1
+           ) x ON true
+           WHERE t.tenant_id=d.tenant_id AND t.device_id=d.id AND t.enabled=true
+             AND t.data_type='text'),'{}'::jsonb) texts
        FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
        LEFT JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
        LEFT JOIN production_runtime pr ON pr.device_id=d.id AND pr.tenant_id=d.tenant_id
@@ -1822,6 +1834,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         pacePerHour,
         utilization: elapsed > 0 ? Number(row.producing) / elapsed : null,
         readings: row.readings ?? {},
+        texts: row.texts ?? {},
         board: boards[rowIndex],
       };
     });

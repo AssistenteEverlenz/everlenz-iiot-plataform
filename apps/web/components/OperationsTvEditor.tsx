@@ -6,6 +6,7 @@ import { mutate, usePoll } from './data';
 import { usePlatform } from './PlatformShell';
 import {
   defaultScreens,
+  FLEET_BLOCKS,
   freePlace,
   TV_COLUMNS,
   type OperationTvCard,
@@ -95,8 +96,10 @@ export function OperationsTvEditor() {
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
-  const nameOf = (deviceId: string) =>
-    plants.find((plant) => plant.id === deviceId)?.name ?? 'Cerâmica removida';
+  const labelOf = (card: OperationTvCard) =>
+    card.kind === 'plant'
+      ? (plants.find((plant) => plant.id === card.device_id)?.name ?? 'Cerâmica removida')
+      : (FLEET_BLOCKS.find((block) => block.kind === card.kind)?.label ?? card.kind);
 
   function change(next: OperationTvScreen[]) {
     setScreens(next);
@@ -154,8 +157,12 @@ export function OperationsTvEditor() {
 
   function addCard() {
     if (!screen || !adding) return;
-    const place = freePlace(screen, 3, 6);
-    updateScreen({ cards: [...screen.cards, { device_id: adding, ...place }] });
+    const block = FLEET_BLOCKS.find((item) => item.kind === adding);
+    const place = freePlace(screen, block ? block.w : 3, block ? block.h : 6);
+    const card: OperationTvCard = block
+      ? { kind: block.kind, device_id: null, ...place }
+      : { kind: 'plant', device_id: adding, ...place };
+    updateScreen({ cards: [...screen.cards, card] });
     setSelected(screen.cards.length);
     setAdding('');
   }
@@ -193,7 +200,11 @@ export function OperationsTvEditor() {
 
   const card = selected != null ? screen?.cards[selected] : undefined;
   /** Plants that no screen shows yet: what the operator most likely wants to add. */
-  const placed = new Set((screens ?? []).flatMap((item) => item.cards.map((entry) => entry.device_id)));
+  const placed = new Set(
+    (screens ?? []).flatMap((item) =>
+      item.cards.flatMap((entry) => (entry.device_id ? [entry.device_id] : [])),
+    ),
+  );
   return (
     <div className="tv-editor">
       <div className="heading">
@@ -349,10 +360,17 @@ export function OperationsTvEditor() {
 
             {screen && (
               <div className="tv-editor-group">
-                <div className="shift-section-title">Adicionar cerâmica</div>
+                <div className="shift-section-title">Adicionar à tela</div>
                 <select value={adding} onChange={(event) => setAdding(event.target.value)}>
                   <option value="">Escolha…</option>
-                  <optgroup label="Ainda fora da TV">
+                  <optgroup label="Blocos do grupo">
+                    {FLEET_BLOCKS.map((block) => (
+                      <option key={block.kind} value={block.kind}>
+                        {block.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Cerâmicas ainda fora da TV">
                     {plants
                       .filter((plant) => !placed.has(plant.id))
                       .map((plant) => (
@@ -361,7 +379,7 @@ export function OperationsTvEditor() {
                         </option>
                       ))}
                   </optgroup>
-                  <optgroup label="Já em alguma tela">
+                  <optgroup label="Cerâmicas já em alguma tela">
                     {plants
                       .filter((plant) => placed.has(plant.id))
                       .map((plant) => (
@@ -379,7 +397,7 @@ export function OperationsTvEditor() {
 
             {screen && card && selected != null && (
               <div className="tv-editor-group">
-                <div className="shift-section-title">Cerâmica: {nameOf(card.device_id)}</div>
+                <div className="shift-section-title">{labelOf(card)}</div>
                 <div className="tv-editor-grid4">
                   {(
                     [
@@ -441,7 +459,7 @@ export function OperationsTvEditor() {
                       }}
                       onPointerDown={(event) => startDrag(event, index, 'move')}
                     >
-                      <span>{nameOf(item.device_id)}</span>
+                      <span>{labelOf(item)}</span>
                       <i onPointerDown={(event) => startDrag(event, index, 'resize')} />
                     </div>
                   ))}

@@ -2,8 +2,34 @@
 // 12-column grid of plants (API: /operations/tv). Until the master arranges them, the TV fits
 // every plant it can see on as few screens as possible, so nothing has to be scrolled.
 
+export type OperationTvKind =
+  | 'plant'
+  | 'fleet_kpis'
+  | 'fleet_totals'
+  | 'fleet_ranking'
+  | 'fleet_states'
+  | 'fleet_map'
+  | 'fleet_alert';
+
+/** The blocks that speak for the whole group, with the size each one starts at. */
+export const FLEET_BLOCKS: Array<{
+  kind: Exclude<OperationTvKind, 'plant'>;
+  label: string;
+  w: number;
+  h: number;
+}> = [
+  { kind: 'fleet_kpis', label: 'Situação da frota · números', w: 12, h: 2 },
+  { kind: 'fleet_totals', label: 'Total do grupo · hoje', w: 6, h: 3 },
+  { kind: 'fleet_ranking', label: 'Produção por cerâmica', w: 6, h: 6 },
+  { kind: 'fleet_states', label: 'Situação da frota · rosca', w: 4, h: 5 },
+  { kind: 'fleet_map', label: 'Mapa de operações', w: 5, h: 6 },
+  { kind: 'fleet_alert', label: 'Quem não está produzindo', w: 12, h: 1 },
+];
+
 export interface OperationTvCard {
-  device_id: string;
+  kind: OperationTvKind;
+  /** The plant it draws; null for a block of the group. */
+  device_id: string | null;
   /** Grid placement: column (1–12) and row, width in columns and height in rows. */
   x: number;
   y: number;
@@ -46,18 +72,24 @@ export function defaultScreens(deviceIds: string[]): OperationTvScreen[] {
     const slice = deviceIds.slice(page * perPage, (page + 1) * perPage);
     const { columns, rows } = plantGrid(slice.length);
     const w = Math.floor(TV_COLUMNS / columns);
-    const h = Math.floor(TV_ROWS / rows);
+    // Two rows go to the fleet strip above the plants.
+    const h = Math.floor((TV_ROWS - 2) / rows);
     screens.push({
       name: pages > 1 ? `Cerâmicas ${page + 1}` : 'Cerâmicas',
       duration_seconds: 20,
       rows: TV_ROWS,
-      cards: slice.map((device_id, index) => ({
-        device_id,
-        x: (index % columns) * w + 1,
-        y: Math.floor(index / columns) * h + 1,
-        w,
-        h,
-      })),
+      cards: [
+        // The fleet strip leads every screen: how many plants and how they are, at a glance.
+        { kind: 'fleet_kpis' as const, device_id: null, x: 1, y: 1, w: TV_COLUMNS, h: 2 },
+        ...slice.map((device_id, index) => ({
+          kind: 'plant' as const,
+          device_id,
+          x: (index % columns) * w + 1,
+          y: Math.floor(index / columns) * h + 3,
+          w,
+          h,
+        })),
+      ],
     });
   }
   return screens;

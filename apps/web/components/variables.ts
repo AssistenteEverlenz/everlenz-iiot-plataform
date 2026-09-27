@@ -73,6 +73,15 @@ export function panelVariables(board: PanelSource | null | undefined): Record<st
   };
 }
 
+/** The HMI's latest words (the recipe, a message) under their ihm.* names. */
+export function hmiTexts(texts: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(texts)
+      .filter(([, value]) => typeof value === 'string' && value.trim())
+      .map(([key, value]) => [`ihm.${key}`, value]),
+  );
+}
+
 /** The HMI's latest numeric readings under their ihm.* names. */
 export function hmiVariables(readings: Record<string, number>): Record<string, number> {
   return Object.fromEntries(Object.entries(readings).map(([key, value]) => [`ihm.${key}`, value]));
@@ -85,17 +94,42 @@ function format(value: number) {
 }
 
 /** What the suggestion list and the variables modal offer: the board's first, then the HMI's. */
-export function variableOptionsFor(values: Record<string, number>): VariableOption[] {
+export function variableOptionsFor(
+  values: Record<string, number>,
+  texts: Record<string, string> = {},
+): VariableOption[] {
   const hmi = Object.keys(values).filter((name) => name.startsWith('ihm.')).sort();
-  return [...Object.keys(PANEL_VARIABLES), ...hmi].map((name) => ({
-    name,
-    description: PANEL_VARIABLES[name]?.description ?? 'variável da IHM',
-    value: values[name] == null ? '—' : format(values[name]),
-  }));
+  const words = Object.keys(texts).sort();
+  return [
+    ...Object.keys(PANEL_VARIABLES).map((name) => ({
+      name,
+      description: PANEL_VARIABLES[name].description,
+      value: values[name] == null ? '—' : format(values[name]),
+    })),
+    ...hmi.map((name) => ({
+      name,
+      description: 'variável da IHM',
+      value: values[name] == null ? '—' : format(values[name]),
+    })),
+    // Words cannot enter a calculation, but a block shows one on its own.
+    ...words.map((name) => ({
+      name,
+      description: PANEL_TEXTS[name] ?? 'texto da IHM (só sozinho, não entra em conta)',
+      value: texts[name] || '—',
+    })),
+  ];
 }
 
 /** Names a formula may use: painel.* always exists (a device without a board yet reads it as no
  * value, not as an unknown name), plus the HMI variables read so far. */
-export function knownVariables(values: Record<string, number>) {
-  return [...new Set([...Object.keys(PANEL_VARIABLES), ...Object.keys(values)])];
+export function knownVariables(values: Record<string, number>, texts: Record<string, string> = {}) {
+  return [
+    ...new Set([...Object.keys(PANEL_VARIABLES), ...Object.keys(values), ...Object.keys(texts)]),
+  ];
 }
+
+/** What the platform itself knows in words. */
+export const PANEL_TEXTS: Record<string, string> = {
+  'painel.produto': 'receita/produto que está rodando agora',
+  'painel.turno': 'nome do turno em andamento',
+};

@@ -12,8 +12,19 @@ import { recordAudit } from './audit.js';
 type Access = ReturnType<typeof createAccessControl>;
 const uuid = z.uuid();
 
+const KINDS = [
+  'plant',
+  'fleet_kpis',
+  'fleet_totals',
+  'fleet_ranking',
+  'fleet_states',
+  'fleet_map',
+  'fleet_alert',
+] as const;
+
 export interface OperationTvCard {
-  device_id: string;
+  kind: (typeof KINDS)[number];
+  device_id: string | null;
   x: number;
   y: number;
   w: number;
@@ -35,13 +46,18 @@ const configSchema = z.object({
         rows: z.number().int().min(4).max(24).default(12),
         cards: z
           .array(
-            z.object({
-              device_id: uuid,
-              x: z.number().int().min(1).max(12),
-              y: z.number().int().min(1).max(24),
-              w: z.number().int().min(1).max(12),
-              h: z.number().int().min(1).max(24),
-            }),
+            z
+              .object({
+                kind: z.enum(KINDS).default('plant'),
+                device_id: uuid.nullable().default(null),
+                x: z.number().int().min(1).max(12),
+                y: z.number().int().min(1).max(24),
+                w: z.number().int().min(1).max(12),
+                h: z.number().int().min(1).max(24),
+              })
+              .refine((card) => card.kind !== 'plant' || card.device_id, {
+                message: 'Um card de cerâmica precisa da cerâmica',
+              }),
           )
           .max(24),
       }),
@@ -66,9 +82,9 @@ export function registerOperationTvRoutes(app: FastifyInstance, db: Database, ac
     if (!screens.rows.length) return { screens: [] };
     // A plant the reader cannot see leaves its place empty rather than the TV refusing to draw.
     const cards = await db.query<OperationTvCard & { screen_id: string }>(
-      `SELECT screen_id,device_id,x,y,w,h FROM operation_tv_cards
+      `SELECT screen_id,kind,device_id,x,y,w,h FROM operation_tv_cards
        WHERE tenant_id=$1 AND screen_id=ANY($2::uuid[])
-         AND ($3::uuid[] IS NULL OR device_id=ANY($3))
+         AND (device_id IS NULL OR $3::uuid[] IS NULL OR device_id=ANY($3))
        ORDER BY position`,
       [tenantId, screens.rows.map((screen) => screen.id), deviceIds],
     );
@@ -98,7 +114,7 @@ export function registerOperationTvRoutes(app: FastifyInstance, db: Database, ac
     );
     for (const screen of body.screens)
       for (const card of screen.cards)
-        if (!devices.has(card.device_id))
+        if (card.device_id && !devices.has(card.device_id))
           return reply.code(400).send({ error: 'Cerâmica não encontrada neste cliente.' });
     await db.transaction(async (sql) => {
       await sql.query('DELETE FROM operation_tv_screens WHERE tenant_id=$1', [current.tenantId]);
@@ -111,9 +127,19 @@ export function registerOperationTvRoutes(app: FastifyInstance, db: Database, ac
         const screenId = created.rows[0].id;
         for (const [position, card] of screen.cards.entries())
           await sql.query(
-            `INSERT INTO operation_tv_cards(tenant_id,screen_id,device_id,x,y,w,h,position)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [current.tenantId, screenId, card.device_id, card.x, card.y, card.w, card.h, position],
+            `INSERT INTO operation_tv_cards(tenant_id,screen_id,kind,device_id,x,y,w,h,position)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [
+              current.tenantId,
+              screenId,
+              card.kind,
+              card.device_id,
+              card.x,
+              card.y,
+              card.w,
+              card.h,
+              position,
+            ],
           );
       }
       await recordAudit(sql, req, current, {

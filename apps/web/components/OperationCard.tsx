@@ -7,6 +7,7 @@ import { Hint } from './Hint';
 import { VariablesModal } from './VariablesModal';
 import { mutate } from './data';
 import {
+  hmiTexts,
   hmiVariables,
   knownVariables,
   PANEL_VARIABLES,
@@ -27,8 +28,15 @@ export type OperationMachine = {
   state: string;
   product: string | null;
   metric: Metric;
-  location: { city: string | null; state: string | null };
+  location: {
+    city: string | null;
+    state: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  };
   readings: Record<string, number>;
+  /** The HMI's variables that are words (the recipe above all), by key. */
+  texts?: Record<string, string>;
   /** The production board of the running (or last) shift, as the dashboard shows it. */
   board: PanelSource | null;
 };
@@ -153,6 +161,17 @@ export function formulaValues(machine: OperationMachine): Record<string, number>
   return { ...hmiVariables(machine.readings), ...panelVariables(machine.board) };
 }
 
+/**
+ * What a block can show in words: the HMI's text variables and what the platform itself knows.
+ * A word never enters a calculation; a block shows one when that word is all it reads.
+ */
+export function formulaTexts(machine: OperationMachine): Record<string, string> {
+  return {
+    ...hmiTexts(machine.texts ?? {}),
+    ...(machine.product ? { 'painel.produto': machine.product } : {}),
+  };
+}
+
 export type Health = 'offline' | 'green' | 'yellow' | 'red' | 'online';
 /** Grey without communication, else how the shift's projection meets its target. */
 export function healthOf(machine: OperationMachine, config: CardConfig): Health {
@@ -171,13 +190,25 @@ export const HEALTH_LABELS: Record<Health, string> = {
 };
 
 /** The number and its unit apart: a block draws the unit smaller, so the number stays big. */
-function itemParts(item: CardItem, values: Record<string, number>) {
-  const result = item.formula.trim() ? evaluateFormula(item.formula, values) : null;
-  if (result == null) return { value: '—', unit: '' };
-  return { value: number(result, item.decimals), unit: item.unit.trim() };
+function itemParts(
+  item: CardItem,
+  values: Record<string, number>,
+  texts: Record<string, string> = {},
+) {
+  const formula = item.formula.trim();
+  // A block whose whole formula is one word variable shows that word.
+  const word = texts[formula] ?? texts[canonicalVariable(formula)];
+  if (word != null) return { value: word, unit: '', text: true };
+  const result = formula ? evaluateFormula(formula, values) : null;
+  if (result == null) return { value: '—', unit: '', text: false };
+  return { value: number(result, item.decimals), unit: item.unit.trim(), text: false };
 }
-function itemValue(item: CardItem, values: Record<string, number>) {
-  const { value, unit } = itemParts(item, values);
+function itemValue(
+  item: CardItem,
+  values: Record<string, number>,
+  texts: Record<string, string> = {},
+) {
+  const { value, unit } = itemParts(item, values, texts);
   return unit ? `${value} ${unit}` : value;
 }
 
@@ -204,6 +235,7 @@ export function OperationCardBody({
   heading?: React.ReactNode;
 }) {
   const values = formulaValues(machine);
+  const texts = formulaTexts(machine);
   const health = healthOf(machine, config);
   const [dragging, setDragging] = useState<string | null>(null);
   const [live, setLive] = useState<{ id: string; colSpan: number; rowSpan: number } | null>(null);
@@ -290,9 +322,11 @@ export function OperationCardBody({
               onDragEnd={edit ? () => setDragging(null) : undefined}
             >
               <span className="operation-block-label">{item.label || 'Calculado'}</span>
-              <b>
-                {itemParts(item, values).value}
-                {itemParts(item, values).unit && <small>{itemParts(item, values).unit}</small>}
+              <b className={itemParts(item, values, texts).text ? 'is-text' : ''}>
+                {itemParts(item, values, texts).value}
+                {itemParts(item, values, texts).unit && (
+                  <small>{itemParts(item, values, texts).unit}</small>
+                )}
               </b>
               {edit && (
                 <>
@@ -354,8 +388,9 @@ export function OperationCardEditor({
   const frame = useRef<HTMLDivElement>(null);
   const [fits, setFits] = useState(true);
   const values = useMemo(() => formulaValues(machine), [machine]);
-  const options = useMemo(() => variableOptionsFor(values), [values]);
-  const known = knownVariables(values);
+  const texts = useMemo(() => formulaTexts(machine), [machine]);
+  const options = useMemo(() => variableOptionsFor(values, texts), [values, texts]);
+  const known = knownVariables(values, texts);
   const current = form.items.find((item) => item.id === selected) ?? null;
   const currentIsVariable =
     current != null &&
@@ -426,6 +461,7 @@ export function OperationCardEditor({
       if (form.yellowPct > form.greenPct) throw new Error('O limite amarelo deve ser menor que o verde.');
       for (const item of form.items) {
         if (!item.formula.trim()) throw new Error(`Escolha a variável ou escreva a fórmula de “${item.label || 'Calculado'}”.`);
+        if (texts[item.formula.trim()] != null) continue;
         const problem = formulaError(item.formula, known);
         if (problem) throw new Error(`${item.label || 'Calculado'}: ${problem}`);
       }
@@ -550,8 +586,8 @@ export function OperationCardEditor({
               <small className={formulaError(current.formula, known) ? 'formula-error' : 'formula-preview'}>
                 {formulaError(current.formula, known) ??
                   (currentIsVariable
-                    ? `${options.find((option) => option.name === canonicalVariable(current.formula.trim()))?.description ?? ''} · agora ${itemValue(current, values)}`
-                    : `Agora daria ${itemValue(current, values)}`)}
+                    ? `${options.find((option) => option.name === canonicalVariable(current.formula.trim()))?.description ?? ''} · agora ${itemValue(current, values, texts)}`
+                    : `Agora daria ${itemValue(current, values, texts)}`)}
               </small>
             )}
           </div>
