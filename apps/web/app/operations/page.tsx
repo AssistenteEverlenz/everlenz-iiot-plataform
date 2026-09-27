@@ -9,6 +9,8 @@ import {
   OperationCardBody,
   OperationCardEditor,
   type CardConfig,
+  healthOf,
+  HEALTH_LABELS,
 } from '../../components/OperationCard';
 import type { PanelSource } from '../../components/variables';
 import { NavIcon } from '../../components/NavIcon';
@@ -159,6 +161,54 @@ export default function OperationsPage() {
     document.getElementById(`machine-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, []);
   const clearSelection = useCallback(() => setSelected(null), []);
+  const placeOf = useCallback(
+    (machine: Machine) =>
+      [machine.location.city, machine.location.state].filter(Boolean).join(' · ') ||
+      machine.product ||
+      '',
+    [],
+  );
+  const cardActions = useCallback(
+    (machine: Machine, siteName: string) => (
+      <>
+        {user.role === 'master' && (
+          <button
+            title="Editar cartão"
+            aria-label="Editar cartão"
+            onClick={() => configure(machine, siteName)}
+          >
+            <NavIcon name="edit" />
+          </button>
+        )}
+        <button
+          title="Relatório de produção"
+          aria-label="Relatório de produção"
+          onClick={() => setDetail(machine)}
+        >
+          <NavIcon name="report" />
+        </button>
+        {machine.dashboardId && (
+          <Link
+            title="Abrir painel"
+            aria-label="Abrir painel"
+            href={`/dashboards/${machine.dashboardId}`}
+          >
+            <NavIcon name="panels" />
+          </Link>
+        )}
+        {user.role === 'master' && (
+          <button
+            title="Editar localização"
+            aria-label="Editar localização"
+            onClick={() => setEditing(machine)}
+          >
+            <NavIcon name="pin" />
+          </button>
+        )}
+      </>
+    ),
+    [configure, user.role],
+  );
   const configFor = useCallback((machine: Machine): CardConfig => normalizeCard(settings.data?.cards[machine.deviceId], machine.metric), [settings.data]);
   return (
     <div className="operations-page">
@@ -292,7 +342,10 @@ export default function OperationsPage() {
             </div>
           </div>
           <section className={`plant-list columns-${layoutColumns}`} onClick={() => setSelected(null)}>
-            {sites.map((site) => (
+            {sites.map((site) => {
+              // A card that holds a single machine speaks as that machine.
+              const only = site.machines.length === 1 ? site.machines[0] : null;
+              return (
               <article
                 id={`plant-${site.id}`}
                 key={site.id}
@@ -300,28 +353,19 @@ export default function OperationsPage() {
                 onClick={(event) => event.stopPropagation()}
               >
                 <header>
-                  <div>
-                    <span
-                      className="state-pill"
-                      style={
-                        {
-                          '--state': STATES[site.state]?.color ?? STATES.unknown.color,
-                        } as React.CSSProperties
-                      }
-                    >
-                      <i />
-                      {STATES[site.state]?.label ?? 'Sem dados'}
-                    </span>
-                    <small>GRUPO / CLIENTE</small>
-                    <h2>{site.name}</h2>
-                    <small>{site.reference}</small>
+                  <div className="plant-heading">
+                    {/* One machine, the usual case: its own name leads and the group follows it.
+                        A group with several machines leads with the group, and each row names
+                        the machine it draws. */}
+                    <h2>
+                      {only ? only.deviceName : site.name}
+                      {only && <span className="plant-group">{site.name}</span>}
+                    </h2>
+                    {only && placeOf(only) && <small>{placeOf(only)}</small>}
                   </div>
-                  {site.machines.length === 1 && <div className="plant-card-actions">
-                    {user.role === 'master' && <button title="Editar cartão" aria-label="Editar cartão" onClick={() => configure(site.machines[0], site.name)}><NavIcon name="edit" /></button>}
-                    <button title="Relatório de produção" aria-label="Relatório de produção" onClick={() => setDetail(site.machines[0])}><NavIcon name="report" /></button>
-                    {site.machines[0].dashboardId && <Link title="Abrir painel" aria-label="Abrir painel" href={`/dashboards/${site.machines[0].dashboardId}`}><NavIcon name="panels" /></Link>}
-                    {user.role === 'master' && <button title="Editar localização" aria-label="Editar localização" onClick={() => setEditing(site.machines[0])}><NavIcon name="pin" /></button>}
-                  </div>}
+                  {only && (
+                    <div className="plant-card-actions">{cardActions(only, site.name)}</div>
+                  )}
                 </header>
                 <div className="machine-grid">
                   {site.machines.map((machine) => (
@@ -329,17 +373,35 @@ export default function OperationsPage() {
                       <OperationCardBody
                         machine={machine}
                         config={configFor(machine)}
-                        actions={site.machines.length > 1 && <div className="plant-card-actions">
-                          {user.role === 'master' && <button title="Editar cartão" onClick={() => configure(machine, site.name)}><NavIcon name="edit" /></button>}
-                          <button title="Relatório de produção" onClick={() => setDetail(machine)}><NavIcon name="report" /></button>
-                          {machine.dashboardId && <Link title="Abrir painel" href={`/dashboards/${machine.dashboardId}`}><NavIcon name="panels" /></Link>}
-                          {user.role === 'master' && <button title="Editar localização" onClick={() => setEditing(machine)}><NavIcon name="pin" /></button>}
-                        </div>}
+                        heading={
+                          only ? null : (
+                            <div className="machine-line">
+                              <strong>{machine.deviceName}</strong>
+                              {placeOf(machine) && <small>{placeOf(machine)}</small>}
+                              <em className="machine-health">
+                                <i />
+                                {HEALTH_LABELS[healthOf(machine, configFor(machine))]}
+                              </em>
+                              <div className="plant-card-actions">
+                                {cardActions(machine, site.name)}
+                              </div>
+                            </div>
+                          )
+                        }
                       />
                     </div>
                   ))}
                 </div>
                 <footer>
+                  {only && (
+                    <>
+                      <em className="machine-health">
+                        <i />
+                        {HEALTH_LABELS[healthOf(only, configFor(only))]}
+                      </em>
+                      {' · '}
+                    </>
+                  )}
                   Último sinal{' '}
                   {time(
                     site.machines.reduce<string | null>(
@@ -350,7 +412,8 @@ export default function OperationsPage() {
                   )}
                 </footer>
               </article>
-            ))}
+              );
+            })}
             {sites.length === 0 && (
               <div className="empty">Nenhuma cerâmica corresponde aos filtros.</div>
             )}

@@ -157,7 +157,9 @@
   :root[data-theme='dark'] .machine-row {
     background: #172125;
   }
-  :root[data-theme='dark'] .machine-title span,
+  :root[data-theme='dark'] .machine-line small {
+    color: #84979e;
+  }
   :root[data-theme='dark'] .machine-metric span {
     color: #86999f;
   }
@@ -2431,5 +2433,27 @@
   }
   :root[data-theme='dark'] .operation-health-row label {
     color: #99abb1;
+  }
+  :root[data-theme='dark'] .plant-group {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .plant-heading small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .machine-health {
+    color: var(--health, #91a1a6);
+  }
+  :root[data-theme='dark'] .machine-health i {
+    background: currentColor;
+  }
+  :root[data-theme='dark'] .plant-summary:has(.health-green) footer .machine-health,
+  :root[data-theme='dark'] .plant-summary:has(.health-online) footer .machine-health {
+    color: #7beac2;
+  }
+  :root[data-theme='dark'] .plant-summary:has(.health-yellow) footer .machine-health {
+    color: #e8c97d;
+  }
+  :root[data-theme='dark'] .plant-summary:has(.health-red) footer .machine-health {
+    color: #dc9589;
   }
 }

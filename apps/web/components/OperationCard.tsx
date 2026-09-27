@@ -164,7 +164,7 @@ export function healthOf(machine: OperationMachine, config: CardConfig): Health 
 }
 export const HEALTH_LABELS: Record<Health, string> = {
   offline: 'Sem comunicação',
-  online: 'Online · sem meta',
+  online: 'Online',
   green: 'Dentro da meta',
   yellow: 'Perto de sair da meta',
   red: 'Fora da meta',
@@ -189,13 +189,13 @@ export function OperationCardBody({
   machine,
   config,
   edit,
-  actions,
+  heading,
 }: {
   machine: OperationMachine;
   config: CardConfig;
   edit?: EditHandlers;
-  /** The row's buttons (edit, report, dashboard, location), under the name. */
-  actions?: React.ReactNode;
+  /** A name line above the blocks: only where one card holds more than one machine. */
+  heading?: React.ReactNode;
 }) {
   const values = formulaValues(machine);
   const health = healthOf(machine, config);
@@ -248,20 +248,7 @@ export function OperationCardBody({
 
   return (
     <div className={`machine-row health-${health} ${edit ? 'editing' : ''}`}>
-      <div className="machine-title">
-        <span>CERÂMICA</span>
-        <strong>{machine.deviceName}</strong>
-        <span>
-          {[machine.location.city, machine.location.state].filter(Boolean).join(' · ') ||
-            machine.product ||
-            'Localização não informada'}
-        </span>
-        <em className="machine-health">
-          <i />
-          {HEALTH_LABELS[health]}
-        </em>
-        {actions && <div className="machine-actions-row">{actions}</div>}
-      </div>
+      {heading}
       <div className="machine-card-grid">
         {config.items.map((item, index) => {
           const span = live?.id === item.id ? live : item;
@@ -487,9 +474,11 @@ export function OperationCardEditor({
         <div className="operation-editor-stage" ref={frame} onClick={() => setSelected(null)}>
           <article className="plant-summary operation-editor-card" style={fits && width ? { width } : undefined}>
             <header>
-              <div>
-                <small>GRUPO / CLIENTE</small>
-                <h2>{siteName}</h2>
+              <div className="plant-heading">
+                <h2>
+                  {machine.deviceName}
+                  <span className="plant-group">{siteName}</span>
+                </h2>
               </div>
             </header>
             <div className="machine-grid">

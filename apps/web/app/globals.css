@@ -428,26 +428,49 @@
 .machine-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(150px, .75fr) minmax(0, 2fr);
   gap: 9px;
-  align-items: center;
-  padding: 12px 13px;
+  padding: 11px 12px;
   border-radius: 10px;
   background: #f4f8f8;
 }
 .machine-row > * { min-width: 0; }
-.machine-title,
 .machine-metric {
   display: grid;
   gap: 3px;
   min-width: 0;
 }
-.machine-title strong {
-  white-space: nowrap;
+/* One machine of a group that has several: its name, where it is and how it is doing, on a
+   single line above its blocks. */
+.machine-line {
+  display: flex;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+/* The place gives way first, so the name, the state and the buttons stay on one line. */
+.machine-line small {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.machine-title span,
+.machine-line .machine-health,
+.machine-line .plant-card-actions { flex: none; }
+.machine-line strong {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.machine-line small {
+  color: #7b9097;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.machine-line .plant-card-actions {
+  margin-left: auto;
+}
 .machine-metric span {
   font-size: 9px;
   color: #788d94;
@@ -581,12 +604,6 @@
   }
   .plant-map {
     height: 330px;
-  }
-  .machine-row {
-    grid-template-columns: 1fr 1fr;
-  }
-  .machine-title {
-    grid-column: 1/-1;
   }
   .machine-row > a {
     grid-column: 1/-1;
@@ -8256,5 +8273,85 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   }
   .drag-handle {
     padding: 6px 9px;
+  }
+}
+
+/* The card names the plant once, with its group beside it, and closes with how it is and when
+   it last spoke: the row below carries only the numbers. */
+.plant-heading {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.plant-heading h2 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+  margin: 0;
+  font-size: 19px;
+}
+.plant-group {
+  color: #7b9097;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+.plant-heading small {
+  color: #7b9097;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.plant-summary > header {
+  align-items: center;
+  padding-bottom: 10px;
+}
+.plant-summary footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.machine-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--health, #6d8087);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.machine-health i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* The footer sits outside the tinted row, so it reads the same colours from the card. */
+.plant-summary:has(.health-green) footer .machine-health,
+.plant-summary:has(.health-online) footer .machine-health { color: #0d9c69; }
+.plant-summary:has(.health-yellow) footer .machine-health { color: #a97c10; }
+.plant-summary:has(.health-red) footer .machine-health { color: #c2412a; }
+@media (max-width: 760px) {
+  .plant-heading h2 {
+    font-size: 17px;
+  }
+  .plant-summary > header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 760px) {
+  /* A phone has no room for one line: the place drops below the name.*/
+  .machine-line {
+    flex-wrap: wrap;
+  }
+  .machine-line strong {
+    flex: 1 0 100%;
   }
 }
