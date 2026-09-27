@@ -1721,7 +1721,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
              ORDER BY s.timestamp DESC,s.id DESC LIMIT 1
            ) x ON true
            WHERE t.tenant_id=d.tenant_id AND t.device_id=d.id AND t.enabled=true
-             AND t.data_type='text'),'{}'::jsonb) texts
+             AND t.data_type IN ('string','text')),'{}'::jsonb) texts
        FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
        LEFT JOIN production_settings ps ON ps.device_id=d.id AND ps.tenant_id=d.tenant_id
        LEFT JOIN production_runtime pr ON pr.device_id=d.id AND pr.tenant_id=d.tenant_id
