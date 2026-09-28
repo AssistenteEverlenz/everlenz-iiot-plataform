@@ -8116,14 +8116,15 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .machine-health i { width: 7px; height: 7px; border-radius: 50%; background: var(--health); }
 .machine-row.health-offline .machine-health { color: #6d8087; }
 .machine-card-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: 26px; grid-auto-flow: row dense; gap: 6px; min-width: 0; }
-.operation-block { position: relative; display: grid; align-content: center; gap: 2px; min-width: 0; padding: 6px 9px; border: 1px solid #dce7e9; border-radius: 8px; background: #fff; overflow: hidden; container-type: size; }
+.operation-block { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); align-content: stretch; gap: 2px; min-width: 0; padding: 6px 9px; border: 1px solid #dce7e9; border-radius: 8px; background: #fff; overflow: hidden; container-type: size; }
 .operation-block-label { display: -webkit-box; overflow: hidden; color: #788d94; font-size: clamp(7px, 13cqh, 11px); letter-spacing: .06em; line-height: 1.25; text-transform: uppercase; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.operation-block > b { overflow: hidden; font-size: clamp(10px, min(30cqh, 30cqw), 34px); font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-/* The unit sits under the number, so a narrow block keeps the number big and whole. */
+.operation-block > b { align-self: center; overflow: hidden; font-size: clamp(10px, min(30cqh, 30cqw), 34px); font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+/* The unit reads beside the number at every size. It is written after it on a line that never
+   wraps, so when the room runs out the unit is trimmed and the number stays whole. */
 /* A word (the recipe) reads better a little smaller and without figure spacing. */
 .operation-block > b.is-text { font-size: clamp(12px, min(22cqh, 15cqw), 26px); font-variant-numeric: normal; }
 .tv-plant .operation-block > b.is-text { font-size: clamp(12px, min(24cqh, 16cqw), 32px); }
-.operation-block > b small { display: block; margin: 0.08em 0 0; color: #7b9097; font-size: 0.46em; font-weight: 500; letter-spacing: 0; line-height: 1.15; }
+.operation-block > b small { display: inline; margin: 0 0 0 0.35em; color: #7b9097; font-size: max(9px, 0.4em); font-weight: 500; letter-spacing: 0; line-height: 1.15; }
 .operation-block.kind-efficiency > b { color: #0b7d6d; }
 .operation-block.kind-formula { border-style: dashed; }
 /* Editor */
@@ -8581,21 +8582,11 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3.light .tv-fleet-alert { border-color: #f0bfb1; background: #fdefeb; }
 .tv3.light .tv-fleet-alert.ok { border-color: #b5e3cf; background: #ebf8f2; }
 
-/* A block too short for the unit to have a line of its own: it moves beside the number instead
-   of disappearing. The number is written first and the line never wraps, so if the room runs out
-   it is the unit that is trimmed away, never the number. Each block is its own container
-   (container-type: size). */
-@container (max-height: 74px) {
-  .operation-block > b small {
-    display: inline;
-    margin: 0 0 0 0.3em;
-    font-size: 0.4em;
-  }
-}
-/* Shrunk further: the title gives up its second line, and at the very end itself. */
+/* A block the operator shrank on the TV: the title gives up its second line, and at the very
+   end itself. Each block is its own container (container-type: size). */
 @container (max-height: 54px) {
   .operation-block-label { -webkit-line-clamp: 1; }
 }
 @container (max-height: 26px) {
-  .operation-block-label { display: none; }
+  .operation-block-label, .operation-block > b small { display: none; }
 }
