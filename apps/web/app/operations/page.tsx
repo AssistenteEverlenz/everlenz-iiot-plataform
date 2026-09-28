@@ -433,7 +433,11 @@ export default function OperationsPage() {
       {editing && (
         <LocationModal
           machine={editing}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            void refresh();
+          }}
+          onChanged={() => refresh()}
           onSaved={() => {
             setEditing(null);
             void refresh();
@@ -471,10 +475,13 @@ function LocationModal({
   machine,
   onClose,
   onSaved,
+  onChanged,
 }: {
   machine: Machine;
   onClose: () => void;
   onSaved: () => void;
+  /** The point was saved but the modal stays open: refresh the map behind it. */
+  onChanged: () => Promise<void> | void;
 }) {
   const [form, setForm] = useState({
     address: machine.location.address ?? '',
@@ -485,6 +492,7 @@ function LocationModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [cities, setCities] = useState<string[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
   const selectedState = stateCode(form.state);
@@ -513,6 +521,7 @@ function LocationModal({
   async function save() {
     setSaving(true);
     setError('');
+    setNotice('');
     try {
       const region = stateCode(form.state);
       if (!region) throw new Error('Selecione um estado da lista.');
@@ -529,13 +538,31 @@ function LocationModal({
         (longitude !== null && !Number.isFinite(longitude))
       )
         throw new Error('Informe latitude e longitude válidas.');
-      await mutate(`/devices/${machine.deviceId}/location`, 'PATCH', {
+      const saved = await mutate<{
+        precision: 'exact' | 'address' | 'city' | null;
+        latitude: number | null;
+        longitude: number | null;
+      }>(`/devices/${machine.deviceId}/location`, 'PATCH', {
         ...form,
         city,
         state: region,
         latitude,
         longitude,
       });
+      // A ceramic on a rural road is placed on its town: say so and offer the exact point,
+      // instead of closing as if the address itself had been found.
+      if (saved.precision === 'city') {
+        setForm((current) => ({
+          ...current,
+          latitude: saved.latitude?.toString() ?? '',
+          longitude: saved.longitude?.toString() ?? '',
+        }));
+        setNotice(
+          `O endereço exato não está no mapa, então a cerâmica foi marcada no centro de ${city}. Para o ponto exato, informe latitude e longitude e salve de novo.`,
+        );
+        void onChanged();
+        return;
+      }
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao salvar');
@@ -622,9 +649,10 @@ function LocationModal({
             />
           </label>
         </div>
+        {notice && <div className="notice">{notice}</div>}
         {error && <div className="notice error">{error}</div>}
         <div className="modal-actions">
-          <button onClick={onClose}>Cancelar</button>
+          <button onClick={onClose}>{notice ? 'Fechar' : 'Cancelar'}</button>
           <button className="primary" disabled={saving} onClick={() => void save()}>
             {saving ? 'Salvando…' : 'Salvar localização'}
           </button>

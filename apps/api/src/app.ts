@@ -23,11 +23,14 @@ type LocationInput = {
   latitude?: number | null;
   longitude?: number | null;
 };
-async function locate(input: LocationInput) {
-  if (input.latitude != null && input.longitude != null)
-    return { latitude: input.latitude, longitude: input.longitude };
-  const query = [input.address, input.city, input.state, 'Brasil'].filter(Boolean).join(', ');
-  if (!input.city || !input.state) return { latitude: null, longitude: null };
+type Located = {
+  latitude: number | null;
+  longitude: number | null;
+  /** How the point was found: the address itself, the town, or the coordinates given. */
+  precision: 'exact' | 'address' | 'city' | null;
+};
+
+async function askNominatim(query: string) {
   const url = new URL('https://nominatim.openstreetmap.org/search');
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '1');
@@ -38,14 +41,38 @@ async function locate(input: LocationInput) {
       headers: { 'user-agent': 'Everlenz-IIoT/1.0 (https://everlenz.com.br)' },
       signal: AbortSignal.timeout(8000),
     });
-    if (!response.ok) return { latitude: null, longitude: null };
+    if (!response.ok) return null;
     const [match] = (await response.json()) as Array<{ lat: string; lon: string }>;
-    return match
-      ? { latitude: Number(match.lat), longitude: Number(match.lon) }
-      : { latitude: null, longitude: null };
+    return match ? { latitude: Number(match.lat), longitude: Number(match.lon) } : null;
   } catch {
-    return { latitude: null, longitude: null };
+    return null;
   }
+}
+
+/**
+ * Where a plant is. A ceramic stands on a rural road the map does not know ("Sítio Arroz, Zona
+ * Rural"), so the address is tried first and the town second: a pin on the town is far better
+ * than refusing to save, and whoever wants the exact spot types the coordinates.
+ */
+async function locate(input: LocationInput): Promise<Located> {
+  if (input.latitude != null && input.longitude != null)
+    return { latitude: input.latitude, longitude: input.longitude, precision: 'exact' };
+  if (!input.city || !input.state) return { latitude: null, longitude: null, precision: null };
+  const town = [input.city, input.state, 'Brasil'].join(', ');
+  // The address the operator types often repeats the town and carries the postcode; what the
+  // map can use is the part before that.
+  const street = (input.address ?? '')
+    .split(/[,\n]/)[0]
+    .replace(/\b\d{5}-?\d{3}\b/g, '')
+    .trim();
+  if (street) {
+    const found = await askNominatim(`${street}, ${town}`);
+    if (found) return { ...found, precision: 'address' };
+  }
+  const byTown = await askNominatim(town);
+  return byTown
+    ? { ...byTown, precision: 'city' }
+    : { latitude: null, longitude: null, precision: null };
 }
 /** How long a PLC reset bit stays at 1 before the platform writes it back to 0. */
 const COMMAND_PULSE_MS = 2000;
@@ -406,7 +433,8 @@ export async function createApp(
     const coordinates = await locate(body);
     if (coordinates.latitude == null)
       return reply.code(422).send({
-        error: 'Não foi possível localizar esse endereço. Revise endereço, cidade e estado.',
+        error:
+          'Não foi possível localizar essa cidade no mapa. Revise cidade e estado, ou informe latitude e longitude.',
       });
     const updated = await db.query(
       `UPDATE devices SET address=$3,city=$4,state=upper($5),latitude=$6,longitude=$7,
@@ -416,7 +444,7 @@ export async function createApp(
        coordinates.latitude, coordinates.longitude],
     );
     if (!updated.rows[0]) return reply.code(404).send({ error: 'Device not found' });
-    return updated.rows[0];
+    return { ...updated.rows[0], precision: coordinates.precision };
   });
   // `d.*` reaches the browser. Never add a secret column to `devices`: the plaintext
   // mqtt_password used to be exposed exactly this way (SECURITY.md item 12). Any new
