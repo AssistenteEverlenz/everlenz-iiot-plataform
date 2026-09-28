@@ -8,6 +8,7 @@ import {
   normalizeCard,
   OperationCardBody,
   OperationCardEditor,
+  cardFromModel,
   type CardConfig,
   healthOf,
   HEALTH_LABELS,
@@ -56,7 +57,12 @@ type Site = {
   machines: Machine[];
 };
 type Overview = { generatedAt: string; productionDate: string; sites: Site[] };
-type OperationSettings = { layoutColumns: 1 | 2 | 3; cards: Record<string, unknown> };
+type OperationSettings = {
+  layoutColumns: 1 | 2 | 3;
+  /** The card the group keeps as its model, or null while it has not chosen one. */
+  defaultCard: CardConfig | null;
+  cards: Record<string, unknown>;
+};
 const STATES: Record<string, { label: string; color: string }> = {
   producing: { label: 'Produzindo', color: '#1fbf7a' },
   idle: { label: 'Ociosa', color: '#f2a93b' },
@@ -226,7 +232,17 @@ export default function OperationsPage() {
     ),
     [configure, user.role],
   );
-  const configFor = useCallback((machine: Machine): CardConfig => normalizeCard(settings.data?.cards[machine.deviceId], machine.metric), [settings.data]);
+  // A plant that has never had its card arranged starts from the group's model, when the group
+  // has chosen one, instead of the built-in layout.
+  const configFor = useCallback(
+    (machine: Machine): CardConfig => {
+      const stored = settings.data?.cards[machine.deviceId];
+      const model = settings.data?.defaultCard;
+      if (!stored && model) return cardFromModel(model, machine.metric);
+      return normalizeCard(stored, machine.metric);
+    },
+    [settings.data],
+  );
   return (
     <div className="operations-page">
       <header className="operations-heading">
@@ -505,6 +521,7 @@ export default function OperationsPage() {
           siteName={configuring.siteName}
           width={configuring.width}
           initial={configFor(configuring.machine)}
+          groupDefault={settings.data?.defaultCard ?? null}
           onClose={() => setConfiguring(null)}
           onSaved={async () => {
             setConfiguring(null);

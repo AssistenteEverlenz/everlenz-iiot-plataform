@@ -1936,13 +1936,41 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     });
     return { generatedAt: now.toISOString(), productionDate: plantDate(now), sites };
   });
+  // One plant card: an ordered list of blocks on a 12-column grid, every block a formula.
+  const cardSchema = z
+    .object({
+      version: z.literal(3),
+      greenPct: z.number().min(0).max(2),
+      yellowPct: z.number().min(0).max(2),
+      items: z
+        .array(
+          z.object({
+            id: z.string().min(1).max(80),
+            label: z.string().max(60),
+            formula: z.string().trim().min(1).max(500),
+            unit: z.string().max(20),
+            decimals: z.number().int().min(0).max(4),
+            colSpan: z.number().int().min(1).max(12),
+            rowSpan: z.number().int().min(1).max(6),
+          }),
+        )
+        .min(1)
+        .max(16),
+    })
+    .refine((value) => value.yellowPct <= value.greenPct, {
+      message: 'Faixa amarela deve ser menor que a verde',
+    })
+    .refine((value) => new Set(value.items.map((entry) => entry.id)).size === value.items.length, {
+      message: 'Blocos repetidos no cartão',
+    });
+
   app.get('/api/operations/settings', async (req) => {
     const current = access.principal(req);
     // A card's formulas are the plant's own arithmetic: only for whoever can see that device.
     const deviceIds = await access.accessibleDeviceIds(req);
     const [view, cards] = await Promise.all([
-      db.query<{ layout_columns: number }>(
-        'SELECT layout_columns FROM operation_view_settings WHERE tenant_id=$1',
+      db.query<{ layout_columns: number; default_card: unknown }>(
+        'SELECT layout_columns,default_card FROM operation_view_settings WHERE tenant_id=$1',
         [current.tenantId],
       ),
       db.query<{ device_id: string; config: Record<string, unknown> }>(
@@ -1953,17 +1981,41 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     ]);
     return {
       layoutColumns: view.rows[0]?.layout_columns ?? 2,
+      // The card the group chose as its model, if it chose one: what "Restaurar padrão" brings
+      // back. Absent means the built-in layout.
+      defaultCard: view.rows[0]?.default_card ?? null,
       cards: Object.fromEntries(cards.rows.map((row) => [row.device_id, row.config])),
     };
   });
   app.patch('/api/operations/settings', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
-    const body = z.object({ layoutColumns: z.number().int().min(1).max(3) }).parse(req.body);
+    const body = z
+      .object({
+        layoutColumns: z.number().int().min(1).max(3).optional(),
+        // The card to keep as the group's model, or null to go back to the built-in layout.
+        defaultCard: cardSchema.nullable().optional(),
+      })
+      .refine((value) => value.layoutColumns !== undefined || value.defaultCard !== undefined, {
+        message: 'Nada para alterar',
+      })
+      .parse(req.body);
+    // A tenant may have no row yet, so the insert carries whatever the caller did not send.
     await db.query(
-      `INSERT INTO operation_view_settings(tenant_id,layout_columns) VALUES($1,$2)
-       ON CONFLICT(tenant_id) DO UPDATE SET layout_columns=excluded.layout_columns,updated_at=now()`,
-      [current.tenantId, body.layoutColumns],
+      `INSERT INTO operation_view_settings(tenant_id,layout_columns,default_card)
+       VALUES($1,coalesce($2,2),$3::jsonb)
+       ON CONFLICT(tenant_id) DO UPDATE SET
+         layout_columns=coalesce($2,operation_view_settings.layout_columns),
+         default_card=CASE WHEN $4::boolean THEN $3::jsonb ELSE operation_view_settings.default_card END,
+         updated_at=now()`,
+      [
+        current.tenantId,
+        body.layoutColumns ?? null,
+        body.defaultCard === undefined || body.defaultCard === null
+          ? null
+          : JSON.stringify(body.defaultCard),
+        body.defaultCard !== undefined,
+      ],
     );
     return body;
   });
@@ -1974,29 +2026,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const item = z.object({
-      id: z.string().min(1).max(80),
-      label: z.string().max(60),
-      formula: z.string().trim().min(1).max(500),
-      unit: z.string().max(20),
-      decimals: z.number().int().min(0).max(4),
-      colSpan: z.number().int().min(1).max(12),
-      rowSpan: z.number().int().min(1).max(6),
-    });
-    const body = z
-      .object({
-        version: z.literal(3),
-        greenPct: z.number().min(0).max(2),
-        yellowPct: z.number().min(0).max(2),
-        items: z.array(item).min(1).max(16),
-      })
-      .refine((value) => value.yellowPct <= value.greenPct, {
-        message: 'Faixa amarela deve ser menor que a verde',
-      })
-      .refine((value) => new Set(value.items.map((entry) => entry.id)).size === value.items.length, {
-        message: 'Blocos repetidos no cartão',
-      })
-      .parse(req.body);
+    const body = cardSchema.parse(req.body);
     const exists = await db.query(
       'SELECT id FROM devices WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL',
       [current.tenantId, id],

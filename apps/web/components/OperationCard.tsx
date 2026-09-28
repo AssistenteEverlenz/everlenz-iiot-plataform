@@ -69,6 +69,20 @@ function blockFor(name: string, metric: Metric, colSpan = 3): CardItem {
     rowSpan: 2,
   };
 }
+/**
+ * The group's model card handed to another plant. The arrangement travels as it is, but a block
+ * reading a platform variable takes the unit of the plant it lands on: the same "Produzido" is
+ * counted in paletes at one plant and in milheiros at another.
+ */
+export function cardFromModel(model: CardConfig, metric: Metric): CardConfig {
+  return {
+    ...model,
+    items: model.items.map((item) => {
+      const panel = PANEL_VARIABLES[canonicalVariable(item.formula.trim())];
+      return panel ? { ...item, unit: panel.unit(metric) } : item;
+    }),
+  };
+}
 export function defaultCard(metric: Metric): CardConfig {
   return {
     version: 3,
@@ -367,6 +381,7 @@ export function OperationCardEditor({
   siteName,
   initial,
   width,
+  groupDefault,
   onClose,
   onSaved,
 }: {
@@ -375,11 +390,14 @@ export function OperationCardEditor({
   initial: CardConfig;
   /** Width of the card in the list, so the preview wraps exactly as it will there. */
   width: number | null;
+  /** The card the group keeps as its model, if it has chosen one. */
+  groupDefault: CardConfig | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<CardConfig>(initial);
   const [selected, setSelected] = useState<string | null>(null);
+  const [keeping, setKeeping] = useState('');
   const [adding, setAdding] = useState(false);
   const [freeFormula, setFreeFormula] = useState<Set<string>>(new Set());
   const [showingVariables, setShowingVariables] = useState(false);
@@ -454,6 +472,19 @@ export function OperationCardEditor({
       decimals: next.decimals,
     });
   }
+  /** Keep this arrangement as the group's model: what "Restaurar padrão" brings back. */
+  async function keepAsDefault() {
+    setKeeping('salvando');
+    setError('');
+    try {
+      await mutate('/operations/settings', 'PATCH', { defaultCard: form });
+      setKeeping('guardado');
+    } catch (reason) {
+      setKeeping('');
+      setError(reason instanceof Error ? reason.message : 'Falha ao definir o padrão.');
+    }
+  }
+
   async function save() {
     setSaving(true);
     setError('');
@@ -608,7 +639,18 @@ export function OperationCardEditor({
         </div>
         {error && <div className="notice error">{error}</div>}
         <div className="modal-actions">
-          <button onClick={() => { setForm(defaultCard(machine.metric)); setSelected(null); }}>Restaurar padrão</button>
+          <button
+            onClick={() => {
+              setForm(groupDefault ? cardFromModel(groupDefault, machine.metric) : defaultCard(machine.metric));
+              setSelected(null);
+            }}
+            title={groupDefault ? 'Traz de volta o cartão que o grupo guardou como modelo' : 'Traz de volta o cartão de fábrica'}
+          >
+            Restaurar padrão
+          </button>
+          <button onClick={() => void keepAsDefault()} disabled={Boolean(keeping) || !form.items.length}>
+            {keeping === 'salvando' ? 'Guardando…' : keeping === 'guardado' ? 'Padrão do grupo ✓' : 'Definir como padrão'}
+          </button>
           <button onClick={onClose}>Cancelar</button>
           <button className="primary" disabled={saving || !form.items.length} onClick={() => void save()}>{saving ? 'Salvando…' : 'Salvar cartão'}</button>
         </div>
