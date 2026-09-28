@@ -8581,10 +8581,16 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .tv3.light .tv-fleet-alert { border-color: #f0bfb1; background: #fdefeb; }
 .tv3.light .tv-fleet-alert.ok { border-color: #b5e3cf; background: #ebf8f2; }
 
-/* A block the operator shrank on the TV: the unit, then the title, give way so the number is
-   never cut in half. Each block is its own container (container-type: size). */
+/* A block too short for the unit to have a line of its own: it moves beside the number instead
+   of disappearing. The number is written first and the line never wraps, so if the room runs out
+   it is the unit that is trimmed away, never the number. Each block is its own container
+   (container-type: size). */
 @container (max-height: 74px) {
-  .operation-block > b small { display: none; }
+  .operation-block > b small {
+    display: inline;
+    margin: 0 0 0 0.3em;
+    font-size: 0.4em;
+  }
 }
 /* Shrunk further: the title gives up its second line, and at the very end itself. */
 @container (max-height: 54px) {
