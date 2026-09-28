@@ -443,11 +443,14 @@
    single line above its blocks. */
 .machine-line {
   display: flex;
+  /* With the state on it too the row ran out of width and clipped the plant name. It wraps now:
+     losing a line costs less than losing the name. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px 10px;
   min-width: 0;
 }
-/* The place gives way first, so the name, the state and the buttons stay on one line. */
+/* Whatever still has to share a line gives way before the name does. */
 .machine-line small {
   min-width: 0;
   overflow: hidden;
@@ -458,9 +461,6 @@
 .machine-line .plant-card-actions { flex: none; }
 .machine-line strong {
   font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .machine-line small {
   color: #7b9097;
@@ -8314,6 +8314,12 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   letter-spacing: normal;
 }
 .plant-heading small {
+  /* Place and state share this line and wrap as whole pieces: on a phone the state drops to its
+     own line instead of leaving a stray separator behind. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
   color: #7b9097;
   font-size: 10px;
   text-transform: uppercase;
@@ -8347,16 +8353,27 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   border-radius: 50%;
   background: currentColor;
 }
-/* The live state is said in words and left uncoloured on purpose: colour on this card means the
-   target, and a plant can be on target and stopped this very minute. */
+/* The live state sits with the place, under the plant name. Only its dot is coloured: the words
+   stay neutral so the card's own green/amber/red keeps meaning the target, and a plant can be on
+   target and stopped this very minute. */
 .machine-state {
-  color: #7b9097;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: inherit;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
-.machine-line .machine-state { flex: none; }
+/* The coloured dot is separator enough; a middot too would orphan itself on a narrow card. */
+.machine-state { white-space: nowrap; }
+.machine-state i {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--state, #98a6ab);
+}
+/* In a group's row the state is not inside the muted place text, so it takes that colour here. */
+.machine-line .machine-state { flex: none; color: #7b9097; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
 /* The footer sits outside the tinted row, so it reads the same colours from the card. */
 .plant-summary:has(.health-green) footer .machine-health,
 .plant-summary:has(.health-online) footer .machine-health { color: #0d9c69; }

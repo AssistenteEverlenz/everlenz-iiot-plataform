@@ -391,7 +391,22 @@ export default function OperationsPage() {
                         <span className="plant-group">{site.name}</span>
                       )}
                     </h2>
-                    {only && placeOf(only) && <small>{placeOf(only)}</small>}
+                    {/* The live state rides with the place, under the name: the footer already
+                        carries the target and the last signal, and a third item crowded it. */}
+                    {only && (placeOf(only) || stateLine(only)) && (
+                      <small>
+                        {placeOf(only)}
+                        {stateLine(only) && (
+                          <span
+                            className="machine-state"
+                            style={{ '--state': STATES[only.state]?.color } as React.CSSProperties}
+                          >
+                            <i />
+                            {stateLine(only)}
+                          </span>
+                        )}
+                      </small>
+                    )}
                   </div>
                   {only && (
                     <div className="plant-card-actions">{cardActions(only, site.name)}</div>
@@ -408,13 +423,19 @@ export default function OperationsPage() {
                             <div className="machine-line">
                               <strong>{machine.deviceName}</strong>
                               {placeOf(machine) && <small>{placeOf(machine)}</small>}
+                              {stateLine(machine) && (
+                                <span
+                                  className="machine-state"
+                                  style={{ '--state': STATES[machine.state]?.color } as React.CSSProperties}
+                                >
+                                  <i />
+                                  {stateLine(machine)}
+                                </span>
+                              )}
                               <em className="machine-health">
                                 <i />
                                 {HEALTH_LABELS[healthOf(machine, configFor(machine))]}
                               </em>
-                              {stateLine(machine) && (
-                                <span className="machine-state">{stateLine(machine)}</span>
-                              )}
                               <div className="plant-card-actions">
                                 {cardActions(machine, site.name)}
                               </div>
@@ -432,7 +453,6 @@ export default function OperationsPage() {
                         <i />
                         {HEALTH_LABELS[healthOf(only, configFor(only))]}
                       </em>
-                      {stateLine(only) && <span className="machine-state"> · {stateLine(only)}</span>}
                       {' · '}
                     </>
                   )}

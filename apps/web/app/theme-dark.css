@@ -2450,6 +2450,12 @@
     background: currentColor;
   }
   :root[data-theme='dark'] .machine-state {
+    color: inherit;
+  }
+  :root[data-theme='dark'] .machine-state i {
+    background: var(--state, #4b6a75);
+  }
+  :root[data-theme='dark'] .machine-line .machine-state {
     color: #84979e;
   }
   :root[data-theme='dark'] .plant-summary:has(.health-green) footer .machine-health,
