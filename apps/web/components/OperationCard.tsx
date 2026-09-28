@@ -522,7 +522,9 @@ export function OperationCardEditor({
               <div className="plant-heading">
                 <h2>
                   {machine.deviceName}
-                  <span className="plant-group">{siteName}</span>
+                  {siteName !== machine.deviceName && (
+                    <span className="plant-group">{siteName}</span>
+                  )}
                 </h2>
               </div>
             </header>

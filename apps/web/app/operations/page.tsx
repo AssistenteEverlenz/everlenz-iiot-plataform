@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PlantMap } from '../../components/PlantMap';
-import { ShiftBoard } from '../../components/ShiftBoard';
+import { duration, ShiftBoard } from '../../components/ShiftBoard';
 import {
   normalizeCard,
   OperationCardBody,
@@ -26,6 +26,8 @@ type Machine = {
   deviceCode: string;
   dashboardId: string | null;
   state: string;
+  /** When the machine entered the state it is in now; absent when it cannot be known. */
+  stateSince: string | null;
   product: string | null;
   updatedAt: string | null;
   metric: 'milheiros' | 'tons' | 'blocks' | 'pallets';
@@ -63,6 +65,20 @@ const STATES: Record<string, { label: string; color: string }> = {
   offline: { label: 'Sem comunicação', color: '#98a6ab' },
   unknown: { label: 'Sem dados', color: '#98a6ab' },
 };
+/**
+ * The machine state in words, with how long it has been in it. It is deliberately wordy and
+ * uncoloured: colour on the card belongs to the target, and a plant can be on target and stopped
+ * this very minute. Nothing is said when the card already reports no communication.
+ */
+function stateLine(machine: Machine) {
+  if (machine.state === 'offline' || machine.state === 'unknown') return null;
+  const label = STATES[machine.state]?.label;
+  if (!label) return null;
+  const since = machine.stateSince ? Date.parse(machine.stateSince) : NaN;
+  const seconds = Number.isNaN(since) ? 0 : (Date.now() - since) / 1000;
+  return seconds >= 60 ? `${label} há ${duration(seconds)}` : label;
+}
+
 const BRAZIL_STATES = [
   ['AC', 'Acre'],
   ['AL', 'Alagoas'],
@@ -369,7 +385,11 @@ export default function OperationsPage() {
                         the machine it draws. */}
                     <h2>
                       {only ? only.deviceName : site.name}
-                      {only && <span className="plant-group">{site.name}</span>}
+                      {/* A one-machine group is often named after the machine: saying it twice
+                          adds nothing. */}
+                      {only && site.name !== only.deviceName && (
+                        <span className="plant-group">{site.name}</span>
+                      )}
                     </h2>
                     {only && placeOf(only) && <small>{placeOf(only)}</small>}
                   </div>
@@ -392,6 +412,9 @@ export default function OperationsPage() {
                                 <i />
                                 {HEALTH_LABELS[healthOf(machine, configFor(machine))]}
                               </em>
+                              {stateLine(machine) && (
+                                <span className="machine-state">{stateLine(machine)}</span>
+                              )}
                               <div className="plant-card-actions">
                                 {cardActions(machine, site.name)}
                               </div>
@@ -409,6 +432,7 @@ export default function OperationsPage() {
                         <i />
                         {HEALTH_LABELS[healthOf(only, configFor(only))]}
                       </em>
+                      {stateLine(only) && <span className="machine-state"> · {stateLine(only)}</span>}
                       {' · '}
                     </>
                   )}

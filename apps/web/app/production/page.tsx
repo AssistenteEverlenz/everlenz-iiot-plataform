@@ -6,7 +6,12 @@ import { ActionModal } from '../../components/ActionModal';
 import { ProductionConfigModal } from '../../components/ProductionConfigModal';
 import { HmiCheckModal } from '../../components/HmiCheckModal';
 import { ShiftBoardView, type ShiftBoardResponse } from '../../components/ShiftBoard';
-import { ShiftDetailCharts, type DetailData } from '../../components/ShiftDetailModal';
+import {
+  formulaKeys,
+  ShiftDetailCharts,
+  type CalculatedSetting,
+  type DetailData,
+} from '../../components/ShiftDetailModal';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, usePoll, type Device } from '../../components/data';
 import {
@@ -1229,10 +1234,17 @@ function DetailModal({
   if (view !== 'day' && row.end) params.set('end', row.end);
   // A closed period is read from its photo (taken at the close, migration 028): its readings
   // may be gone. The running shift, and a period without a photo yet, are built live.
+  // The card's own calculations ("cortes por minuto"): the report charts the same lines the
+  // board does, and a closed period carries them inside its photo.
+  const config = usePoll<{ calculated?: CalculatedSetting[] }>(
+    `/devices/${deviceId}/production-config`,
+    600000,
+  );
   const photo = usePoll<{
     photo: {
       detail: ShiftBoardResponse;
       charts: DetailData;
+      calculated?: CalculatedSetting[];
       minutes: Array<{ t: string; value: number }>;
     } | null;
   }>(row.open ? null : `/devices/${deviceId}/production-photo?${params.toString()}`, 600000);
@@ -1243,8 +1255,11 @@ function DetailModal({
   );
   // Hour by hour and pallet by pallet of this very shift, the same charts the board opens.
   const window = row.start && row.end ? `&from=${encodeURIComponent(row.start)}&to=${encodeURIComponent(row.end)}` : '';
+  const liveKeys = formulaKeys(config.data?.calculated ?? []);
   const liveCharts = usePoll<DetailData>(
-    live ? `/devices/${deviceId}/shift-detail?mode=${view === 'day' ? 'day' : 'shift'}${window}` : null,
+    live
+      ? `/devices/${deviceId}/shift-detail?mode=${view === 'day' ? 'day' : 'shift'}${window}${liveKeys.length ? `&keys=${encodeURIComponent(liveKeys.join(','))}` : ''}`
+      : null,
     row.open ? 60000 : 600000,
   );
   const stored = photo.data?.photo ?? null;
@@ -1361,7 +1376,11 @@ function DetailModal({
         />
         <div className="production-detail-charts">
           <div className="shift-section-title">Como foi a produção</div>
-          <ShiftDetailCharts data={charts.data} focus="produced" />
+          <ShiftDetailCharts
+            data={charts.data}
+            focus="produced"
+            calculated={stored?.calculated ?? config.data?.calculated ?? []}
+          />
         </div>
           </>
         )}

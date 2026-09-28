@@ -2449,6 +2449,9 @@
   :root[data-theme='dark'] .machine-health i {
     background: currentColor;
   }
+  :root[data-theme='dark'] .machine-state {
+    color: #84979e;
+  }
   :root[data-theme='dark'] .plant-summary:has(.health-green) footer .machine-health,
   :root[data-theme='dark'] .plant-summary:has(.health-online) footer .machine-health {
     color: #7beac2;

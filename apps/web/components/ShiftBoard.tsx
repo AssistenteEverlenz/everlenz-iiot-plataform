@@ -523,6 +523,13 @@ export function ShiftBoard({
     `/devices/${deviceId}/shift-board?mode=${mode}`,
     30000,
   );
+  // Opened without the card's formulas (the operations report does that): take the ones the
+  // device's own production card carries, so its calculations are charted there too.
+  const config = usePoll<{ calculated?: CalculatedSetting[] }>(
+    calculatedSettings ? null : `/devices/${deviceId}/production-config`,
+    600000,
+  );
+  const settings = calculatedSettings ?? config.data?.calculated ?? [];
   if (!response.data)
     return <div className="shift-board-empty">{response.error ?? 'Carregando produção…'}</div>;
   return (
@@ -532,7 +539,7 @@ export function ShiftBoard({
       mode={mode}
       onMode={setMode}
       calculated={calculated}
-      calculatedSettings={calculatedSettings}
+      calculatedSettings={settings}
       onChanged={() => void response.refresh()}
     />
   );

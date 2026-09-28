@@ -1494,11 +1494,72 @@ async function productionDetailData(
     };
 }
 
+export interface CalculatedField {
+  id: string;
+  label: string;
+  formula: string;
+  unit: string;
+  decimals: number;
+}
+type WidgetConfig = {
+  calculated?: CalculatedField[];
+  formula?: string;
+  formulaLabel?: string;
+  formulaUnit?: string;
+  formulaDecimals?: number;
+};
+
+/**
+ * The calculations the plant wrote on its production card ("cortes por minuto"). They live on
+ * the dashboard card, and the history and the shift photo need them to chart the same lines the
+ * board shows.
+ */
+export async function deviceFormulas(db: Database, tenantId: string, deviceId: string) {
+  const widget = await db.query<{ config: WidgetConfig }>(
+    `SELECT w.config FROM dashboard_widgets w
+     JOIN dashboards d ON d.id=w.dashboard_id AND d.tenant_id=w.tenant_id
+     WHERE w.tenant_id=$1 AND w.device_id=$2 AND w.widget_type='production'
+     ORDER BY d.is_default DESC,w.position LIMIT 1`,
+    [tenantId, deviceId],
+  );
+  const config = widget.rows[0]?.config;
+  if (!config) return [];
+  if (config.calculated?.length)
+    return config.calculated.filter((field) => field.formula?.trim());
+  // The first version carried a single formula on the card.
+  if (config.formula?.trim())
+    return [
+      {
+        id: 'main',
+        label: config.formulaLabel || 'Calculado',
+        formula: config.formula,
+        unit: config.formulaUnit ?? '',
+        decimals: config.formulaDecimals ?? 1,
+      },
+    ];
+  return [];
+}
+
+/** The HMI variables a set of formulas reads: what the hourly series has to carry. */
+export function formulaKeys(fields: CalculatedField[]) {
+  const keys = new Set<string>();
+  for (const field of fields)
+    for (const name of field.formula.match(/[A-Za-z_][A-Za-z0-9_.]*/g) ?? []) {
+      // The platform's own names are worked out per period; only the HMI's are read back.
+      if (/^(turno|painel|dia)\./.test(name)) continue;
+      if (['min', 'max', 'abs', 'round', 'floor', 'ceil', 'div'].includes(name)) continue;
+      keys.add(name.replace(/^ihm\./, ''));
+    }
+  return [...keys].slice(0, 8).join(',');
+}
+
 // Shift photos (migration 028): the history of a closed period, written once while its readings
 // exist, so the readings can go after the grace period (retention.ts) and the history still
 // shows the same board, charts, pallets and minute curve.
 type PhotoKind = 'shift' | 'day' | 'off_shift';
 const PHOTO_BATCH = 12;
+/** Bumped when a photo gains content: older ones are taken again while their readings last. */
+const PHOTO_VERSION = 2;
 /** A closed period "has readings" when any is stored inside it: only those can be photographed. */
 export const HAS_READINGS_SQL = (device: string, start: string, end: string) =>
   `EXISTS (SELECT 1 FROM telemetry_samples s WHERE s.device_id=${device}
@@ -1521,16 +1582,24 @@ async function buildPhoto(
     start: start.toISOString(),
     end: end.toISOString(),
   });
+  const formulas = await deviceFormulas(db, tenantId, deviceId);
   const charts = await shiftDetailData(db, tenantId, deviceId, config, {
     mode: kind === 'day' ? 'day' : 'shift',
     from: start,
     to: end,
     step: 60,
+    keys: formulaKeys(formulas),
   });
   const metric: Metric = config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets');
   const curve = await minuteCurve(db, tenantId, deviceId, config, metric, start, end);
   // Only the minutes that moved: the rest are zero and are filled back in when read.
-  return { detail, charts, minutes: curve.minutes.filter((item) => item.value !== 0) };
+  return {
+    version: PHOTO_VERSION,
+    detail,
+    charts,
+    calculated: formulas,
+    minutes: curve.minutes.filter((item) => item.value !== 0),
+  };
 }
 
 // A period whose photo failed waits this long before another try, so it never holds the rest back.
@@ -1607,10 +1676,11 @@ export async function captureProductionPhotos(db: Database, now = new Date()) {
      WHERE r.source='auto' AND r.deleted_at IS NULL AND r.kind IN ('shift','off_shift')
        AND r.planned_end<$1
        AND NOT EXISTS (SELECT 1 FROM production_photos p WHERE p.device_id=r.device_id
-         AND p.kind=r.kind AND p.period_start=r.planned_start AND p.period_end=r.planned_end)
+         AND p.kind=r.kind AND p.period_start=r.planned_start AND p.period_end=r.planned_end
+         AND coalesce((p.photo->>'version')::int,1) >= $3)
        AND ${HAS_READINGS_SQL('r.device_id', 'r.planned_start', 'r.planned_end')}
      ORDER BY r.planned_start LIMIT $2`,
-    [settled, PHOTO_BATCH],
+    [settled, PHOTO_BATCH, PHOTO_VERSION],
   );
   let written = 0;
   for (const row of periods.rows)
@@ -1631,12 +1701,13 @@ export async function captureProductionPhotos(db: Database, now = new Date()) {
      FROM shift_reports r
      WHERE r.source='auto' AND r.deleted_at IS NULL AND r.kind='shift' AND r.production_date<$2
        AND NOT EXISTS (SELECT 1 FROM production_photos p WHERE p.device_id=r.device_id
-         AND p.kind='day' AND p.production_date=r.production_date)
+         AND p.kind='day' AND p.production_date=r.production_date
+         AND coalesce((p.photo->>'version')::int,1) >= $4)
        AND ${HAS_READINGS_SQL('r.device_id', 'r.planned_start', 'r.planned_end')}
      GROUP BY r.tenant_id,r.device_id,r.production_date
      HAVING max(r.planned_end)<$1
      ORDER BY r.production_date LIMIT $3`,
-    [settled, today, PHOTO_BATCH],
+    [settled, today, PHOTO_BATCH, PHOTO_VERSION],
   );
   for (const row of days.rows)
     if (
@@ -1792,6 +1863,18 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         running?.breaks.some((pause) => pause.start <= now && now < pause.end)
       )
         state = 'pause';
+      // Since when the machine has been in this state, so the card can say how long it has been
+      // stopped: the last message when it went quiet, the moment the counter's idle limit ran
+      // out when it stopped, the last piece when it is producing. Manual carries no moment.
+      const idleAt = increment + Number(row.idle_seconds ?? 60) * 1000;
+      const stateSince =
+        state === 'offline'
+          ? lastAt || null
+          : state === 'idle' || state === 'pause'
+            ? idleAt
+            : state === 'producing'
+              ? increment || null
+              : null;
       const totals = {
         pieces: Number(row.pieces),
         milheiros: Number(row.pieces) / 1000,
@@ -1825,6 +1908,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         deviceCode: row.device_code,
         dashboardId: row.dashboard_id,
         state,
+        stateSince: stateSince ? new Date(stateSince).toISOString() : null,
         product: row.product_code,
         updatedAt: row.last_at ? new Date(row.last_at).toISOString() : null,
         metric,
@@ -2004,9 +2088,10 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   app.get('/api/devices/:id/production-config', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
-    const config = await loadConfig(db, access.principal(req).tenantId, id);
+    const tenantId = access.principal(req).tenantId;
+    const config = await loadConfig(db, tenantId, id);
     if (!config) return reply.code(404).send({ error: 'Device not found' });
-    return config;
+    return { ...config, calculated: await deviceFormulas(db, tenantId, id) };
   });
 
   // Any user of the device may set its production parameters (dashboards can be restored from
