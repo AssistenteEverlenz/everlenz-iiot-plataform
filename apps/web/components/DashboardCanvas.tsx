@@ -1800,22 +1800,24 @@ export function DashboardCanvas({ id }: { id: string }) {
                     </option>
                   ))}
                 </select>
-                <label className="comma-always">
-                  <input
-                    type="checkbox"
-                    checked={commaAlways}
-                    disabled={commaPlaces === 0}
-                    onChange={(event) => setCommaAlways(event.target.checked)}
-                  />
-                  <span>
-                    Dividir mesmo quando o número já vem com vírgula
-                    <small>
-                      Marque quando a IHM manda algo como 23855,67 para dizer 23,855 — por
-                      exemplo um registrador em kg/h. Sem isto, um número com vírgula é tomado
-                      como já estando na unidade certa.
-                    </small>
-                  </span>
-                </label>
+              </label>
+              {/* Its own row, right under the comma it qualifies: a label inside a label is not
+                  valid, and made the field beside it stretch to match. */}
+              <label className="comma-always">
+                <input
+                  type="checkbox"
+                  checked={commaAlways}
+                  disabled={commaPlaces === 0}
+                  onChange={(event) => setCommaAlways(event.target.checked)}
+                />
+                <span>
+                  Dividir mesmo quando o número já vem com vírgula
+                  <small>
+                    Marque quando a IHM manda algo como 23855,67 para dizer 23,855 — por exemplo
+                    um registrador em kg/h. Sem isto, um número com vírgula é tomado como já
+                    estando na unidade certa.
+                  </small>
+                </span>
               </label>
               <label className="field">
                 Cor

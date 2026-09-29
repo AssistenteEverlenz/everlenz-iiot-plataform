@@ -8743,15 +8743,28 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .wear-events { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
 .wear-events small { color: #7b9097; }
 
-/* Saying that a broken number still has to be divided: sits under the comma selector it
-   qualifies, because on its own the sentence means nothing. */
+/* Saying that a broken number still has to be divided. It takes the whole width under the comma
+   selector it qualifies, because on its own the sentence means nothing -- and because a taller
+   cell in this grid would stretch the field beside it. */
 .comma-always {
+  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 9px;
+  margin: -4px 0 2px;
+  padding: 9px 11px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
+  background: #f8fbfb;
+  font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
+}
+/* A field never stretches to match a taller neighbour: its control keeps its own height. */
+.form-grid .field > input,
+.form-grid .field > select,
+.form-grid .field > textarea {
+  align-self: start;
 }
 .comma-always input[type='checkbox'] {
   flex: none;
