@@ -211,6 +211,7 @@ export function ShiftCurve({
   fontSize = 10,
   deviceId,
   minuteSeries,
+  compare,
 }: {
   board: BoardData;
   fontSize?: number;
@@ -218,6 +219,8 @@ export function ShiftCurve({
   deviceId?: string;
   /** The whole shift minute by minute, already at hand (a shift photo): no reading is fetched. */
   minuteSeries?: Array<{ t: string; value: number }>;
+  /** Another day's realized curve, matched by position in the shift, drawn behind this one. */
+  compare?: { label: string; actual: Array<number | null> } | null;
 }) {
   const reactId = useId();
   const info = metricInfo[board.metric];
@@ -225,6 +228,8 @@ export function ShiftCurve({
     ...point,
     label: clock(point.t),
     state: board.timeline[index]?.state ?? 'unknown',
+    // Position in the shift, not clock time: two days line up even when one started late.
+    compare: compare?.actual[index] ?? null,
   }));
   const gradientId = `shift-state-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   // Window of points on screen; null is the whole shift.
@@ -268,6 +273,8 @@ export function ShiftCurve({
         actual: base?.actual == null ? null : running,
         planned: base?.planned == null ? null : (base.planned ?? 0) + plannedStep * index,
         projected: null,
+        // The zoom reads this shift minute by minute; another day is not matched that closely.
+        compare: null as number | null,
       };
     });
   }, [minutes.data, wantsMinutes, coarse]);
@@ -412,6 +419,19 @@ export function ShiftCurve({
             isAnimationActive={false}
             connectNulls={false}
           />
+          {compare && (
+            <Line
+              type="monotone"
+              dataKey="compare"
+              name={compare.label}
+              stroke="#b07cc6"
+              strokeWidth={2}
+              strokeDasharray="2 4"
+              dot={false}
+              isAnimationActive={false}
+              connectNulls={false}
+            />
+          )}
           <Line
             type="monotone"
             dataKey="planned"
@@ -519,8 +539,24 @@ export function ShiftBoard({
   calculated?: CalculatedField[];
 }) {
   const [mode, setMode] = useState<'shift' | 'day'>('shift');
+  // A day of the history instead of today, and another day drawn behind it. Both read the
+  // photograph taken when the day closed, so no reading is needed and nothing is recomputed.
+  const [day, setDay] = useState('');
+  const [against, setAgainst] = useState('');
+  const days = usePoll<{ days: Array<{ date: string; pallets: number | null; pieces: number | null }> }>(
+    `/devices/${deviceId}/production-days`,
+    600000,
+  );
+  const photo = usePoll<{ photo: { detail: ShiftBoardResponse; minutes: Array<{ t: string; value: number }> } | null }>(
+    day ? `/devices/${deviceId}/production-photo?date=${day}&kind=day` : null,
+    600000,
+  );
+  const other = usePoll<{ photo: { detail: ShiftBoardResponse } | null }>(
+    against ? `/devices/${deviceId}/production-photo?date=${against}&kind=day` : null,
+    600000,
+  );
   const response = usePoll<ShiftBoardResponse>(
-    `/devices/${deviceId}/shift-board?mode=${mode}`,
+    day ? null : `/devices/${deviceId}/shift-board?mode=${mode}`,
     30000,
   );
   // Opened without the card's formulas (the operations report does that): take the ones the
@@ -530,19 +566,72 @@ export function ShiftBoard({
     600000,
   );
   const settings = calculatedSettings ?? config.data?.calculated ?? [];
-  if (!response.data)
-    return <div className="shift-board-empty">{response.error ?? 'Carregando produção…'}</div>;
+  const shown = day ? (photo.data?.photo?.detail ?? null) : (response.data ?? null);
+  // The other day's realized curve, by position in the shift, so a late start still lines up.
+  const overlay = against && other.data?.photo?.detail
+    ? {
+        label: dayLabel(against),
+        actual: (other.data.photo.detail.board?.curve ?? []).map((point) => point.actual),
+      }
+    : null;
+  const picker = (
+    <div className="shift-day-picker">
+      <label>
+        Dia
+        <select value={day} onChange={(event) => setDay(event.target.value)}>
+          <option value="">Hoje</option>
+          {days.data?.days.map((item) => (
+            <option key={item.date} value={item.date}>{dayLabel(item.date)}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Comparar com
+        <select value={against} onChange={(event) => setAgainst(event.target.value)}>
+          <option value="">nenhum</option>
+          {days.data?.days
+            .filter((item) => item.date !== day)
+            .map((item) => (
+              <option key={item.date} value={item.date}>{dayLabel(item.date)}</option>
+            ))}
+        </select>
+      </label>
+    </div>
+  );
+  if (!shown)
+    return (
+      <div className="shift-board-day">
+        {picker}
+        <div className="shift-board-empty">
+          {day ? (photo.error ?? 'Carregando o dia…') : (response.error ?? 'Carregando produção…')}
+        </div>
+      </div>
+    );
   return (
+    <div className="shift-board-day">
+      {picker}
     <ShiftBoardView
-      data={response.data}
+      data={shown}
       deviceId={deviceId}
-      mode={mode}
-      onMode={setMode}
+      mode={day ? 'day' : mode}
+      onMode={day ? undefined : setMode}
+      historical={Boolean(day)}
+      minuteSeries={day ? photo.data?.photo?.minutes : undefined}
+      compare={overlay}
       calculated={calculated}
       calculatedSettings={settings}
       onChanged={() => void response.refresh()}
     />
+    </div>
   );
+}
+
+/** A production date as the plant reads it: "29/09 (seg)". */
+function dayLabel(date: string) {
+  const [year, month, dayOfMonth] = date.split('-').map(Number);
+  const at = new Date(year, month - 1, dayOfMonth);
+  const week = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][at.getDay()];
+  return `${String(dayOfMonth).padStart(2, '0')}/${String(month).padStart(2, '0')} (${week})`;
 }
 
 /**
@@ -560,7 +649,10 @@ export function ShiftBoardView({
   calculated = [],
   calculatedSettings = [],
   minuteSeries,
+  compare,
 }: {
+  /** Another day drawn behind this one, matched by position in the shift. */
+  compare?: { label: string; actual: Array<number | null> } | null;
   /** A shift photo's minute curve: the zoom reads it instead of the readings. */
   minuteSeries?: Array<{ t: string; value: number }>;
   calculated?: CalculatedField[];
@@ -798,10 +890,21 @@ export function ShiftBoardView({
                     realizado (área = estado da máquina)
                   </span>{' '}
                   <i className="projected" /> projeção
+                  {compare && (
+                    <>
+                      {' '}
+                      <i className="compared" /> {compare.label}
+                    </>
+                  )}
                 </span>
               </div>
               <div className="shift-chart">
-                <ShiftCurve board={board} deviceId={minuteSeries ? undefined : deviceId} minuteSeries={minuteSeries} />
+                <ShiftCurve
+                  board={board}
+                  deviceId={minuteSeries ? undefined : deviceId}
+                  minuteSeries={minuteSeries}
+                  compare={compare}
+                />
               </div>
             </div>
             <div className="shift-availability">

@@ -1510,6 +1510,17 @@
   :root[data-theme='dark'] .shift-legend i.projected {
     background: repeating-linear-gradient(90deg, var(--accent, #12b8a6) 0 4px, transparent 4px 7px);
   }
+  :root[data-theme='dark'] .shift-legend i.compared {
+    background: repeating-linear-gradient(90deg, #684d73 0 3px, transparent 3px 6px);
+  }
+  :root[data-theme='dark'] .shift-day-picker label {
+    color: #91a1a6;
+  }
+  :root[data-theme='dark'] .shift-day-picker select {
+    border: 1px solid #2c3f45;
+    background: #12191c;
+    color: inherit;
+  }
   :root[data-theme='dark'] .shift-availability {
     border: 1px solid #202d32;
   }

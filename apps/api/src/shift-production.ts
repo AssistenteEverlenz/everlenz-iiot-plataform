@@ -2488,6 +2488,46 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   });
 
   // The photo of one history row, when it has one: the history reads it instead of the readings.
+  /**
+   * The days this device has a photographed board for: what the board's date picker offers.
+   * Only days already closed and photographed are listed, so picking one never shows a gap.
+   */
+  app.get('/api/devices/:id/production-days', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = z.object({ limit: z.coerce.number().int().min(1).max(400).default(120) }).parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const rows = await db.query<{
+      production_date: string;
+      pieces: string | null;
+      pallets: string | null;
+      tons: string | null;
+      target_metric: string | null;
+      target_value: string | null;
+    }>(
+      `SELECT p.production_date::text,
+              sum(r.pieces)::text AS pieces, sum(r.pallets)::text AS pallets, sum(r.tons)::text AS tons,
+              max(r.target_metric) AS target_metric, sum(r.target_value)::text AS target_value
+       FROM production_photos p
+       LEFT JOIN shift_reports r ON r.device_id=p.device_id AND r.tenant_id=p.tenant_id
+         AND r.kind='shift' AND r.deleted_at IS NULL AND r.production_date=p.production_date
+       WHERE p.tenant_id=$1 AND p.device_id=$2 AND p.kind='day'
+       GROUP BY p.production_date
+       ORDER BY p.production_date DESC LIMIT $3`,
+      [tenantId, id, query.limit],
+    );
+    return {
+      days: rows.rows.map((row) => ({
+        date: row.production_date,
+        pieces: row.pieces == null ? null : Number(row.pieces),
+        pallets: row.pallets == null ? null : Number(row.pallets),
+        tons: row.tons == null ? null : Number(row.tons),
+        targetMetric: row.target_metric,
+        target: row.target_value == null ? null : Number(row.target_value),
+      })),
+    };
+  });
+
   app.get('/api/devices/:id/production-photo', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
