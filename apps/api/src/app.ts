@@ -94,7 +94,24 @@ const timeRange = {
 // Features" (MQTT row) — the iP line has no MQTT. Delta: DOP-100 models with an Ethernet port
 // (MQTT in DOPSoft 4 / DIAScreen) and the DOP-300S line.
 const hmiModels: Record<string, string[]> = {
-  Haiwell: ['A7', 'A7 Pro', 'A10', 'A10 Pro', 'A15', 'A15 Pro'],
+  // Haiwell: the A series (SmartLink, already in the plants), plus the B and C series, which
+  // Haiwell documents as IoT Cloud HMIs with a built-in MQTT server. The D, F and N series
+  // are not listed: nothing in Haiwell's material says they speak MQTT. The -W, -G and -E
+  // suffixes only change the radio (wifi, 4G, ethernet), so they belong in the serial number
+  // field rather than tripling this list.
+  Haiwell: [
+    'A7',
+    'A7 Pro',
+    'A10',
+    'A10 Pro',
+    'A15',
+    'A15 Pro',
+    'B7H',
+    'B10S',
+    'C7S',
+    'C7H',
+    'C10S',
+  ],
   Weintek: [
     'cMT2058XH',
     'cMT2078X',
