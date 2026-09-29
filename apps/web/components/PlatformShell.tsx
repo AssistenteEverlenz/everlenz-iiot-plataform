@@ -14,6 +14,8 @@ export interface PlatformUser {
   role: 'master' | 'user';
   status: 'active' | 'inactive';
   mustChangePassword: boolean;
+  /** May write brick weights and maintenance events. */
+  canLogMeasurements?: boolean;
 }
 
 export interface Branding {

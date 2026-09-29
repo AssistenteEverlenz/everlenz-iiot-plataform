@@ -11,6 +11,7 @@ import { recordAudit } from './audit.js';
 import { publishCommand, type CommandPublisher } from './commands.js';
 import { registerProductionRoutes } from './production.js';
 import { registerShiftProductionRoutes, scheduleProductionRebuild } from './shift-production.js';
+import { registerWearRoutes } from './wear.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 import { registerTvRoutes } from './tv-screens.js';
@@ -713,6 +714,9 @@ export async function createApp(
   });
   registerProductionRoutes(app, db, access);
   registerShiftProductionRoutes(app, db, access);
+  // Wear of the line: measured brick weight, part replacements, and the two indices built on
+  // them (apps/api/src/wear.ts).
+  registerWearRoutes(app, db, access);
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
   registerTvRoutes(app, db, access);

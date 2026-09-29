@@ -1020,6 +1020,13 @@
     color: inherit;
     box-shadow: inset 0 1px 2px rgba(20, 52, 60, .05);
   }
+  :root[data-theme='dark'] .user-measure-permission {
+    border: 1px solid #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .user-measure-permission small {
+    color: #84979e;
+  }
   :root[data-theme='dark'] .device-check-grid label {
     border: 1px solid #243338;
     background: #12191c;
@@ -2596,5 +2603,54 @@
   :root[data-theme='dark'] .tv3.light .tv-fleet-alert.ok {
     border-color: #314d41;
     background: #192a22;
+  }
+  :root[data-theme='dark'] .wear-explain {
+    border: 1px solid #293b41;
+    background: #182323;
+    color: #afbec4;
+  }
+  :root[data-theme='dark'] .wear-verdict > div {
+    border: 1px solid #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .wear-verdict span {
+    color: #86999f;
+  }
+  :root[data-theme='dark'] .wear-verdict small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .wear-section-title {
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .wear-section-title small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .wear-fields label {
+    color: #91a1a6;
+  }
+  :root[data-theme='dark'] .wear-fields input,
+  :root[data-theme='dark'] .wear-fields select {
+    border: 1px solid #2c3f45;
+    background: #12191c;
+    color: inherit;
+  }
+  :root[data-theme='dark'] .wear-sample-hint {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .wear-table th,
+  :root[data-theme='dark'] .wear-table td {
+    border-bottom: 1px solid #1e2b2f;
+  }
+  :root[data-theme='dark'] .wear-table th {
+    color: #86999f;
+  }
+  :root[data-theme='dark'] .wear-table tr.voided {
+    color: #9fb2b7;
+  }
+  :root[data-theme='dark'] .wear-empty {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .wear-events small {
+    color: #84979e;
   }
 }

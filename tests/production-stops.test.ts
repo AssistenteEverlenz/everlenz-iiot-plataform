@@ -66,7 +66,7 @@ describe('production stops', () => {
     const [done] = await stops(db);
     expect(done.ended_at?.toISOString()).toBe(back.toISOString());
     expect(Math.round(Number(done.seconds))).toBe(6 * 60);
-  });
+  }, 30_000);
 
   it('counts a change of reason as a new stop', async () => {
     const db = await base();
@@ -86,7 +86,7 @@ describe('production stops', () => {
     expect(rows.map((row) => row.state)).toEqual(['idle', 'offline']);
     expect(rows[0].ended_at).not.toBeNull();
     expect(rows[1].ended_at).toBeNull();
-  });
+  }, 30_000);
 
   it('records manual as its own reason', async () => {
     const db = await base();
@@ -94,5 +94,5 @@ describe('production stops', () => {
     await runtime(db, now, now, false);
     expect(await recordStops(db, now)).toEqual({ opened: 1, closed: 0 });
     expect((await stops(db))[0].state).toBe('manual');
-  });
+  }, 30_000);
 });

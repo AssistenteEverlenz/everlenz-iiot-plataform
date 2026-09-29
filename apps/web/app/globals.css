@@ -3122,6 +3122,29 @@ input:focus-visible {
 .filter-combobox { min-width: 0; }
 .scalable-device-picker { max-height: 230px; overflow-y: auto; align-content: start; padding-right: 3px; }
 .device-access-box > input { margin-top: 10px; min-height: 38px; }
+/* Granting the right to write measurements: same shape as a device row, so the form reads as
+   one list of permissions. */
+.user-measure-permission {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
+  background: #fff;
+}
+.user-measure-permission input[type='checkbox'] {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 2px;
+}
+.user-measure-permission span { min-width: 0; line-height: 1.3; }
+.user-measure-permission strong { display: block; font-size: 12px; }
+.user-measure-permission small { display: block; margin-top: 3px; color: #7b9097; font-size: 10px; }
 .device-access-box > small { display: block; margin-top: 7px; }
 .device-check-grid label {
   display: flex;
@@ -8628,3 +8651,94 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 @container (max-height: 26px) {
   .operation-block-label, .operation-block > b small { display: none; }
 }
+
+/* Wear of the line: the weighing form, the two indices and the weeks behind them. Its own block
+   because it is read by a ceramist deciding on maintenance, not glanced at like a card. */
+.wear-modal {
+  display: grid;
+  gap: 12px;
+  width: min(820px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+}
+.wear-explain {
+  padding: 10px 12px;
+  border: 1px solid #cfe0e2;
+  border-radius: 10px;
+  background: #f4fafa;
+  color: #3f5e67;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.wear-verdict {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.wear-verdict > div {
+  padding: 10px 12px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
+  background: #fff;
+}
+.wear-verdict span {
+  display: block;
+  color: #788d94;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.wear-verdict b {
+  display: block;
+  margin-top: 2px;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.wear-verdict small { display: block; color: #7b9097; font-size: 10px; }
+.wear-section-title {
+  color: #24505a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.wear-section-title small { color: #7b9097; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.wear-form { display: grid; gap: 10px; }
+.wear-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.wear-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #6d8087;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.wear-fields input,
+.wear-fields select {
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #cbdadd;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.wear-sample-hint { color: #7b9097; font-size: 11px; }
+.wear-actions { display: flex; gap: 8px; }
+.wear-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.wear-table th, .wear-table td { padding: 6px 8px; border-bottom: 1px solid #e6eef0; text-align: left; }
+.wear-table th { color: #788d94; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; }
+.wear-table .n { text-align: right; font-variant-numeric: tabular-nums; }
+.wear-table tr.voided { color: #9fb2b7; text-decoration: line-through; }
+.wear-empty { color: #7b9097; font-size: 12px; }
+.wear-events { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.wear-events small { color: #7b9097; }

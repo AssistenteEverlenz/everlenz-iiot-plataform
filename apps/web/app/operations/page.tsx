@@ -15,6 +15,7 @@ import {
 } from '../../components/OperationCard';
 import type { PanelSource } from '../../components/variables';
 import { NavIcon } from '../../components/NavIcon';
+import { WearModal } from '../../components/WearModal';
 import { usePlatform } from '../../components/PlatformShell';
 import { mutate, time, usePoll } from '../../components/data';
 
@@ -139,6 +140,7 @@ export default function OperationsPage() {
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<Machine | null>(null);
+  const [wear, setWear] = useState<Machine | null>(null);
   const [detail, setDetail] = useState<Machine | null>(null);
   const [configuring, setConfiguring] = useState<{ machine: Machine; siteName: string; width: number | null } | null>(null);
   // The editor draws the card at the width it has in the list, so it wraps the same way there.
@@ -209,6 +211,13 @@ export default function OperationsPage() {
           onClick={() => setDetail(machine)}
         >
           <NavIcon name="report" />
+        </button>
+        <button
+          title="Desgaste da linha"
+          aria-label="Desgaste da linha"
+          onClick={() => setWear(machine)}
+        >
+          <NavIcon name="gauge" />
         </button>
         {machine.dashboardId && (
           <Link
@@ -489,6 +498,13 @@ export default function OperationsPage() {
             )}
           </section>
         </div>
+      )}
+      {wear && (
+        <WearModal
+          deviceId={wear.deviceId}
+          deviceName={wear.deviceName}
+          onClose={() => setWear(null)}
+        />
       )}
       {editing && (
         <LocationModal

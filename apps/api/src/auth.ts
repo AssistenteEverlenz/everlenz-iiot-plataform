@@ -49,6 +49,8 @@ export interface Principal {
   role: 'master' | 'user';
   status: 'active' | 'inactive';
   mustChangePassword: boolean;
+  /** May write brick weights and maintenance events (migration 033). */
+  canLogMeasurements: boolean;
   sessionHash: string;
   /** Created with "Manter conectado". */
   persistentSession: boolean;
@@ -87,6 +89,7 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
         role: 'master',
         status: 'active',
         mustChangePassword: false,
+        canLogMeasurements: true,
         sessionHash: '',
         persistentSession: false,
       };
@@ -106,10 +109,11 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
       role: 'master' | 'user';
       status: 'active' | 'inactive';
       must_change_password: boolean;
+      can_log_measurements: boolean;
       last_seen_at: Date | string;
       persistent: boolean;
     }>(
-      `SELECT u.id,u.tenant_id,u.email,u.full_name,u.role,u.status,u.must_change_password,
+      `SELECT u.id,u.tenant_id,u.email,u.full_name,u.role,u.status,u.must_change_password,u.can_log_measurements,
          s.last_seen_at,s.persistent
        FROM app_sessions s JOIN app_users u ON u.id=s.user_id
        WHERE s.token_hash=$1 AND s.expires_at>now()
@@ -135,6 +139,7 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
       role: row.role,
       status: row.status,
       mustChangePassword: row.must_change_password,
+      canLogMeasurements: row.can_log_measurements,
       sessionHash: tokenHash,
       persistentSession: row.persistent,
     };
@@ -479,7 +484,7 @@ export function registerAuthRoutes(
     const current = access.principal(request);
     return (
       await db.query(
-        `SELECT u.id,u.email,u.full_name,u.role,u.status,u.must_change_password,u.last_login_at,u.created_at,u.updated_at,
+        `SELECT u.id,u.email,u.full_name,u.role,u.status,u.must_change_password,u.can_log_measurements,u.last_login_at,u.created_at,u.updated_at,
           COALESCE(array_agg(a.device_id) FILTER(WHERE a.device_id IS NOT NULL),'{}') device_ids
          FROM app_users u LEFT JOIN user_device_access a ON a.user_id=u.id AND a.tenant_id=u.tenant_id
          WHERE u.tenant_id=$1 GROUP BY u.id ORDER BY u.role='master' DESC,u.full_name,u.id`,
@@ -502,15 +507,16 @@ export function registerAuthRoutes(
     const passwordHash = await hashPassword(initialPassword);
     const user = await db.transaction(async (sql) => {
       const created = await sql.query<{ id: string } & Record<string, unknown>>(
-        `INSERT INTO app_users(tenant_id,email,full_name,role,status,password_hash,must_change_password,created_by)
-         VALUES($1,lower($2),$3,'user',$4,$5,true,$6)
-         RETURNING id,email,full_name,role,status,must_change_password,created_at`,
+        `INSERT INTO app_users(tenant_id,email,full_name,role,status,password_hash,must_change_password,can_log_measurements,created_by)
+         VALUES($1,lower($2),$3,'user',$4,$5,true,$6,$7)
+         RETURNING id,email,full_name,role,status,must_change_password,can_log_measurements,created_at`,
         [
           current.tenantId,
           body.email.trim(),
           body.fullName.trim(),
           body.status,
           passwordHash,
+          body.canLogMeasurements,
           current.id,
         ],
       );
@@ -556,14 +562,17 @@ export function registerAuthRoutes(
     const user = await db.transaction(async (sql) => {
       const updated = await sql.query(
         `UPDATE app_users SET email=COALESCE(lower($3),email),full_name=COALESCE($4,full_name),
-         status=COALESCE($5,status),updated_at=now() WHERE tenant_id=$1 AND id=$2
-         RETURNING id,email,full_name,role,status,must_change_password,last_login_at,created_at,updated_at`,
+         status=COALESCE($5,status),can_log_measurements=COALESCE($6,can_log_measurements),
+         updated_at=now() WHERE tenant_id=$1 AND id=$2
+         RETURNING id,email,full_name,role,status,must_change_password,can_log_measurements,
+           last_login_at,created_at,updated_at`,
         [
           current.tenantId,
           id,
           body.email?.trim() ?? null,
           body.fullName?.trim() ?? null,
           body.status ?? null,
+          body.canLogMeasurements ?? null,
         ],
       );
       if (body.deviceIds) await replaceDeviceAccess(sql, current.tenantId, id, body.deviceIds);
@@ -674,6 +683,8 @@ const userMutationSchema = z.object({
   fullName: z.string().min(2).max(120),
   status: z.enum(['active', 'inactive']).default('active'),
   deviceIds: z.array(z.uuid()).max(500).default([]),
+  // Writing a brick weight backs a maintenance decision, so it is granted, not assumed.
+  canLogMeasurements: z.boolean().default(false),
 });
 
 async function validDevices(db: Database, tenantId: string, deviceIds: string[]) {

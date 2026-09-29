@@ -11,6 +11,7 @@ export type NavIconName =
   | 'report'
   | 'pin'
   | 'more'
+  | 'gauge'
   | 'tv';
 
 export function NavIcon({ name }: { name: NavIconName }) {
@@ -88,6 +89,14 @@ export function NavIcon({ name }: { name: NavIconName }) {
         <>
           <path d="M12 21.5s7-6.4 7-11.5a7 7 0 1 0-14 0c0 5.1 7 11.5 7 11.5Z" />
           <circle cx="12" cy="10" r="2.6" />
+        </>
+      )}
+      {/* A dial with its needle: the wear of the line, read against a scale. */}
+      {name === 'gauge' && (
+        <>
+          <path d="M4 16.5a8 8 0 1 1 16 0" />
+          <path d="m12 16.5 4-4.5" />
+          <circle cx="12" cy="16.5" r="1.3" fill="currentColor" stroke="none" />
         </>
       )}
       {name === 'more' && (

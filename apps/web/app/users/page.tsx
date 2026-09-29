@@ -11,6 +11,7 @@ interface ManagedUser {
   role: 'master' | 'user';
   status: 'active' | 'inactive';
   must_change_password: boolean;
+  can_log_measurements: boolean;
   last_login_at: string | null;
   device_ids: string[];
 }
@@ -20,9 +21,16 @@ interface UserForm {
   email: string;
   status: 'active' | 'inactive';
   deviceIds: string[];
+  canLogMeasurements: boolean;
 }
 
-const emptyForm: UserForm = { fullName: '', email: '', status: 'active', deviceIds: [] };
+const emptyForm: UserForm = {
+  fullName: '',
+  email: '',
+  status: 'active',
+  deviceIds: [],
+  canLogMeasurements: false,
+};
 
 export default function UsersPage() {
   const users = usePoll<ManagedUser[]>('/users', 10000);
@@ -67,6 +75,7 @@ export default function UsersPage() {
       email: user.email,
       status: user.status,
       deviceIds: user.device_ids,
+      canLogMeasurements: user.can_log_measurements,
     });
     setError('');
     setOpen(true);
@@ -273,6 +282,20 @@ export default function UsersPage() {
                 </select>
               </label>
             </div>
+            <label className="user-measure-permission">
+              <input
+                type="checkbox"
+                checked={form.canLogMeasurements}
+                onChange={(event) => setForm({ ...form, canLogMeasurements: event.target.checked })}
+              />
+              <span>
+                <strong>Pode lançar o peso do tijolo e manutenções</strong>
+                <small>
+                  Esses lançamentos embasam decisão de manutenção e ficam com o nome de quem
+                  lançou. Sem isto, o usuário apenas visualiza.
+                </small>
+              </span>
+            </label>
             <div className="device-access-box">
               <div>
                 <strong>Equipamentos liberados</strong>
