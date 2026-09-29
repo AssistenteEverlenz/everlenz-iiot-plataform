@@ -909,6 +909,9 @@ export function DashboardCanvas({ id }: { id: string }) {
   // for 23,855 t/h), and others publish the real reading already. Only the plant knows which.
   const [commaAlways, setCommaAlways] = useState(false);
   const [calculatedList, setCalculatedList] = useState<CalculatedSetting[]>([]);
+  // Which calculated row is being carried, and which one it is over.
+  const [draggingCalc, setDraggingCalc] = useState<string | null>(null);
+  const [overCalc, setOverCalc] = useState<string | null>(null);
   const [showingVariables, setShowingVariables] = useState(false);
   const [mainFormula, setMainFormula] = useState('');
   const [mainFormulaUnit, setMainFormulaUnit] = useState('');
@@ -1692,9 +1695,53 @@ export function DashboardCanvas({ id }: { id: string }) {
                         position === index ? { ...item, ...patch } : item,
                       ),
                     );
+                  const moveCalculated = (from: string, to: string) =>
+                    setCalculatedList((list) => {
+                      const source = list.findIndex((item) => item.id === from);
+                      const target = list.findIndex((item) => item.id === to);
+                      if (source < 0 || target < 0 || source === target) return list;
+                      const next = [...list];
+                      const [carried] = next.splice(source, 1);
+                      next.splice(target, 0, carried);
+                      return next;
+                    });
                   return (
-                    <div className="formula-item" key={field.id}>
+                    <div
+                      className={`formula-item${draggingCalc === field.id ? ' dragging' : ''}${
+                        overCalc === field.id && draggingCalc && draggingCalc !== field.id
+                          ? ' drop-here'
+                          : ''
+                      }`}
+                      key={field.id}
+                      onDragOver={(event) => {
+                        if (!draggingCalc) return;
+                        event.preventDefault();
+                        setOverCalc(field.id);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (draggingCalc) moveCalculated(draggingCalc, field.id);
+                        setDraggingCalc(null);
+                        setOverCalc(null);
+                      }}
+                    >
                       <div className="formula-row">
+                        <span
+                          className="formula-grip"
+                          title="Arraste para mudar a ordem"
+                          aria-label="Arraste para mudar a ordem"
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move';
+                            setDraggingCalc(field.id);
+                          }}
+                          onDragEnd={() => {
+                            setDraggingCalc(null);
+                            setOverCalc(null);
+                          }}
+                        >
+                          ⠿
+                        </span>
                         <input
                           value={field.label}
                           placeholder="Nome, ex.: Cortes por minuto"

@@ -2666,4 +2666,14 @@
   :root[data-theme='dark'] .comma-always small {
     color: #84979e;
   }
+  :root[data-theme='dark'] .formula-grip {
+    color: #9fb2b7;
+  }
+  :root[data-theme='dark'] .formula-item:hover .formula-grip {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .formula-item.drop-here {
+    border-top: 2px solid #12b8a6;
+    border-bottom-color: transparent;
+  }
 }
