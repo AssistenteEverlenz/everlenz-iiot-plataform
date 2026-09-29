@@ -92,7 +92,9 @@ export function WearModal({
   const parsed = useMemo(
     () =>
       sample
-        .split(/[\s,;]+/)
+        // Here the comma is the decimal mark, so it must never split the list: "3,02 2,98" is
+        // two bricks, not four numbers.
+        .split(/[\s;]+/)
         .map((piece) => Number(piece.replace(',', '.')))
         .filter((value) => Number.isFinite(value) && value > 0),
     [sample],
@@ -140,15 +142,13 @@ export function WearModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <section className="modal wear-modal" onClick={(event) => event.stopPropagation()}>
-        <header className="modal-head">
+      <div className="modal-card wear-modal" onClick={(event) => event.stopPropagation()}>
+        <header className="modal-title">
           <div>
-            <strong>Desgaste da linha</strong>
+            <h2>Desgaste da linha</h2>
             <small>{deviceName}</small>
           </div>
-          <button className="modal-close" onClick={onClose} aria-label="Fechar">
-            ×
-          </button>
+          <button onClick={onClose} aria-label="Fechar">Fechar</button>
         </header>
 
         <div className="wear-explain">
@@ -326,7 +326,7 @@ export function WearModal({
             </ul>
           </>
         )}
-      </section>
+      </div>
     </div>
   );
 }

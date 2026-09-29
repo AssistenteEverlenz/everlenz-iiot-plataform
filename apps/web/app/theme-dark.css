@@ -2604,6 +2604,9 @@
     border-color: #314d41;
     background: #192a22;
   }
+  :root[data-theme='dark'] .wear-modal .modal-title small {
+    color: #84979e;
+  }
   :root[data-theme='dark'] .wear-explain {
     border: 1px solid #293b41;
     background: #182323;

@@ -8657,10 +8657,10 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .wear-modal {
   display: grid;
   gap: 12px;
-  width: min(820px, 100%);
-  max-height: calc(100dvh - 40px);
-  overflow: auto;
+  width: min(880px, 100%);
 }
+.wear-modal h2 { margin: 0; font-size: 19px; }
+.wear-modal .modal-title small { display: block; color: #7b9097; font-size: 12px; }
 .wear-explain {
   padding: 10px 12px;
   border: 1px solid #cfe0e2;
