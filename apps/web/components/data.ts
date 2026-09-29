@@ -84,6 +84,8 @@ export interface DashboardWidget {
   tag_id: string | null;
   /** Scale of the variable: 0.1 means the HMI omits one decimal place. */
   scale_multiplier?: number | string | null;
+  /** The variable divides even when the HMI already sends a broken number. */
+  scale_always?: boolean | null;
   widget_type:
     | 'value'
     | 'line'

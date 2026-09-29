@@ -161,6 +161,8 @@ export interface TagConfig {
   data_type: DataType;
   scale_multiplier: number;
   scale_offset: number;
+  /** Divide even when the HMI already sends a broken number (migration 034). */
+  scale_always?: boolean;
   enabled: boolean;
 }
 export interface MqttMessage {
@@ -241,8 +243,11 @@ export function convertTag(value: unknown, tag: TagConfig): number | boolean | s
   // "Onde fica a vírgula": a scale of 0.1, 0.01, … says the HMI publishes the number without its
   // decimal point (139 for 13,9). A value that already carries decimals (2,55 kg) is the real
   // reading and is taken as it is, so both HMI styles land on the same unit.
+  // Unless the plant stated otherwise: a Haiwell B10S publishes 23855.671875 for 23,855 t/h,
+  // because its register is in kg/h, and no guess can tell that apart from a reading that
+  // genuinely carries decimals.
   const n =
-    decimalPlacesOf(multiplier) && !Number.isInteger(raw)
+    !tag.scale_always && decimalPlacesOf(multiplier) && !Number.isInteger(raw)
       ? raw + Number(tag.scale_offset)
       : raw * multiplier + Number(tag.scale_offset);
   if (!Number.isFinite(n)) throw new Error(`Non-finite number: ${tag.key}`);

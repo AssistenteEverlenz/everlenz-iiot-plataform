@@ -905,6 +905,9 @@ export function DashboardCanvas({ id }: { id: string }) {
   // Two different things: where the HMI's number has its comma (the variable's scale) and how
   // many decimal places this card shows.
   const [commaPlaces, setCommaPlaces] = useState(0);
+  // Some HMIs publish a broken number that still has to be divided (a B10S reports 23855.671875
+  // for 23,855 t/h), and others publish the real reading already. Only the plant knows which.
+  const [commaAlways, setCommaAlways] = useState(false);
   const [calculatedList, setCalculatedList] = useState<CalculatedSetting[]>([]);
   const [showingVariables, setShowingVariables] = useState(false);
   const [mainFormula, setMainFormula] = useState('');
@@ -1096,6 +1099,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMaximum(widget.config.max ?? 100);
     setDecimals(widget.config.decimals ?? 1);
     setCommaPlaces(placesOfScale(widget.scale_multiplier));
+    setCommaAlways(widget.scale_always === true);
     // Formulas open with the standard names (ihm.*, painel.*), so saving brings them up to date.
     setCalculatedList(
       calculatedFields(widget.config).map((field) => ({ ...field, formula: modernizeFormula(field.formula) })),
@@ -1165,9 +1169,14 @@ export function DashboardCanvas({ id }: { id: string }) {
       }
       // The comma is a property of the variable: written once, every card that reads it agrees.
       const currentTagId = tagId === undefined ? editingWidget.tag_id : tagId;
-      if (currentTagId && commaPlaces !== placesOfScale(editingWidget.scale_multiplier))
+      if (
+        currentTagId &&
+        (commaPlaces !== placesOfScale(editingWidget.scale_multiplier) ||
+          commaAlways !== (editingWidget.scale_always === true))
+      )
         await mutate(`/devices/${editingWidget.device_id}/tags/${currentTagId}/decimals`, 'PATCH', {
           places: commaPlaces,
+          always: commaAlways,
           adjustHistory: true,
         });
       await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', {
@@ -1233,6 +1242,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     try {
       await mutate(`/devices/${editingWidget.device_id}/tags/${editingWidget.tag_id}/decimals`, 'PATCH', {
         places: commaPlaces,
+        always: commaAlways,
         adjustHistory: true,
       });
       setDataVersion((version) => version + 1);
@@ -1790,6 +1800,22 @@ export function DashboardCanvas({ id }: { id: string }) {
                     </option>
                   ))}
                 </select>
+                <label className="comma-always">
+                  <input
+                    type="checkbox"
+                    checked={commaAlways}
+                    disabled={commaPlaces === 0}
+                    onChange={(event) => setCommaAlways(event.target.checked)}
+                  />
+                  <span>
+                    Dividir mesmo quando o número já vem com vírgula
+                    <small>
+                      Marque quando a IHM manda algo como 23855,67 para dizer 23,855 — por
+                      exemplo um registrador em kg/h. Sem isto, um número com vírgula é tomado
+                      como já estando na unidade certa.
+                    </small>
+                  </span>
+                </label>
               </label>
               <label className="field">
                 Cor

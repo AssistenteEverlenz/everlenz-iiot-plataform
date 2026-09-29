@@ -202,6 +202,22 @@ describe('Tag conversion', () => {
     expect(convertTag('2.55', { ...tag('number'), scale_multiplier: 0.001, scale_offset: 0 })).toBe(2.55));
   it('still scales a decimal value when the scale is not a comma position', () =>
     expect(convertTag('2.5', { ...tag('number'), scale_multiplier: 2, scale_offset: 0 })).toBe(5));
+  // A Haiwell B10S publishes 23855.671875 for 23,855 t/h, because its register is in kg/h. No
+  // guess can tell that apart from a reading that genuinely carries decimals, so the plant says
+  // which it is and the platform stops guessing.
+  it('divides a broken number when the plant asked for it', () =>
+    expect(
+      convertTag('23855.671875', {
+        ...tag('number'),
+        scale_multiplier: 0.001,
+        scale_offset: 0,
+        scale_always: true,
+      }),
+    ).toBeCloseTo(23.855671875, 9));
+  it('leaves the other plants alone, which send the reading already in its unit', () =>
+    expect(
+      convertTag('19.44', { ...tag('number'), scale_multiplier: 0.001, scale_offset: 0 }),
+    ).toBe(19.44));
   it('keeps boolean false', () => expect(convertTag('0', tag('boolean'))).toBe(false));
   it('rejects ambiguous boolean', () => expect(() => convertTag('yes', tag('boolean'))).toThrow());
   it('preserves binary and JSON', () => {

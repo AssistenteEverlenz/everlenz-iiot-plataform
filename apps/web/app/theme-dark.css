@@ -2656,4 +2656,10 @@
   :root[data-theme='dark'] .wear-events small {
     color: #84979e;
   }
+  :root[data-theme='dark'] .comma-always span {
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .comma-always small {
+    color: #84979e;
+  }
 }

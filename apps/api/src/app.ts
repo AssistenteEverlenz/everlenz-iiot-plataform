@@ -611,25 +611,35 @@ export async function createApp(
     const body = z
       .object({
         places: z.number().int().min(0).max(6),
+        // Divide even when the HMI already sends a broken number: the B10S publishes
+        // 23855.671875 for 23,855 t/h, and no guess can tell that apart from a reading that
+        // genuinely carries decimals.
+        always: z.boolean().optional(),
         adjustHistory: z.boolean().default(true),
       })
       .parse(req.body);
     if (!(await access.requireDevice(req, reply, id))) return;
     const current = access.principal(req);
-    const tag = await db.query<{ key: string; scale_multiplier: string | number }>(
-      'SELECT key,scale_multiplier FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+    const tag = await db.query<{ key: string; scale_multiplier: string | number; scale_always: boolean }>(
+      'SELECT key,scale_multiplier,scale_always FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
       [current.tenantId, id, tagId],
     );
     if (!tag.rows.length) return reply.code(404).send({ error: 'Variable not found' });
     const before = Number(tag.rows[0].scale_multiplier);
     const after = scaleForDecimals(body.places);
-    if (before === after && !body.adjustHistory) return { places: body.places, rescaled: 0 };
-    const ratio = after / before;
+    const wasAlways = tag.rows[0].scale_always === true;
+    const always = body.always ?? wasAlways;
+    if (before === after && always === wasAlways && !body.adjustHistory)
+      return { places: body.places, rescaled: 0 };
+    // What the stored readings have to be multiplied by so the past matches what arrives next.
+    // Turning "always" on means the readings so far were kept as they came, because the old rule
+    // left a broken number alone; turning it off means they were divided and must be put back.
+    const ratio = always === wasAlways ? after / before : always ? after : 1 / before;
     return db
       .transaction(async (sql) => {
         await sql.query(
-          'UPDATE tags SET scale_multiplier=$4 WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
-          [current.tenantId, id, tagId, after],
+          'UPDATE tags SET scale_multiplier=$4,scale_always=$5 WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
+          [current.tenantId, id, tagId, after, always],
         );
         let rescaled = 0;
         if (body.adjustHistory) {
@@ -663,9 +673,9 @@ export async function createApp(
           action: 'tag.decimals',
           targetType: 'tag',
           targetId: tagId,
-          summary: { key: tag.rows[0].key, places: body.places, scale: after, rescaled },
+          summary: { key: tag.rows[0].key, places: body.places, scale: after, always, rescaled },
         });
-        return { places: body.places, rescaled, changedAt: new Date() };
+        return { places: body.places, always, rescaled, changedAt: new Date() };
       })
       .then(async (result) => {
         // Production is counted from the readings: with a new scale it has to be counted again.
@@ -2262,7 +2272,7 @@ async function dashboardView(
   );
   if (!dashboard.rows.length) return null;
   const widgets = await db.query<DashboardWidgetRecord>(
-    `SELECT w.*,t.key,t.name tag_name,t.unit,t.data_type,t.scale_multiplier FROM dashboard_widgets w
+    `SELECT w.*,t.key,t.name tag_name,t.unit,t.data_type,t.scale_multiplier,t.scale_always FROM dashboard_widgets w
      LEFT JOIN tags t ON t.id=w.tag_id AND t.tenant_id=w.tenant_id
      WHERE w.tenant_id=$1 AND w.dashboard_id=$2 ORDER BY w.position,w.created_at`,
     [current.tenantId, dashboardId],
