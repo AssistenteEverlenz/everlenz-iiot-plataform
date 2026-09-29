@@ -8,6 +8,7 @@ import {
   closeShiftReports,
 } from './shift-production.js';
 import { pruneReadings } from './retention.js';
+import { recordStops } from './production-stops.js';
 const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
 
@@ -113,6 +114,10 @@ async function closeShifts() {
     // Right after the close, while the readings are there: the photo the history will read.
     const photos = await captureProductionPhotos(database);
     if (photos) app.log.info({ event: 'production_photos_taken', photos });
+    // Each stop of the line, while it is happening: seconds can be counted afterwards, stops
+    // cannot (apps/api/src/production-stops.ts).
+    const stops = await recordStops(database);
+    if (stops.opened || stops.closed) app.log.info({ event: 'production_stops', ...stops });
   } catch (error) {
     app.log.warn({
       event: 'shift_report_close_failed',

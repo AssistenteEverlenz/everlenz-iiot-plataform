@@ -2298,6 +2298,92 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
    * What is behind each number of the board: production hour by hour, the machine's time in
    * each hour and every pallet with how long it took. Same window as the board.
    */
+  /**
+   * How often the line stopped, and for how long (migration 032). Seconds were always kept in
+   * the buckets; the count never was, and cannot be worked out from seconds. Scheduled breaks
+   * are reported apart, because a break is not a failure.
+   */
+  app.get('/api/devices/:id/stops', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = z
+      .object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+        days: z.coerce.number().int().min(1).max(180).default(30),
+      })
+      .parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const to = query.to ?? plantDate(new Date());
+    const from = query.from ?? addDays(to, -(query.days - 1));
+
+    const byDay = await db.query<{
+      dia: string;
+      paradas: string;
+      segundos: string;
+      pausas: string;
+      segundos_pausa: string;
+      maior: string;
+    }>(
+      `SELECT production_date::text AS dia,
+              count(*) FILTER (WHERE NOT during_pause)::text AS paradas,
+              coalesce(round(sum(seconds) FILTER (WHERE NOT during_pause))::text,'0') AS segundos,
+              count(*) FILTER (WHERE during_pause)::text AS pausas,
+              coalesce(round(sum(seconds) FILTER (WHERE during_pause))::text,'0') AS segundos_pausa,
+              coalesce(round(max(seconds) FILTER (WHERE NOT during_pause))::text,'0') AS maior
+       FROM production_stops
+       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
+       GROUP BY production_date ORDER BY production_date`,
+      [tenantId, id, from, to],
+    );
+
+    const byReason = await db.query<{ state: string; paradas: string; segundos: string }>(
+      `SELECT state, count(*)::text AS paradas, coalesce(round(sum(seconds))::text,'0') AS segundos
+       FROM production_stops
+       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
+         AND NOT during_pause
+       GROUP BY state ORDER BY 2 DESC`,
+      [tenantId, id, from, to],
+    );
+
+    const longest = await db.query<{
+      started_at: Date;
+      seconds: number | null;
+      state: string;
+      product_code: string | null;
+    }>(
+      `SELECT started_at,seconds,state,product_code FROM production_stops
+       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
+         AND NOT during_pause AND seconds IS NOT NULL
+       ORDER BY seconds DESC LIMIT 10`,
+      [tenantId, id, from, to],
+    );
+
+    return {
+      from,
+      to,
+      days: byDay.rows.map((row) => ({
+        date: row.dia,
+        stops: Number(row.paradas),
+        seconds: Number(row.segundos),
+        pauses: Number(row.pausas),
+        pauseSeconds: Number(row.segundos_pausa),
+        longestSeconds: Number(row.maior),
+      })),
+      reasons: byReason.rows.map((row) => ({
+        state: row.state,
+        stops: Number(row.paradas),
+        seconds: Number(row.segundos),
+      })),
+      longest: longest.rows.map((row) => ({
+        startedAt: new Date(row.started_at).toISOString(),
+        seconds: Number(row.seconds),
+        state: row.state,
+        product: row.product_code,
+      })),
+    };
+  });
+
   app.get('/api/devices/:id/shift-detail', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
