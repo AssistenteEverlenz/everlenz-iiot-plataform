@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { usePoll } from './data';
+import { DayCalendar, dayLabel } from './DayCalendar';
 import { TargetModal } from './TargetModal';
 import {
   ShiftDetailModal,
@@ -653,9 +654,8 @@ export function ShiftBoard({
   // A plant that has run for a year has a year of days, and a year of days is not a list anyone
   // can scroll: the day is picked on a calendar. The closed days are still read, to bound that
   // calendar and to say plainly when a day typed by hand has no report behind it.
-  const known = useMemo(() => new Set((days.data?.days ?? []).map((item) => item.date)), [days.data]);
-  const firstDay = days.data?.days.at(-1)?.date;
-  const lastDay = days.data?.days[0]?.date;
+  const closedDays = useMemo(() => (days.data?.days ?? []).map((item) => item.date), [days.data]);
+  const known = useMemo(() => new Set(closedDays), [closedDays]);
   const missingDay = Boolean(day) && Boolean(days.data) && !known.has(day);
   const missingAgainst = Boolean(comparingDay) && Boolean(days.data) && !known.has(comparingDay);
   // The references of the period are buttons like every other filter of the board; only the
@@ -686,14 +686,7 @@ export function ShiftBoard({
             </button>
           </span>
           {(day || pickingDay) && (
-            <input
-              type="date"
-              aria-label="Dia"
-              value={day}
-              min={firstDay}
-              max={lastDay}
-              onChange={(event) => setDay(event.target.value)}
-            />
+            <DayCalendar value={day} available={closedDays} onPick={setDay} />
           )}
         </span>
       </div>
@@ -723,14 +716,12 @@ export function ShiftBoard({
             ))}
           </span>
           {against === 'custom' && (
-            <input
-              type="date"
-              aria-label="Dia comparado"
+            <DayCalendar
               value={againstDay}
-              min={firstDay}
-              max={lastDay}
-              onChange={(event) => {
-                setAgainstDay(event.target.value);
+              // The day already open is not offered as its own comparison.
+              available={closedDays.filter((date) => date !== day)}
+              onPick={(date) => {
+                setAgainstDay(date);
                 setZoom(null);
               }}
             />
@@ -853,14 +844,6 @@ const medianLabel = (against: Comparison) =>
       : against === 'year'
         ? 'mediana do ano'
         : 'mediana de 7 dias';
-
-/** A production date as the plant reads it: "29/09 (seg)". */
-function dayLabel(date: string) {
-  const [year, month, dayOfMonth] = date.split('-').map(Number);
-  const at = new Date(year, month - 1, dayOfMonth);
-  const week = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][at.getDay()];
-  return `${String(dayOfMonth).padStart(2, '0')}/${String(month).padStart(2, '0')} (${week})`;
-}
 
 /**
  * The board itself. The live card passes the Turno/Dia switch; the history detail shows a

@@ -1191,8 +1191,8 @@
     background: #12191c;
     color: #a5b6bc;
   }
-  :root[data-theme='dark'] .widget-period button:hover {
-    border-color: #12b8a6;
+  :root[data-theme='dark'] .widget-period button:hover:not(:disabled):not(.active) {
+    border-color: #0b2028;
     color: #e0e6e8;
   }
   :root[data-theme='dark'] .widget-period button.active {
@@ -1536,6 +1536,60 @@
     border: 1px solid #2c3f45;
     background: #12191c;
     color: inherit;
+  }
+  :root[data-theme='dark'] .day-calendar-trigger {
+    border: 1px solid #2c3f45;
+    background: #12191c;
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .day-calendar-trigger:hover:not(:disabled) {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .day-calendar-trigger.chosen {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .day-calendar-sheet {
+    border: 1px solid #243338;
+    background: #12191c;
+    box-shadow: 0 12px 30px #0b20281f;
+  }
+  :root[data-theme='dark'] .day-calendar-head strong {
+    color: #d4dcdf;
+  }
+  :root[data-theme='dark'] .day-calendar-head button {
+    border: 1px solid #243338;
+    background: #12191c;
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .day-calendar-head button:hover:not(:disabled) {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .day-calendar-week span {
+    color: #93a7ad;
+  }
+  :root[data-theme='dark'] .day-calendar-grid button {
+    border: 1px solid transparent;
+    background: #172125;
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .day-calendar-grid button:hover:not(:disabled):not(.active) {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .day-calendar-grid button.active {
+    background: #0b2028;
+    border-color: #0b2028;
+    color: #fff;
+  }
+  :root[data-theme='dark'] .day-calendar-grid button:disabled {
+    background: transparent;
+    color: #c3ced2;
+  }
+  :root[data-theme='dark'] .day-calendar-foot {
+    color: #798e95;
   }
   :root[data-theme='dark'] .shift-pick-hint {
     color: #daba8b;

@@ -3779,10 +3779,6 @@ input:focus-visible {
   min-width: 0;
   max-width: 100%;
 }
-.shift-field .widget-period button {
-  padding: 4px 10px;
-  font-size: 11px;
-}
 .widget-period button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -3804,8 +3800,10 @@ input:focus-visible {
     color 0.15s ease,
     border-color 0.15s ease;
 }
-.widget-period button:hover {
-  border-color: #12b8a6;
+/* The hover is more specific than .active, so without excluding it the chosen pill painted
+   its own ink over its white label and went blank. */
+.widget-period button:hover:not(:disabled):not(.active) {
+  border-color: #0b2028;
   color: #0b2028;
 }
 .widget-period button.active {
@@ -5369,6 +5367,138 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 /* A generic rule gives every input a minimum width wide enough to break this row. */
 .shift-day-picker input[type='date'] { width: 148px; min-width: 0; }
+/* A month calendar, because the browser's date field cannot grey out a day without a report. */
+.day-calendar {
+  position: relative;
+  display: inline-flex;
+}
+.day-calendar-trigger {
+  /* No min-height of its own: the padding gives a pill's height here, and on a phone the
+     platform's finger rule raises it with every other button. */
+  padding: 5px 12px;
+  border: 1px solid #cbdadd;
+  border-radius: 999px;
+  background: #fff;
+  color: #4d6770;
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.day-calendar-trigger:hover:not(:disabled) {
+  border-color: #0b2028;
+  color: #0b2028;
+}
+.day-calendar-trigger.chosen {
+  border-color: #0b2028;
+  color: #0b2028;
+  font-weight: 600;
+}
+.day-calendar-trigger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.day-calendar-sheet {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 252px;
+  padding: 10px;
+  border: 1px solid #dce6e8;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 30px #0b20281f;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.day-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.day-calendar-head strong {
+  color: #182e38;
+  font-size: 12px;
+}
+.day-calendar-head strong b {
+  font-weight: inherit;
+  text-transform: capitalize;
+}
+.day-calendar-head button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  min-width: 0;
+  border: 1px solid #dce6e8;
+  border-radius: 7px;
+  background: #fff;
+  color: #4d6770;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.day-calendar-head button:hover:not(:disabled) {
+  border-color: #0b2028;
+  color: #0b2028;
+}
+.day-calendar-head button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.day-calendar-week,
+.day-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.day-calendar-week span {
+  padding: 2px 0;
+  color: #93a7ad;
+  font-size: 9px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.day-calendar-grid button {
+  height: 30px;
+  /* The platform gives every button a comfortable padding; a calendar cell is a square and
+     that padding pushed the last column out of the sheet. */
+  padding: 0;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f4f7f8;
+  color: #24505a;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.day-calendar-grid button:hover:not(:disabled):not(.active) {
+  border-color: #0b2028;
+  color: #0b2028;
+}
+.day-calendar-grid button.active {
+  background: #0b2028;
+  border-color: #0b2028;
+  color: #fff;
+  font-weight: 700;
+}
+/* A day with no closed report reads as absent, not as an option that failed. */
+.day-calendar-grid button:disabled {
+  background: transparent;
+  color: #c3ced2;
+  cursor: not-allowed;
+}
+.day-calendar-foot {
+  margin-top: 8px;
+  color: #8a9ca2;
+  font-size: 10px;
+}
 .shift-pick-hint {
   color: #b07a2b;
   font-size: 10px;
@@ -8329,6 +8459,11 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .plant-map-marker {
     padding: 0;
   }
+  /* The switch carries a border of its own, so its buttons stand two pixels shorter and the
+     whole control ends the same height as a pill beside it. */
+  .shift-board-head .shift-mode button {
+    min-height: 40px;
+  }
   /* A pill against the left edge of the bar lost its first letters. */
   .platform-topbar {
     gap: 10px;
@@ -8970,6 +9105,21 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .shift-compare .shift-board { margin-top: 0; }
 .shift-compare .shift-chart { min-height: 200px; }
 
+/* Every control of the header stands the same height: the segmented switch carries its own
+   track, so its padding comes off to match a pill. */
+.shift-board-head .shift-mode {
+  padding: 0;
+}
+.shift-board-head .shift-mode button {
+  padding: 4px 11px;
+  border-radius: 8px;
+}
+/* A pill shrinks to the row before it wraps its own label, and on a phone that turned every
+   one of them into two lines. The row wraps instead. */
+.shift-field .widget-period button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .shift-head-tools {
   display: flex;
   flex-wrap: wrap;
