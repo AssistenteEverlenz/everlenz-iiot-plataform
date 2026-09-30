@@ -1919,13 +1919,20 @@ export async function createApp(
       ...(body.title ? { title: body.title } : {}),
       ...(body.width ? { width: body.width } : {}),
       ...(body.config ? { config: { ...view.widgets[index].config, ...body.config } } : {}),
+      ...(body.tabId !== undefined ? { tab_id: body.tabId } : {}),
     };
     // One row, config merged inside the database: concurrent edits to other cards, or to
     // other keys of this one, are never overwritten by a stale copy of the dashboard.
     await db.query(
       `UPDATE dashboard_widgets SET title=COALESCE($4,title),width=COALESCE($5,width),
          config=config || $6::jsonb,
-         tag_id=CASE WHEN $7::boolean THEN $8::uuid ELSE tag_id END,updated_at=now()
+         tag_id=CASE WHEN $7::boolean THEN $8::uuid ELSE tag_id END,
+         -- The tab is looked up inside this panel: an id from anywhere else lands as null,
+         -- which shows the card on the first tab instead of linking it across panels.
+         tab_id=CASE WHEN $9::boolean
+           THEN (SELECT id FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$10)
+           ELSE tab_id END,
+         updated_at=now()
        WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3`,
       [
         current.tenantId,
@@ -1936,6 +1943,8 @@ export async function createApp(
         JSON.stringify(body.config ?? {}),
         body.tagId !== undefined,
         body.tagId ?? null,
+        body.tabId !== undefined,
+        body.tabId ?? null,
       ],
     );
     const fresh = await dashboardView(
