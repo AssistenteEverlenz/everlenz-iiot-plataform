@@ -97,7 +97,9 @@ export interface DashboardWidget {
     | 'donut'
     | 'bar_vertical'
     | 'bar_horizontal'
-    | 'shift_board';
+    | 'shift_board'
+    | 'stops'
+    | 'wear';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';
@@ -161,6 +163,9 @@ export interface DashboardWidget {
     resetVariable?: string;
     /** Unit shown on the card ("Ton/h"), up to 10 characters; else the variable's unit. */
     unitLabel?: string;
+    /** What a true and a false are called on this card. */
+    onLabel?: string;
+    offLabel?: string;
   };
   key: string | null;
   tag_name: string | null;

@@ -1774,6 +1774,10 @@ export async function createApp(
           'bar_vertical',
           'bar_horizontal',
           'shift_board',
+          // Read from the device, not from one variable: how often the line stopped, and what the
+          // brick weight says about the die and the auger.
+          'stops',
+          'wear',
         ]),
         title: z.string().min(1).max(120),
         width: z.enum(['small', 'medium', 'large', 'full']).default('medium'),
@@ -2245,7 +2249,9 @@ interface DashboardWidgetRecord {
     | 'donut'
     | 'bar_vertical'
     | 'bar_horizontal'
-    | 'shift_board';
+    | 'shift_board'
+    | 'stops'
+    | 'wear';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';

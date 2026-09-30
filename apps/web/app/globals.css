@@ -8798,3 +8798,41 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   border-top: 2px solid #12b8a6;
   border-bottom-color: transparent;
 }
+
+/* How often the line stopped, and for how long. */
+.stops-panel { display: grid; gap: 12px; min-width: 0; }
+.stops-window { display: flex; flex-wrap: wrap; gap: 6px; }
+.stops-window button {
+  padding: 5px 11px;
+  border: 1px solid #cbdadd;
+  border-radius: 999px;
+  background: #fff;
+  color: #4b6670;
+  font-size: 11px;
+}
+.stops-window button.active { border-color: #12b8a6; background: #e7f7f5; color: #0b6b62; font-weight: 700; }
+.stops-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.stops-totals > div { padding: 9px 11px; border: 1px solid #dce6e8; border-radius: 10px; background: #fff; }
+.stops-totals span { display: block; color: #788d94; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.stops-totals b { display: block; margin-top: 1px; font-size: 21px; font-variant-numeric: tabular-nums; }
+.stops-totals small { display: block; color: #7b9097; font-size: 10px; }
+.stops-title { color: #24505a; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.stops-reasons { display: grid; gap: 8px; }
+.stops-reason-head { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.stops-reason-head i { flex: none; width: 9px; height: 9px; border-radius: 50%; }
+.stops-reason-head span { margin-left: auto; color: #7b9097; font-variant-numeric: tabular-nums; }
+.stops-bar { height: 6px; border-radius: 999px; background: #eef4f5; overflow: hidden; }
+.stops-bar i { display: block; height: 100%; border-radius: 999px; }
+.stops-days { display: flex; align-items: flex-end; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
+.stops-day { display: grid; justify-items: center; gap: 2px; min-width: 30px; }
+.stops-day-bar { display: flex; align-items: flex-end; width: 18px; height: 56px; border-radius: 5px; background: #eef4f5; }
+.stops-day-bar i { width: 100%; min-height: 2px; border-radius: 5px; background: #12b8a6; }
+.stops-day b { font-size: 11px; font-variant-numeric: tabular-nums; }
+.stops-day small { color: #7b9097; font-size: 9px; }
+.stops-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.stops-table th, .stops-table td { padding: 5px 7px; border-bottom: 1px solid #e6eef0; text-align: left; }
+.stops-table th { color: #788d94; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
+.stops-table .n { text-align: right; font-variant-numeric: tabular-nums; }
+.stops-empty { color: #7b9097; font-size: 12px; }
+/* The wear content sits either in its window or on a panel card. */
+.wear-panel { display: grid; gap: 12px; min-width: 0; }

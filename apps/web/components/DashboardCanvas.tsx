@@ -36,6 +36,8 @@ import { hmiVariables, knownVariables, panelVariables, variableOptionsFor } from
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
 import { ShiftBoard } from './ShiftBoard';
+import { StopsPanel } from './StopsPanel';
+import { WearPanel } from './WearModal';
 import { ProductionConfigModal } from './ProductionConfigModal';
 import { HmiCheckModal } from './HmiCheckModal';
 import { SnapshotModal } from './SnapshotModal';
@@ -88,6 +90,9 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   donut: 6,
   bar_vertical: 6,
   bar_horizontal: 6,
+  // Both read a whole device and carry several sections, so they start tall.
+  stops: 10,
+  wear: 12,
 };
 /**
  * Where each card lands on the 12-column desktop grid, which packs densely: a later small
@@ -256,6 +261,10 @@ const visualizationHelp: Record<PickerType, string> = {
   shift_board:
     'Quadro do turno ou do dia: produzido em milheiros, meta, projeção, curva S, ritmo necessário e aproveitamento da máquina. Não usa uma variável: configure o contador, o automático e a meta em Produção.',
   pareto: 'Precisa de eventos de parada com motivo e duração para ordenar as maiores perdas.',
+  stops:
+    'Quantas vezes a linha parou, por quanto tempo e por qual motivo. Não usa uma variável: lê as paradas que a plataforma grava enquanto acontecem.',
+  wear:
+    'Desgaste da boquilha e do caracol, a partir da capacidade da linha e do peso do tijolo que alguém pesa e lança. Não usa uma variável.',
   donut: 'Pizza com a participação (%) de cada produto no período. Use um contador, como paletes.',
   bar_vertical: 'Barras verticais da produção no período, uma por produto ou uma por dia.',
   bar_horizontal: 'Barras horizontais ordenadas, ideais para ranking de produtos com nomes longos.',
@@ -318,7 +327,7 @@ function calculatedFields(config: DashboardWidget['config']): CalculatedSetting[
 }
 
 // Cards that read no single variable; every other card needs one to show anything.
-const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto']);
+const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto', 'stops', 'wear']);
 /** A card is complete without a variable when it is one of those, or when it is a formula. */
 function needsVariable(widget: { widget_type: string; config: DashboardWidget['config'] }) {
   return !variableFreeTypes.has(widget.widget_type) && !widget.config.mainFormula?.trim();
@@ -720,7 +729,7 @@ function Widget({
             </svg>
             <div className="gauge-reading">
               <strong>{number(numeric, widget.config.decimals ?? 1)}</strong>
-              <span>{widget.unit}</span>
+              <span>{widget.config.unitLabel?.trim() || widget.unit}</span>
             </div>
             <span className="gauge-limit gauge-limit-min">
               {number(min, widget.config.decimals ?? 1)}
@@ -736,7 +745,11 @@ function Widget({
         <div className={`machine-status ${isOn(latest) ? 'running' : ''}`}>
           <span className="status-orb" />
           <div>
-            <strong>{isOn(latest) ? 'Em operação' : 'Parada'}</strong>
+            <strong>
+              {isOn(latest)
+                ? (widget.config.onLabel as string)?.trim() || 'Em operação'
+                : (widget.config.offLabel as string)?.trim() || 'Parada'}
+            </strong>
           </div>
         </div>
       )}
@@ -752,10 +765,14 @@ function Widget({
               ? number(numeric, widget.config.decimals ?? 1)
               : latest?.value_boolean != null
                 ? latest.value_boolean
-                  ? 'Ligado'
-                  : 'Desligado'
+                  ? (widget.config.onLabel as string)?.trim() || 'Ligado'
+                  : (widget.config.offLabel as string)?.trim() || 'Desligado'
                 : (latest?.value_text ?? '—')}
-            <span>{widget.config.mainFormula ? widget.config.mainFormulaUnit : widget.unit}</span>
+            <span>
+              {widget.config.mainFormula
+                ? widget.config.mainFormulaUnit
+                : (widget.config.unitLabel?.trim() || widget.unit)}
+            </span>
           </div>
           {calculatedLine}
           {widget.config.counterMode && latest?.value_number != null && (
@@ -796,6 +813,8 @@ function Widget({
           calculatedSettings={calculatedFields(widget.config)}
         />
       )}
+      {widget.widget_type === 'stops' && <StopsPanel deviceId={widget.device_id} />}
+      {widget.widget_type === 'wear' && <WearPanel deviceId={widget.device_id} />}
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
           <strong>OEE pronto para configurar</strong>
@@ -902,6 +921,8 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [minimum, setMinimum] = useState(0);
   const [maximum, setMaximum] = useState(100);
   const [decimals, setDecimals] = useState(1);
+  const [onLabel, setOnLabel] = useState('');
+  const [offLabel, setOffLabel] = useState('');
   // Two different things: where the HMI's number has its comma (the variable's scale) and how
   // many decimal places this card shows.
   const [commaPlaces, setCommaPlaces] = useState(0);
@@ -1047,7 +1068,7 @@ export function DashboardCanvas({ id }: { id: string }) {
               ? 'Quadro de produção'
               : 'Pareto de perdas'),
         // The production board needs the whole row to be readable.
-        width: widgetType === 'shift_board' ? 'full' : width,
+        width: widgetType === 'shift_board' || widgetType === 'wear' ? 'full' : width,
         config: {
           // A formula card starts showing zero until its own formula is written in the pencil.
           ...(isFormula ? { mainFormula: '0', mainFormulaUnit: '' } : {}),
@@ -1101,6 +1122,8 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMinimum(widget.config.min ?? 0);
     setMaximum(widget.config.max ?? 100);
     setDecimals(widget.config.decimals ?? 1);
+    setOnLabel(((widget.config.onLabel as string) ?? '') || '');
+    setOffLabel(((widget.config.offLabel as string) ?? '') || '');
     setCommaPlaces(placesOfScale(widget.scale_multiplier));
     setCommaAlways(widget.scale_always === true);
     // Formulas open with the standard names (ihm.*, painel.*), so saving brings them up to date.
@@ -1191,6 +1214,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           min: minimum,
           max: maximum,
           decimals,
+          onLabel: onLabel.trim(),
+          offLabel: offLabel.trim(),
           // Picking a preset width replaces a dragged width; otherwise keep the squares.
           colSpan: width !== editingWidget.width ? widthColumns[width] : colSpanInput,
           rowSpan: rowSpanInput,
@@ -1502,6 +1527,8 @@ export function DashboardCanvas({ id }: { id: string }) {
                       ['oee', '%', 'OEE'],
                       ['pareto', '▥', 'Pareto'],
                       ['shift_board', '◷', 'Quadro de produção'],
+                      ['stops', '⏸', 'Paradas'],
+                      ['wear', '◠', 'Desgaste da linha'],
                     ] as const
                   ).map(([type, icon, label]) => (
                     <button
@@ -1819,6 +1846,49 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </small>
                 </div>
               </div>
+              {(editingWidget.widget_type === 'status' ||
+                editingWidget.widget_type === 'value') && (
+                <>
+                  <label className="field">
+                    <span className="field-label">
+                      Quando for verdadeiro
+                      <Hint text="A palavra escrita quando a variável está em 1. Em branco, fica o padrão." />
+                    </span>
+                    <input
+                      value={onLabel}
+                      maxLength={24}
+                      placeholder={editingWidget.widget_type === 'status' ? 'Em operação' : 'Ligado'}
+                      onChange={(event) => setOnLabel(event.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">
+                      Quando for falso
+                      <Hint text="A palavra escrita quando a variável está em 0." />
+                    </span>
+                    <input
+                      value={offLabel}
+                      maxLength={24}
+                      placeholder={editingWidget.widget_type === 'status' ? 'Parada' : 'Desligado'}
+                      onChange={(event) => setOffLabel(event.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+              {!quickTypes.has(editingWidget.widget_type) && (
+                <label className="field">
+                  <span className="field-label">
+                    Unidade
+                    <Hint text="Escrita ao lado do número deste card: t/h, paletes, %. Vale só aqui, e vence a unidade cadastrada na variável." />
+                  </span>
+                  <input
+                    value={unitLabel}
+                    maxLength={10}
+                    placeholder={editingWidget.unit || 'ex.: t/h'}
+                    onChange={(event) => setUnitLabel(event.target.value)}
+                  />
+                </label>
+              )}
               <label className="field">
                 <span className="field-label">
                   Casas decimais

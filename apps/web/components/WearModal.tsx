@@ -64,6 +64,24 @@ export function WearModal({
   deviceName: string;
   onClose: () => void;
 }) {
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card wear-modal" onClick={(event) => event.stopPropagation()}>
+        <header className="modal-title">
+          <div>
+            <h2>Desgaste da linha</h2>
+            <small>{deviceName}</small>
+          </div>
+          <button onClick={onClose} aria-label="Fechar">Fechar</button>
+        </header>
+        <WearPanel deviceId={deviceId} />
+      </div>
+    </div>
+  );
+}
+
+/** The same content on a dashboard card, without the window around it. */
+export function WearPanel({ deviceId }: { deviceId: string }) {
   const { user } = usePlatform();
   const mayLog = user.role === 'master' || user.canLogMeasurements === true;
   const recipes = usePoll<{ recipes: string[]; running: string | null }>(
@@ -141,16 +159,7 @@ export function WearModal({
   const latest = rows.at(-1) ?? null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card wear-modal" onClick={(event) => event.stopPropagation()}>
-        <header className="modal-title">
-          <div>
-            <h2>Desgaste da linha</h2>
-            <small>{deviceName}</small>
-          </div>
-          <button onClick={onClose} aria-label="Fechar">Fechar</button>
-        </header>
-
+    <div className="wear-panel">
         <div className="wear-explain">
           O ritmo cai por dois motivos. Com a boquilha gasta o tijolo pesa mais e a mesma massa
           rende menos peças; com o caracol gasto a maromba entrega menos massa e o tijolo continua
@@ -326,7 +335,6 @@ export function WearModal({
             </ul>
           </>
         )}
-      </div>
     </div>
   );
 }
