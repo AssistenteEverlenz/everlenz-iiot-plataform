@@ -5310,16 +5310,35 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   align-items: center;
   gap: 8px 14px;
 }
-.shift-day-picker label {
+.shift-field {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   color: #6d8087;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.shift-day-picker select {
+/* The controls of a field stay on one line of their own, so the label can sit above them on a
+   phone without the buttons and the calendar stacking one per row. */
+.shift-field-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* The buttons inside a field are the board's own segmented filter, one size smaller so a row
+   of five does not tower over the field beside it. */
+.shift-field .shift-mode button {
+  padding: 4px 9px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.shift-day-picker select,
+.shift-day-picker input[type='date'] {
   min-width: 0;
   min-height: 32px;
   padding: 0 8px;
@@ -5328,6 +5347,16 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   background: #fff;
   color: inherit;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* A generic rule gives every input a minimum width wide enough to break this row. */
+.shift-day-picker input[type='date'] { width: 148px; min-width: 0; }
+.shift-pick-hint {
+  color: #b07a2b;
+  font-size: 10px;
+  font-style: normal;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -8980,6 +9009,13 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
    body to nothing and let the curve paint over the gauge -- and the card grew to make the share
    big enough for both curves. */
 .shift-board-day.comparing { grid-template-rows: minmax(0, 1fr) auto; }
+/* Both curves get the same height as well as the same width: side by side they are read as
+   one drawing, and a shorter one below made the same climb look gentler than it was. */
+.shift-board-day.comparing .shift-chart {
+  flex: none;
+  height: 300px;
+  min-height: 300px;
+}
 
 /* On a phone the board's controls had been pushed to the right edge and wrapped into a staircase.
    They take the width and read from the left, and the curve gets height enough to be followed. */
@@ -8990,17 +9026,24 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     justify-content: flex-start;
     gap: 8px;
   }
-  .shift-day-picker { width: 100%; }
+  .shift-day-picker { width: 100%; gap: 10px; }
   /* Label above the field, as forms read on a phone: inline, "comparar com" broke in two and
-     made its row taller than the one beside it. */
-  .shift-day-picker label {
-    flex: 1 1 140px;
+     made its row taller than the one beside it. Each field takes the whole width, because a row
+     of comparison buttons does not fit beside anything on a phone. */
+  .shift-day-picker .shift-field {
+    flex: 1 1 100%;
     min-width: 0;
+    flex-wrap: wrap;
     flex-direction: column;
     align-items: flex-start;
-    gap: 3px;
+    gap: 5px;
   }
-  .shift-day-picker select { width: 100%; }
+  .shift-day-picker .shift-field > span { width: 100%; }
+  .shift-day-picker .shift-field-controls { width: 100%; }
+  .shift-day-picker .shift-field .shift-mode { flex-wrap: wrap; }
+  /* The calendar takes whatever the buttons leave on the line, never a row to itself. */
+  .shift-day-picker select,
+  .shift-day-picker input[type='date'] { flex: 1 1 130px; width: auto; }
   .shift-head-tools .shift-mode { flex: 0 0 auto; }
   .shift-chart,
   .shift-compare-chart,

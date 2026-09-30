@@ -593,7 +593,7 @@ export function ShiftBoard({
   const [day, setDay] = useState('');
   const [against, setAgainst] = useState('');
   const days = usePoll<{ days: Array<{ date: string; pallets: number | null; pieces: number | null }> }>(
-    `/devices/${deviceId}/production-days`,
+    `/devices/${deviceId}/production-days?limit=400`,
     600000,
   );
   const photo = usePoll<{ photo: { detail: ShiftBoardResponse; minutes: Array<{ t: string; value: number }> } | null }>(
@@ -636,35 +636,88 @@ export function ShiftBoard({
       }
     : null;
   const below = comparingDay ? (other.data?.photo?.detail ?? null) : null;
+
+  // A plant that has run for a year has a year of days, and a year of days is not a list anyone
+  // can scroll: the day is picked on a calendar. The closed days are still read, to bound that
+  // calendar and to say plainly when a day typed by hand has no report behind it.
+  const known = useMemo(() => new Set((days.data?.days ?? []).map((item) => item.date)), [days.data]);
+  const firstDay = days.data?.days.at(-1)?.date;
+  const lastDay = days.data?.days[0]?.date;
+  const missingDay = Boolean(day) && Boolean(days.data) && !known.has(day);
+  const missingAgainst = Boolean(comparingDay) && Boolean(days.data) && !known.has(comparingDay);
+  // The references of the period are buttons like every other filter of the board; only the
+  // one specific day needs a field, and it is only shown once that button is chosen.
+  const [pickingDay, setPickingDay] = useState(false);
+  const comparisons = [
+    { id: '', label: 'Nenhum' },
+    { id: 'mediana:7', label: '7 dias' },
+    { id: 'mediana:30', label: '30 dias' },
+    { id: 'mediana:365', label: 'Ano' },
+  ];
   const pickerFields = (
     <>
-      <label>
-        Dia
-        <select value={day} onChange={(event) => setDay(event.target.value)}>
-          <option value="">Hoje</option>
-          {days.data?.days.map((item) => (
-            <option key={item.date} value={item.date}>{dayLabel(item.date)}</option>
+      <div className="shift-field">
+        <span>Dia</span>
+        <span className="shift-field-controls">
+        <span className="shift-mode">
+          <button type="button" className={day ? '' : 'active'} onClick={() => setDay('')}>
+            Hoje
+          </button>
+        </span>
+        <input
+          type="date"
+          value={day}
+          min={firstDay}
+          max={lastDay}
+          onChange={(event) => setDay(event.target.value)}
+        />
+        </span>
+      </div>
+      <div className="shift-field">
+        <span>Comparar com</span>
+        <span className="shift-field-controls">
+        <span className="shift-mode">
+          {comparisons.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={!pickingDay && !comparingDay && against === option.id ? 'active' : ''}
+              onClick={() => {
+                setPickingDay(false);
+                setAgainst(option.id);
+                setZoom(null);
+              }}
+            >
+              {option.label}
+            </button>
           ))}
-        </select>
-      </label>
-      <label>
-        Comparar com
-        <select value={against} onChange={(event) => { setAgainst(event.target.value); setZoom(null); }}>
-          <option value="">nenhum</option>
-          <optgroup label="Referência do período">
-            <option value="mediana:7">Mediana de 7 dias</option>
-            <option value="mediana:30">Mediana de 30 dias</option>
-            <option value="mediana:365">Mediana do ano</option>
-          </optgroup>
-          <optgroup label="Um dia">
-            {days.data?.days
-              .filter((item) => item.date !== day)
-              .map((item) => (
-                <option key={item.date} value={`dia:${item.date}`}>{dayLabel(item.date)}</option>
-              ))}
-          </optgroup>
-        </select>
-      </label>
+          <button
+            type="button"
+            className={pickingDay || comparingDay ? 'active' : ''}
+            onClick={() => {
+              setPickingDay(true);
+              setAgainst('');
+              setZoom(null);
+            }}
+          >
+            Um dia
+          </button>
+        </span>
+        {(pickingDay || comparingDay) && (
+          <input
+            type="date"
+            value={comparingDay}
+            min={firstDay}
+            max={lastDay}
+            onChange={(event) => {
+              setAgainst(event.target.value ? `dia:${event.target.value}` : '');
+              setZoom(null);
+            }}
+          />
+        )}
+        {missingAgainst && <em className="shift-pick-hint">sem apontamento nesse dia</em>}
+        </span>
+      </div>
     </>
   );
   if (!shown)
@@ -672,7 +725,11 @@ export function ShiftBoard({
       <div className="shift-board-day">
         <div className="shift-day-picker">{pickerFields}</div>
         <div className="shift-board-empty">
-          {day ? (photo.error ?? 'Carregando o dia…') : (response.error ?? 'Carregando produção…')}
+          {missingDay
+            ? `Nenhum dia fechado em ${dayLabel(day)}. Um dia só entra na história quando o turno é fechado.`
+            : day
+              ? (photo.error ?? 'Carregando o dia…')
+              : (response.error ?? 'Carregando produção…')}
         </div>
       </div>
     );
@@ -706,17 +763,22 @@ export function ShiftBoard({
           {dayLabel(comparingDay)}
           <small> · dia comparado</small>
         </div>
-        {/* Only its curve: every number of that day is already in the cards above, beside the
-            day's own, so nothing is drawn twice. */}
+        {/* Its curve and its gauge, in the same two columns as the day above: the numbers are
+            already in the cards, so only these two are drawn again. */}
         {below.board && (
-          <div className="shift-chart shift-compare-chart">
-            <ShiftCurve
-              board={below.board}
-              minuteSeries={other.data?.photo?.minutes}
-              view={zoom}
-              onView={setZoom}
-              syncId={`board-${deviceId}`}
-            />
+          <div className="shift-body">
+            <div className="shift-curve">
+              <div className="shift-chart shift-compare-chart">
+                <ShiftCurve
+                  board={below.board}
+                  minuteSeries={other.data?.photo?.minutes}
+                  view={zoom}
+                  onView={setZoom}
+                  syncId={`board-${deviceId}`}
+                />
+              </div>
+            </div>
+            <Availability board={below.board} label={dayLabel(comparingDay)} />
           </div>
         )}
       </div>
@@ -737,6 +799,60 @@ function dayLabel(date: string) {
  * The board itself. The live card passes the Turno/Dia switch; the history detail shows a
  * closed shift or day with it, without the switch and without the machine's current state.
  */
+/**
+ * How the machine spent the period, next to the curve it explains. It is a component because
+ * a compared day gets one of its own: without it the day's curve sat beside a gauge and the
+ * compared curve ran the full width, so the same minute fell on two different x positions.
+ */
+function Availability({ board, label }: { board: BoardData; label?: string }) {
+  const elapsed = board.time.elapsedProductive ?? 0;
+  return (
+    <div className="shift-availability">
+      <div className="shift-section-title">
+        Aproveitamento da máquina
+        {label && <small> · {label}</small>}
+      </div>
+      <Gauge value={board.utilization} />
+      <small className="shift-gauge-caption">produzindo ÷ (produzindo + ociosa)</small>
+      <ul className="shift-states">
+        {(
+          ['waiting', 'producing', 'idle', 'manual', 'offline', 'closing', 'pause'] as const
+        )
+          .filter(
+            (state) =>
+              !['waiting', 'closing', 'pause'].includes(state) ||
+              (board.time[state] ?? 0) >= 60,
+          )
+          .map((state) => {
+            const seconds = board.time[state] ?? 0;
+            const hint =
+              state === 'waiting'
+                ? 'Em automático antes da primeira produção do período: não conta como ociosa'
+                : state === 'closing'
+                  ? 'Parou de contar nos minutos finais do turno e não voltou: não conta como ociosa'
+                  : state === 'pause'
+                    ? 'Pausas cadastradas no turno: fora do tempo produtivo'
+                    : undefined;
+            return (
+              <li key={state} title={hint}>
+                <i style={{ background: stateInfo[state].color }} />
+                <span>{stateInfo[state].label}</span>
+                <b>{duration(seconds)}</b>
+                <em>
+                  {state === 'pause'
+                    ? '—'
+                    : elapsed > 0
+                      ? `${formatNumber((seconds / elapsed) * 100)}%`
+                      : '—'}
+                </em>
+              </li>
+            );
+          })}
+      </ul>
+    </div>
+  );
+}
+
 /** The compared day's figure, under the day's own, inside the same card. */
 function Against({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -858,7 +974,6 @@ export function ShiftBoardView({
         : target?.health
           ? 'bad'
           : 'none';
-  const elapsed = board?.time.elapsedProductive ?? 0;
   const secondaries = board
     ? [
         board.totals.pieces ? `${formatNumber(board.totals.pieces)} peças` : null,
@@ -1124,51 +1239,7 @@ export function ShiftBoardView({
                 />
               </div>
             </div>
-            <div className="shift-availability">
-              <div className="shift-section-title">Aproveitamento da máquina</div>
-              <Gauge value={board.utilization} />
-              <small className="shift-gauge-caption">produzindo ÷ (produzindo + ociosa)</small>
-              {compareBoard && compareLabel && compareBoard.utilization != null && (
-                <small className="shift-gauge-against">
-                  <span>{compareLabel}</span> {formatNumber(compareBoard.utilization * 100)}%
-                </small>
-              )}
-              <ul className="shift-states">
-                {(
-                  ['waiting', 'producing', 'idle', 'manual', 'offline', 'closing', 'pause'] as const
-                )
-                  .filter(
-                    (state) =>
-                      !['waiting', 'closing', 'pause'].includes(state) ||
-                      (board.time[state] ?? 0) >= 60,
-                  )
-                  .map((state) => {
-                    const seconds = board.time[state] ?? 0;
-                    const hint =
-                      state === 'waiting'
-                        ? 'Em automático antes da primeira produção do período: não conta como ociosa'
-                        : state === 'closing'
-                          ? 'Parou de contar nos minutos finais do turno e não voltou: não conta como ociosa'
-                          : state === 'pause'
-                            ? 'Pausas cadastradas no turno: fora do tempo produtivo'
-                            : undefined;
-                    return (
-                      <li key={state} title={hint}>
-                        <i style={{ background: stateInfo[state].color }} />
-                        <span>{stateInfo[state].label}</span>
-                        <b>{duration(seconds)}</b>
-                        <em>
-                          {state === 'pause'
-                            ? '—'
-                            : elapsed > 0
-                              ? `${formatNumber((seconds / elapsed) * 100)}%`
-                              : '—'}
-                        </em>
-                      </li>
-                    );
-                  })}
-              </ul>
-            </div>
+            <Availability board={board} />
           </div>
 
           <div className="shift-timeline" aria-label="Linha do tempo">
