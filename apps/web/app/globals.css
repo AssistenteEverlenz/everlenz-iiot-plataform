@@ -5078,21 +5078,30 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 /* The title keeps the left and everything operated is grouped on the right, so the header has
    no empty band across the middle and no control claims a line of its own. */
 .shift-board-head > div:first-child {
+  /* Sized by its text, never stretched: a second "flex: 1" here used to make the title claim the
+     whole row and push every control onto lines of its own. */
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: 180px;
   margin-right: auto;
   display: grid;
-  gap: 2px;
-  flex: 1;
-  min-width: 180px;
+  gap: 3px;
 }
 .shift-board-head strong {
   color: #182e38;
   font-size: 15px;
+  line-height: 1.25;
 }
 .shift-board-head span {
   color: #71868d;
   font-size: 11px;
+  line-height: 1.35;
+}
+/* A hairline between the card's own title and the board's, so four lines of text do not read as
+   one block. */
+.shift-board-day > .shift-board,
+.dashboard-widget.sized .shift-board-day .shift-board {
+  padding-top: 10px;
+  border-top: 1px solid #eef4f5;
 }
 .shift-state {
   display: inline-flex;
@@ -8924,3 +8933,50 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   gap: 8px 12px;
   min-width: 0;
 }
+
+/* The compared day inside the card it belongs to, instead of a second copy of every card. */
+.shift-kpi-against {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px dashed #dde8ea;
+  color: #8f63a8;
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.shift-kpi-against > span,
+.shift-gauge-against > span {
+  color: #b07cc6;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.shift-kpi-against small { color: #9e86ad; font-size: 9px; }
+.shift-gauge-against {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #8f63a8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Comparing needs room for a second curve: the card grows for it and shrinks back after. */
+.dashboard-widget.sized:has(.shift-board-day.comparing) {
+  grid-row: span calc(var(--rows) + 5);
+}
+/* The curve keeps growing into its share of the board, as it always did: taking that away left
+   its container at zero height and the chart painted over the gauge beside it. The compared
+   curve below has a height of its own, since nothing shares that row with it. */
+.shift-board-day.comparing .shift-chart { min-height: 200px; }
+.shift-compare-chart { height: 210px; flex: none; }
+
+/* The board keeps its share of the height while comparing -- taking its flex away collapsed the
+   body to nothing and let the curve paint over the gauge -- and the card grew to make the share
+   big enough for both curves. */
+.shift-board-day.comparing { grid-template-rows: minmax(0, 1fr) auto; }

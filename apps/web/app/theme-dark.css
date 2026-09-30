@@ -1441,6 +1441,10 @@
   :root[data-theme='dark'] .shift-board-head span {
     color: #8d9ea3;
   }
+  :root[data-theme='dark'] .shift-board-day > .shift-board,
+  :root[data-theme='dark'] .dashboard-widget.sized .shift-board-day .shift-board {
+    border-top: 1px solid #1a2529;
+  }
   :root[data-theme='dark'] .shift-state {
     background: color-mix(in srgb, var(--state, #4b6a75) 14%, transparent);
     color: #ced8db;
@@ -2753,5 +2757,19 @@
   }
   :root[data-theme='dark'] .shift-compare {
     border-top: 1px dashed #25353a;
+  }
+  :root[data-theme='dark'] .shift-kpi-against {
+    border-top: 1px dashed #233136;
+    color: #839ba3;
+  }
+  :root[data-theme='dark'] .shift-kpi-against > span,
+  :root[data-theme='dark'] .shift-gauge-against > span {
+    color: #b07cc6;
+  }
+  :root[data-theme='dark'] .shift-kpi-against small {
+    color: #9e86ad;
+  }
+  :root[data-theme='dark'] .shift-gauge-against {
+    color: #839ba3;
   }
 }

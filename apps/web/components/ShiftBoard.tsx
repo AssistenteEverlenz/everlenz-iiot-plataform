@@ -677,8 +677,10 @@ export function ShiftBoard({
       </div>
     );
   return (
-    <div className="shift-board-day">
+    <div className={`shift-board-day${below ? ' comparing' : ''}`}>
     <ShiftBoardView
+      compareBoard={below?.board ?? null}
+      compareLabel={comparingDay ? dayLabel(comparingDay) : undefined}
       tools={<div className="shift-day-picker">{pickerFields}</div>}
       data={shown}
       deviceId={deviceId}
@@ -704,19 +706,19 @@ export function ShiftBoard({
           {dayLabel(comparingDay)}
           <small> · dia comparado</small>
         </div>
-        {/* The whole board of that day, not just its curve: drawing the curve alone left the
-            machine's utilisation missing and a hole where it belonged. */}
-        <ShiftBoardView
-          data={below}
-          deviceId={deviceId}
-          mode="day"
-          historical
-          hideHead
-          minuteSeries={other.data?.photo?.minutes}
-          view={zoom}
-          onView={setZoom}
-          syncId={`board-${deviceId}`}
-        />
+        {/* Only its curve: every number of that day is already in the cards above, beside the
+            day's own, so nothing is drawn twice. */}
+        {below.board && (
+          <div className="shift-chart shift-compare-chart">
+            <ShiftCurve
+              board={below.board}
+              minuteSeries={other.data?.photo?.minutes}
+              view={zoom}
+              onView={setZoom}
+              syncId={`board-${deviceId}`}
+            />
+          </div>
+        )}
       </div>
     )}
     </div>
@@ -735,6 +737,16 @@ function dayLabel(date: string) {
  * The board itself. The live card passes the Turno/Dia switch; the history detail shows a
  * closed shift or day with it, without the switch and without the machine's current state.
  */
+/** The compared day's figure, under the day's own, inside the same card. */
+function Against({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <i className="shift-kpi-against">
+      <span>{label}</span>
+      {children}
+    </i>
+  );
+}
+
 export function ShiftBoardView({
   data,
   deviceId,
@@ -753,7 +765,12 @@ export function ShiftBoardView({
   onView,
   syncId,
   tools,
+  compareBoard,
+  compareLabel,
 }: {
+  /** The day being compared, folded into the same cards instead of repeating all of them. */
+  compareBoard?: BoardData | null;
+  compareLabel?: string;
   /** Controls belonging to the card around the board, shown in its header. */
   tools?: React.ReactNode;
   view?: { start: number; end: number } | null;
@@ -916,6 +933,11 @@ export function ShiftBoardView({
                 {formatNumber(board.totals.milheiros, 1)} <small>milheiros</small>
               </b>
               <em>{secondaries.join(' · ') || 'nenhuma peça ainda'}</em>
+              {compareBoard && compareLabel && (
+                <Against label={compareLabel}>
+                  {formatNumber(compareBoard.totals.milheiros, 1)} <small>milheiros</small>
+                </Against>
+              )}
             </div>
             <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('target')}>
               <span className="shift-kpi-title">
@@ -942,6 +964,12 @@ export function ShiftBoardView({
                     {formatNumber(target.actual, info.decimals)}
                     {target.source === 'hmi' ? ' · meta da IHM' : ''}
                   </em>
+                  {compareBoard?.target && compareLabel && (
+                    <Against label={compareLabel}>
+                      {formatNumber(compareBoard.target.value, info.decimals)}{' '}
+                      <small>feito {formatNumber(compareBoard.target.actual, info.decimals)}</small>
+                    </Against>
+                  )}
                 </>
               ) : (
                 <>
@@ -964,6 +992,17 @@ export function ShiftBoardView({
                   ? `${formatNumber((target.projected / target.value) * 100)}% da meta`
                   : 'no ritmo da última hora'}
               </em>
+              {compareBoard && compareLabel && (
+                <Against label={compareLabel}>
+                  {formatNumber(
+                    compareBoard.target
+                      ? compareBoard.target.projected
+                      : compareBoard.pacePerHour * (compareBoard.plannedSeconds / 3600),
+                    info.decimals,
+                  )}{' '}
+                  <small>{info.unit}</small>
+                </Against>
+              )}
             </div>
             <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('pace')}>
               <span>Ritmo</span>
@@ -975,6 +1014,12 @@ export function ShiftBoardView({
                   ? `necessário ${formatNumber(target.requiredPerHour, info.decimals)} ${info.unit}/h`
                   : `restam ${duration(board.remainingSeconds)} produtivos`}
               </em>
+              {compareBoard && compareLabel && (
+                <Against label={compareLabel}>
+                  {formatNumber(compareBoard.pacePerHour, info.decimals)}{' '}
+                  <small>{info.unit}/h</small>
+                </Against>
+              )}
             </div>
             {board.palletTiming && board.palletTiming.count > 0 && (
               <div
@@ -990,6 +1035,11 @@ export function ShiftBoardView({
                   último palete {minutesSeconds(board.palletTiming.lastSeconds)}
                   {board.palletTiming.lastAt ? ` · às ${clock(board.palletTiming.lastAt)}` : ''}
                 </em>
+                {compareBoard?.palletTiming && compareLabel && (
+                  <Against label={compareLabel}>
+                    {minutesSeconds(compareBoard.palletTiming.averageSeconds)} <small>média</small>
+                  </Against>
+                )}
               </div>
             )}
           </div>
@@ -1078,6 +1128,11 @@ export function ShiftBoardView({
               <div className="shift-section-title">Aproveitamento da máquina</div>
               <Gauge value={board.utilization} />
               <small className="shift-gauge-caption">produzindo ÷ (produzindo + ociosa)</small>
+              {compareBoard && compareLabel && compareBoard.utilization != null && (
+                <small className="shift-gauge-against">
+                  <span>{compareLabel}</span> {formatNumber(compareBoard.utilization * 100)}%
+                </small>
+              )}
               <ul className="shift-states">
                 {(
                   ['waiting', 'producing', 'idle', 'manual', 'offline', 'closing', 'pause'] as const
