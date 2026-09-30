@@ -7682,6 +7682,211 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   gap: 6px;
 }
 
+/* ---------- The panel's own tabs ----------
+   A plant's panel grows into one column nobody scrolls to the end of, so whoever owns it
+   divides it: the cards the shift leader watches on one tab, the ones maintenance opens on
+   another. The strip rides with the page, because choosing a tab from the bottom of a long
+   panel is exactly when it is needed. */
+.dashboard-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid #e3ebed;
+  background: #f2f5f6;
+}
+.dashboard-tabs:empty {
+  display: none;
+}
+.dashboard-tab {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+}
+.dashboard-tab > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 15px;
+  border: 1px solid #dce6e8;
+  border-radius: 999px;
+  background: #fff;
+  color: #4d6770;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dashboard-tab > button:hover {
+  border-color: #0b2028;
+  color: #0b2028;
+}
+.dashboard-tab > button em {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef4f5;
+  color: #6d8087;
+  font-size: 10px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+/* The open tab is one pill that holds its own tools, instead of two loose buttons floating
+   between it and the next tab. */
+.dashboard-tab.active {
+  border-color: #0b2028;
+  background: #0b2028;
+  padding-right: 5px;
+}
+.dashboard-tab.active > button {
+  border-color: transparent;
+  background: transparent;
+  color: #fff;
+}
+.dashboard-tab.active .dashboard-tab-tools button {
+  border-color: #ffffff3d;
+  background: transparent;
+  color: #cfe2e6;
+}
+.dashboard-tab.active .dashboard-tab-tools button:hover {
+  border-color: #fff;
+  color: #fff;
+}
+.dashboard-tab.active .dashboard-tab-tools button:last-child:hover {
+  border-color: #f0a2a7;
+  color: #ffd7d9;
+}
+.dashboard-tab.active > button em {
+  background: #ffffff26;
+  color: #dbe9ec;
+}
+.dashboard-tab.dragging {
+  opacity: 0.5;
+}
+/* A card is being carried: the tab it would land on says so. */
+.dashboard-tab.over > button {
+  border-color: #12b8a6;
+  box-shadow: 0 0 0 3px #12b8a633;
+}
+.dashboard-tab-tools {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+.dashboard-tab-tools button {
+  width: 26px;
+  min-height: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #dce6e8;
+  border-radius: 50%;
+  background: #fff;
+  color: #6d8087;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dashboard-tab-tools button:hover {
+  border-color: #0b2028;
+  color: #0b2028;
+}
+.dashboard-tab-tools button:last-child:hover {
+  border-color: #c9646b;
+  color: #a3272f;
+}
+.dashboard-tab-rename {
+  min-width: 0;
+  width: 150px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid #0b2028;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dashboard-tab-add {
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px dashed #c3d3d7;
+  border-radius: 999px;
+  background: transparent;
+  color: #6d8087;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dashboard-tab-add:hover {
+  border-style: solid;
+  border-color: #0b2028;
+  color: #0b2028;
+}
+.dashboard-tab-hint {
+  margin-left: auto;
+  color: #12b8a6;
+  font-size: 11px;
+  font-weight: 600;
+}
+.modal-note {
+  margin: 16px 0 0;
+  color: #536d76;
+  font-size: 13px;
+}
+/* On a phone the strip scrolls sideways instead of stacking into a wall of buttons. */
+@media (max-width: 760px) {
+  .dashboard-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 5px;
+    scrollbar-width: none;
+  }
+  .dashboard-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .dashboard-tab,
+  .dashboard-tab-add {
+    flex: none;
+  }
+  .dashboard-tab-hint {
+    display: none;
+  }
+}
+/* On paper every tab is printed, one page each: a report with a third of the panel is not
+   a report of the panel. */
+@media print {
+  .dashboard-tabs {
+    display: none;
+  }
+  /* Each tab opens its own page, under its own name. */
+  .print-tab-title {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #c9d8db;
+    color: #12303a;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    break-after: avoid;
+  }
+  .print-tab-title:not(:first-child) {
+    break-before: page;
+    margin-top: 10px;
+  }
+}
+/* Off paper the heading never shows: the strip is doing that job on screen. */
+.print-tab-title {
+  display: none;
+}
+.print-layout .print-tab-title {
+  display: block;
+}
+
 /* ---------- Settings, by group ----------
    Thirty fields in one column meant reading the whole form to change one thing. They are
    folded by subject, the groups a card cannot use are not drawn, and a group already
@@ -9198,9 +9403,6 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   gap: 8px;
   margin-left: auto;
 }
-.stops-tabs {
-  flex: none;
-}
 .stops-detail-filter,
 .stops-tools .widget-period {
   gap: 6px;
@@ -9454,8 +9656,6 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 @media (max-width: 760px) {
   .stops-head { gap: 8px; }
   .stops-tools { width: 100%; margin-left: 0; }
-  .stops-tabs { width: 100%; }
-  .stops-tabs button { flex: 1 1 auto; }
   .stops-totals { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
   /* A four-column table does not fit 390 px: each stop becomes a small block instead, with
      the duration kept on the first line where it is looked for. */

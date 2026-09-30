@@ -1826,6 +1826,7 @@ export async function createApp(
         title: z.string().min(1).max(120),
         width: z.enum(['small', 'medium', 'large', 'full']).default('medium'),
         config: z.record(z.string(), z.unknown()).default({}),
+        tabId: uuid.nullable().optional(),
       })
       .parse(req.body);
     if (!(await access.requireDevice(req, reply, body.deviceId))) return;
@@ -1852,16 +1853,18 @@ export async function createApp(
       position: view.widgets.length,
       width: body.width,
       config: body.config,
+      tab_id: body.tabId ?? null,
       key: tag?.key ?? null,
       tag_name: tag?.tag_name ?? null,
       unit: tag?.unit ?? null,
       data_type: tag?.data_type ?? null,
     };
     const inserted = await db.query<{ position: number }>(
-      `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,position,width,config)
+      `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,position,width,config,tab_id)
        VALUES($1,$2,$3,$4,$5,$6,$7,
          (SELECT COALESCE(max(position)+1,0) FROM dashboard_widgets WHERE tenant_id=$2 AND dashboard_id=$3),
-         $8,$9::jsonb)
+         $8,$9::jsonb,
+         (SELECT id FROM dashboard_tabs WHERE tenant_id=$2 AND dashboard_id=$3 AND id=$10))
        RETURNING position`,
       [
         widget.id,
@@ -1873,6 +1876,7 @@ export async function createApp(
         widget.title,
         widget.width,
         JSON.stringify(widget.config),
+        widget.tab_id,
       ],
     );
     return reply.code(201).send({ ...widget, position: inserted.rows[0].position });
@@ -1889,6 +1893,8 @@ export async function createApp(
         config: z.record(z.string(), z.unknown()).optional(),
         // The card's variable: set from the pencil (cards from the default model start empty).
         tagId: uuid.nullable().optional(),
+        // Which tab of the panel shows it; null puts it back on the first one.
+        tabId: uuid.nullable().optional(),
       })
       .parse(req.body);
     const view = await dashboardView(
@@ -2116,6 +2122,99 @@ export async function createApp(
     });
     return { widgets: view.widgets };
   });
+  /*
+   * The tabs of a panel: created, renamed and ordered by whoever owns the panel.
+   *
+   * They are the panel's own division of its cards -- what the shift leader watches on one
+   * screen and what maintenance opens on another -- so nothing here decides the grouping. A
+   * panel with no tabs never sees them.
+   */
+  app.get('/api/dashboards/:id/tabs', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const current = access.principal(req);
+    const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    return { tabs: view.tabs };
+  });
+
+  app.post('/api/dashboards/:id/tabs', async (req, reply) => {
+    const current = access.principal(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const body = z.object({ name: z.string().trim().min(1).max(40) }).parse(req.body);
+    if (!access.requireMaster(req, reply)) return;
+    const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
+    if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    const created = await db.query<{ id: string; name: string; position: number }>(
+      `INSERT INTO dashboard_tabs(tenant_id,dashboard_id,name,position)
+       VALUES($1,$2,$3,(SELECT COALESCE(max(position)+1,0) FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2))
+       RETURNING id,name,position`,
+      [current.tenantId, id, body.name],
+    );
+    await recordAudit(db, req, current, {
+      action: 'dashboard_tab.created',
+      targetType: 'dashboard',
+      targetId: id,
+      summary: { name: body.name },
+    });
+    return reply.code(201).send(created.rows[0]);
+  });
+
+  app.patch('/api/dashboards/:dashboardId/tabs/:tabId', async (req, reply) => {
+    const current = access.principal(req);
+    const { dashboardId, tabId } = z
+      .object({ dashboardId: uuid, tabId: uuid })
+      .parse(req.params);
+    const body = z
+      .object({
+        name: z.string().trim().min(1).max(40).optional(),
+        position: z.coerce.number().int().min(0).max(200).optional(),
+      })
+      .parse(req.body);
+    if (!access.requireMaster(req, reply)) return;
+    const updated = await db.query<{ id: string; name: string; position: number }>(
+      `UPDATE dashboard_tabs SET name=COALESCE($4,name),position=COALESCE($5,position)
+       WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3
+       RETURNING id,name,position`,
+      [current.tenantId, dashboardId, tabId, body.name ?? null, body.position ?? null],
+    );
+    if (!updated.rows.length) return reply.code(404).send({ error: 'Tab not found' });
+    await recordAudit(db, req, current, {
+      action: 'dashboard_tab.updated',
+      targetType: 'dashboard',
+      targetId: dashboardId,
+      summary: { tabId, ...body },
+    });
+    return updated.rows[0];
+  });
+
+  app.delete('/api/dashboards/:dashboardId/tabs/:tabId', async (req, reply) => {
+    const current = access.principal(req);
+    const { dashboardId, tabId } = z
+      .object({ dashboardId: uuid, tabId: uuid })
+      .parse(req.params);
+    // Where its cards go. Without it they lose the tab and come back on the first one, which
+    // is the safe end: a tab is a division of the panel, never a way to throw cards away.
+    const body = z.object({ moveTo: uuid.nullable().optional() }).parse(req.body ?? {});
+    if (!access.requireMaster(req, reply)) return;
+    await db.query(
+      `UPDATE dashboard_widgets SET tab_id=(SELECT id FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$4)
+       WHERE tenant_id=$1 AND dashboard_id=$2 AND tab_id=$3`,
+      [current.tenantId, dashboardId, tabId, body.moveTo ?? null],
+    );
+    const removed = await db.query(
+      'DELETE FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3',
+      [current.tenantId, dashboardId, tabId],
+    );
+    if (!removed.rowCount) return reply.code(404).send({ error: 'Tab not found' });
+    await recordAudit(db, req, current, {
+      action: 'dashboard_tab.deleted',
+      targetType: 'dashboard',
+      targetId: dashboardId,
+      summary: { tabId, moveTo: body.moveTo ?? null },
+    });
+    return { ok: true };
+  });
+
   app.delete('/api/dashboards/:dashboardId/widgets/:widgetId', async (req, reply) => {
     const current = access.principal(req);
     const { dashboardId, widgetId } = z
@@ -2327,6 +2426,28 @@ async function dashboardView(
      WHERE w.tenant_id=$1 AND w.dashboard_id=$2 ORDER BY w.position,w.created_at`,
     [current.tenantId, dashboardId],
   );
-  return { ...dashboard.rows[0], widgets: widgets.rows } as Record<string, unknown> &
-    DashboardViewSettings;
+  /*
+   * A panel with no tabs is the normal case: the list comes back empty and nothing is drawn.
+   *
+   * Production applies its migrations by hand, so the code can reach the server before the
+   * table does. A panel without its tabs for a few minutes is a small thing; every panel in
+   * every plant answering 500 over one missing table is not.
+   */
+  let tabs: Array<{ id: string; name: string; position: number }> = [];
+  try {
+    tabs = (
+      await db.query<{ id: string; name: string; position: number }>(
+        `SELECT id,name,position FROM dashboard_tabs
+         WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
+        [current.tenantId, dashboardId],
+      )
+    ).rows;
+  } catch {
+    tabs = [];
+  }
+  return { ...dashboard.rows[0], widgets: widgets.rows, tabs } as unknown as Record<
+    string,
+    unknown
+  > &
+    DashboardViewSettings & { tabs: Array<{ id: string; name: string; position: number }> };
 }

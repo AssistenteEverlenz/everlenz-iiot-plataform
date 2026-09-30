@@ -35,6 +35,8 @@ import { hmiVariables, knownVariables, panelVariables, variableOptionsFor } from
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
+import { DashboardTabs } from './DashboardTabs';
+import type { DashboardTab } from './data';
 import { ShiftBoard } from './ShiftBoard';
 import { StopsPanel } from './StopsPanel';
 import { WearPanel } from './WearModal';
@@ -46,6 +48,74 @@ import { printDashboard } from './print';
 import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
 export type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
+
+/**
+ * Deleting a tab is not deleting its cards: it asks where they go, and the default is the
+ * first tab, which is also where a card with no tab is shown.
+ */
+function RemoveTabModal({
+  tab,
+  others,
+  cards,
+  onClose,
+  onConfirm,
+}: {
+  tab: DashboardTab | null;
+  others: DashboardTab[];
+  cards: number;
+  onClose: () => void;
+  onConfirm: (moveTo: string | null) => void;
+}) {
+  const [moveTo, setMoveTo] = useState(others[0]?.id ?? '');
+  if (!tab) return null;
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div
+        className="modal-card compact-modal"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="modal-title">
+          <div>
+            <div className="eyebrow">ABA DO PAINEL</div>
+            <h2>Excluir “{tab.name}”</h2>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar">
+            ×
+          </button>
+        </div>
+        {cards > 0 ? (
+          <div className="form-grid">
+            <label className="field full-field">
+              {cards === 1 ? 'O card desta aba vai para' : `Os ${cards} cards desta aba vão para`}
+              <select value={moveTo} onChange={(event) => setMoveTo(event.target.value)}>
+                {others.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+                <option value="">Nenhuma aba (aparecem na primeira)</option>
+              </select>
+            </label>
+          </div>
+        ) : (
+          <p className="modal-note">A aba está vazia. Nenhum card será afetado.</p>
+        )}
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => onConfirm(moveTo || null)}
+          >
+            Excluir aba
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * One group of settings, folded until it is wanted.
@@ -910,7 +980,7 @@ function Widget({
 const HISTORY_REFRESH_MS = 30000;
 
 export function DashboardCanvas({ id }: { id: string }) {
-  const { branding, slots } = usePlatform();
+  const { branding, slots, user } = usePlatform();
   // The board's definition (every card and its config) only changes when someone edits it, and
   // each edit here refreshes it at once. Re-reading it every 2 s was most of the database
   // transfer; once a minute still brings in edits made from another screen.
@@ -1015,6 +1085,15 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [counterMode, setCounterMode] = useState(false);
   const [resetVariable, setResetVariable] = useState('');
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+  /*
+   * The panel's own tabs. A card with no tab rides on the first one, so a panel that never had
+   * tabs keeps working untouched, and deleting a tab never takes cards with it.
+   */
+  const tabs = useMemo(
+    () => [...(dashboard.data?.tabs ?? [])].sort((a, b) => a.position - b.position),
+    [dashboard.data?.tabs],
+  );
+  const [activeTab, setActiveTab] = useState('');
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
@@ -1022,6 +1101,18 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [savingModal, setSavingModal] = useState(false);
   const [savingRefresh, setSavingRefresh] = useState(false);
   const [removingWidget, setRemovingWidget] = useState<DashboardWidget | null>(null);
+  const [removingTab, setRemovingTab] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  async function printEverything() {
+    setPrinting(true);
+    // A frame for React to lay the other tabs out before the charts are told to measure.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    try {
+      await printDashboard();
+    } finally {
+      setPrinting(false);
+    }
+  }
   const [resettingWidget, setResettingWidget] = useState<DashboardWidget | null>(null);
   // Wiping a variable's history (wrong format or address): every card on it starts over.
   const [clearingHistory, setClearingHistory] = useState<DashboardWidget | null>(null);
@@ -1035,6 +1126,128 @@ export function DashboardCanvas({ id }: { id: string }) {
     if (pendingEdits.current > 0 || Date.now() < holdServerUntil.current) return;
     setWidgets([...dashboard.data.widgets].sort((a, b) => a.position - b.position));
   }, [dashboard.data?.widgets]);
+  // The tab someone left open is the tab they find when they come back.
+  useEffect(() => {
+    if (!tabs.length) {
+      setActiveTab('');
+      return;
+    }
+    setActiveTab((current) => {
+      if (current && tabs.some((tab) => tab.id === current)) return current;
+      let remembered = '';
+      try {
+        remembered = window.localStorage.getItem(`painel-aba-${id}`) ?? '';
+      } catch {
+        remembered = '';
+      }
+      return tabs.some((tab) => tab.id === remembered) ? remembered : tabs[0].id;
+    });
+  }, [tabs, id]);
+  useEffect(() => {
+    if (!activeTab) return;
+    try {
+      window.localStorage.setItem(`painel-aba-${id}`, activeTab);
+    } catch {
+      /* a browser that refuses storage still shows the panel */
+    }
+  }, [activeTab, id]);
+
+  // Cards of the open tab. Without tabs, all of them; with tabs, the ones carrying it plus the
+  // orphans, which belong to the first.
+  const firstTab = tabs[0]?.id ?? '';
+  const shownWidgets = useMemo(
+    () =>
+      !tabs.length
+        ? widgets
+        : widgets.filter((widget) =>
+            widget.tab_id ? widget.tab_id === activeTab : activeTab === firstTab,
+          ),
+    [widgets, tabs.length, activeTab, firstTab],
+  );
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const tab of tabs) counts[tab.id] = 0;
+    for (const widget of widgets) {
+      const key = widget.tab_id && counts[widget.tab_id] != null ? widget.tab_id : firstTab;
+      if (counts[key] != null) counts[key] += 1;
+    }
+    return counts;
+  }, [widgets, tabs, firstTab]);
+
+  async function createTab(name: string) {
+    try {
+      const made = (await mutate(`/dashboards/${id}/tabs`, 'POST', { name })) as {
+        id: string;
+      };
+      await dashboard.refresh();
+      if (made?.id) setActiveTab(made.id);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao criar a aba.');
+    }
+  }
+  async function renameTab(tabId: string, name: string) {
+    try {
+      await mutate(`/dashboards/${id}/tabs/${tabId}`, 'PATCH', { name });
+      await dashboard.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao renomear a aba.');
+    }
+  }
+  async function removeTab(tabId: string, moveTo: string | null) {
+    setRemovingTab(null);
+    try {
+      await mutate(`/dashboards/${id}/tabs/${tabId}`, 'DELETE', { moveTo });
+      await dashboard.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao excluir a aba.');
+    }
+  }
+  async function reorderTab(tabId: string, position: number) {
+    try {
+      await mutate(`/dashboards/${id}/tabs/${tabId}`, 'PATCH', { position });
+      await dashboard.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao reordenar as abas.');
+    }
+  }
+  /** Carry a card to another tab, by dropping it there or by the field in its settings. */
+  async function moveWidgetToTab(widgetId: string, tabId: string | null) {
+    setWidgets((current) =>
+      current.map((widget) => (widget.id === widgetId ? { ...widget, tab_id: tabId } : widget)),
+    );
+    try {
+      await persistLocalEdit(() =>
+        mutate(`/dashboards/${id}/widgets/${widgetId}`, 'PATCH', { tabId }),
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao mover o card de aba.');
+      await dashboard.refresh();
+    }
+  }
+
+  /*
+   * What the grid draws. On screen it is the open tab; on paper it is every tab in order,
+   * each under its own name and starting a fresh page, because a report carrying a third of
+   * the panel is not a report of the panel.
+   */
+  const printList = useMemo(() => {
+    type Item =
+      | { kind: 'head'; id: string; name: string }
+      | { kind: 'card'; widget: DashboardWidget };
+    if (!printing || !tabs.length)
+      return shownWidgets.map((widget) => ({ kind: 'card', widget }) as Item);
+    const items: Item[] = [];
+    for (const tab of tabs) {
+      const mine = widgets.filter((widget) =>
+        widget.tab_id ? widget.tab_id === tab.id : tab.id === firstTab,
+      );
+      if (!mine.length) continue;
+      items.push({ kind: 'head', id: tab.id, name: tab.name });
+      for (const widget of mine) items.push({ kind: 'card', widget });
+    }
+    return items;
+  }, [printing, tabs, shownWidgets, widgets, firstTab]);
+
   const stackOrder = useMemo(() => visualOrder(widgets), [widgets]);
   async function persistLocalEdit(action: () => Promise<unknown>) {
     pendingEdits.current += 1;
@@ -1439,7 +1652,7 @@ export function DashboardCanvas({ id }: { id: string }) {
         savingRefresh={savingRefresh}
         onRefresh={(refresh) => void updateRefresh(refresh)}
         onAdd={() => setAdding(true)}
-        onPdf={() => void printDashboard()}
+        onPdf={() => void printEverything()}
         csvHref={`/api/export/telemetry.csv?deviceId=${deviceId}&limit=10000`}
         tvHref={`/dashboards/${id}/tv`}
         onSnapshot={() => setSnapshotOpen(true)}
@@ -1478,35 +1691,58 @@ export function DashboardCanvas({ id }: { id: string }) {
           <b>Atualizado em</b> {time(device.data?.last_message_at)}
         </span>
       </div>
+      <DashboardTabs
+        tabs={tabs}
+        active={activeTab}
+        onPick={setActiveTab}
+        editable={user.role === 'master'}
+        carrying={Boolean(draggedId)}
+        counts={tabCounts}
+        onCreate={createTab}
+        onRename={renameTab}
+        onReorder={reorderTab}
+        onRemove={(tabId) => setRemovingTab(tabId)}
+        onDropWidget={(tabId) => {
+          if (draggedId) void moveWidgetToTab(draggedId, tabId);
+          setDraggedId(null);
+          setDragOverId(null);
+        }}
+      />
       <section className="widget-grid">
-        {widgets.map((widget) => (
+        {printList.map((item) =>
+          item.kind === 'head' ? (
+            <h2 className="print-tab-title" key={`t-${item.id}`}>
+              {item.name}
+            </h2>
+          ) : (
           <Widget
-            key={widget.id}
-            widget={widget}
-            latest={widget.tag_id ? byTag.get(widget.tag_id) : undefined}
-            missing={Boolean(widget.tag_id && signals.data && !publishedTagIds.has(widget.tag_id))}
-            order={stackOrder.get(widget.id)}
+            key={item.widget.id}
+            widget={item.widget}
+            latest={item.widget.tag_id ? byTag.get(item.widget.tag_id) : undefined}
+            missing={Boolean(item.widget.tag_id && signals.data && !publishedTagIds.has(item.widget.tag_id))}
+            order={stackOrder.get(item.widget.id)}
             history={history.data ?? []}
             values={readings}
             dashboardId={id}
-            counter={counters.data?.find((item) => item.widget_id === widget.id)}
+            counter={counters.data?.find((row) => row.widget_id === item.widget.id)}
             dataVersion={dataVersion}
-            edit={() => startEdit(widget)}
-            remove={() => setRemovingWidget(widget)}
-            reset={() => setResettingWidget(widget)}
-            resize={(cols, rows) => void resizeWidget(widget, cols, rows)}
-            dragStart={() => setDraggedId(widget.id)}
-            drop={() => void dropWidget(widget.id)}
-            dropTarget={dragOverId === widget.id && draggedId !== widget.id}
+            edit={() => startEdit(item.widget)}
+            remove={() => setRemovingWidget(item.widget)}
+            reset={() => setResettingWidget(item.widget)}
+            resize={(cols, rows) => void resizeWidget(item.widget, cols, rows)}
+            dragStart={() => setDraggedId(item.widget.id)}
+            drop={() => void dropWidget(item.widget.id)}
+            dropTarget={dragOverId === item.widget.id && draggedId !== item.widget.id}
             dragEnter={() => {
-              if (draggedId) setDragOverId(widget.id);
+              if (draggedId) setDragOverId(item.widget.id);
             }}
             dragEnd={() => {
               setDraggedId(null);
               setDragOverId(null);
             }}
           />
-        ))}
+          ),
+        )}
         {!widgets.length && (
           <button className="empty-dashboard" onClick={() => setAdding(true)}>
             +<strong>Monte a primeira visão da operação</strong>
@@ -1684,6 +1920,25 @@ export function DashboardCanvas({ id }: { id: string }) {
                         {signal.present ? '' : ' · não publicada'}
                       </option>
                     ))}
+                  </select>
+                </label>
+              )}
+              {/* Which tab shows it, for whoever would rather choose than drag. */}
+              {Boolean(tabs.length) && (
+                <label className="field full-field">
+                  Aba do painel
+                  <select
+                    value={editingWidget.tab_id ?? ''}
+                    onChange={(event) =>
+                      void moveWidgetToTab(editingWidget.id, event.target.value || null)
+                    }
+                  >
+                    {tabs.map((tab) => (
+                      <option key={tab.id} value={tab.id}>
+                        {tab.name}
+                      </option>
+                    ))}
+                    <option value="">Sem aba (aparece na primeira)</option>
                   </select>
                 </label>
               )}
@@ -2608,6 +2863,15 @@ export function DashboardCanvas({ id }: { id: string }) {
       )}
       {showingVariables && (
         <VariablesModal options={variableOptions} onClose={() => setShowingVariables(false)} />
+      )}
+      {removingTab && (
+        <RemoveTabModal
+          tab={tabs.find((item) => item.id === removingTab) ?? null}
+          others={tabs.filter((item) => item.id !== removingTab)}
+          cards={tabCounts[removingTab] ?? 0}
+          onClose={() => setRemovingTab(null)}
+          onConfirm={(moveTo) => removeTab(removingTab, moveTo)}
+        />
       )}
       {removingWidget && (
         <ActionModal

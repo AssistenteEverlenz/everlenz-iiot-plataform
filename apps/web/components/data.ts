@@ -102,6 +102,8 @@ export interface DashboardWidget {
     | 'wear';
   title: string;
   position: number;
+  /** Which tab of the panel shows it; null means it has none and rides on the first. */
+  tab_id?: string | null;
   width: 'small' | 'medium' | 'large' | 'full';
   config: {
     color?: string;
@@ -192,6 +194,14 @@ export interface Dashboard {
   is_default: boolean;
   widget_count?: number;
   widgets?: DashboardWidget[];
+  tabs?: DashboardTab[];
+}
+
+/** A division of a panel, named and ordered by whoever owns it. */
+export interface DashboardTab {
+  id: string;
+  name: string;
+  position: number;
 }
 export function usePoll<T>(path: string | null, intervalMs = 5000) {
   const [data, setData] = useState<T | null>(null),

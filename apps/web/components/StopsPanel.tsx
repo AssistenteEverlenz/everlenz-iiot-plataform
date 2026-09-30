@@ -101,18 +101,9 @@ function windowOf(period: Period): { from: string; to: string } {
   return { from: isoDay(new Date(now.getFullYear(), 0, 1)), to };
 }
 
-type Tab = 'resumo' | 'pareto' | 'paradas' | 'eficiencia';
-const TABS: Array<[Tab, string]> = [
-  ['resumo', 'Resumo'],
-  ['pareto', 'Pareto'],
-  ['paradas', 'Paradas'],
-  ['eficiencia', 'Eficiência'],
-];
-
 export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: number }) {
   const [period, setPeriod] = useState<Period>(days <= 1 ? 'today' : '7d');
   const [custom, setCustom] = useState(() => windowOf('7d'));
-  const [tab, setTab] = useState<Tab>('resumo');
   // Which number the reader asked to see behind: the modal opens on that slice.
   const [opening, setOpening] = useState<null | 'all' | 'time' | 'average' | 'longest'>(null);
 
@@ -235,24 +226,9 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
 
   return (
     <div className="stops-panel">
-      <div className="stops-head">
-        <div className="shift-mode stops-tabs" role="group" aria-label="Assunto">
-          {TABS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={tab === value ? 'active' : ''}
-              onClick={() => setTab(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {tools}
-      </div>
+      <div className="stops-head">{tools}</div>
 
-      {tab === 'resumo' && (
-        <>
+      <>
           {/* Every figure opens the stops that made it. */}
           <div className="stops-totals">
             <button type="button" onClick={() => setOpening('all')}>
@@ -340,10 +316,8 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
             )}
           </div>
         </>
-      )}
 
-      {tab === 'pareto' && (
-        <>
+      <>
           <div className="stops-title">
             Onde o tempo foi
             <small> · os motivos que somam a maior parte da parada</small>
@@ -392,10 +366,8 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
             cada código vira uma barra nova aqui, sem mudar mais nada.
           </div>
         </>
-      )}
 
-      {tab === 'paradas' && (
-        <div className="stops-list">
+      <div className="stops-list">
           {/* The list scrolls inside the card, so a hundred stops never stretch the card. */}
           <div className="stops-list-body">
             <StopsTable rows={stops.data.all} limit={40} />
@@ -406,10 +378,8 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
             </button>
           )}
         </div>
-      )}
 
-      {tab === 'eficiencia' && (
-        <>
+      <>
           <div className="stops-totals stops-quiet">
             <div>
               <span>Disponibilidade</span>
@@ -472,7 +442,6 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
             mesma, porque ninguém anotou um tempo de ciclo ideal.
           </div>
         </>
-      )}
 
       {opening && (
         <StopsDetail

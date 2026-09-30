@@ -2286,6 +2286,88 @@
     border-top: 1px solid #1e2b2f;
     background: inherit;
   }
+  :root[data-theme='dark'] .dashboard-tabs {
+    border-bottom: 1px solid #202d32;
+    background: #192326;
+  }
+  :root[data-theme='dark'] .dashboard-tab {
+    border: 1px solid transparent;
+    background: transparent;
+  }
+  :root[data-theme='dark'] .dashboard-tab > button {
+    border: 1px solid #243338;
+    background: #12191c;
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .dashboard-tab > button:hover {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .dashboard-tab > button em {
+    background: #1a2529;
+    color: #91a1a6;
+  }
+  :root[data-theme='dark'] .dashboard-tab.active {
+    border-color: #0b2028;
+    background: #0b2028;
+  }
+  :root[data-theme='dark'] .dashboard-tab.active > button {
+    border-color: transparent;
+    background: transparent;
+    color: #fff;
+  }
+  :root[data-theme='dark'] .dashboard-tab.active .dashboard-tab-tools button {
+    border-color: #ffffff3d;
+    background: transparent;
+    color: #cfe2e6;
+  }
+  :root[data-theme='dark'] .dashboard-tab.active .dashboard-tab-tools button:hover {
+    border-color: #12191c;
+    color: #fff;
+  }
+  :root[data-theme='dark'] .dashboard-tab.active .dashboard-tab-tools button:last-child:hover {
+    border-color: #592a2d;
+    color: #ffd7d9;
+  }
+  :root[data-theme='dark'] .dashboard-tab.active > button em {
+    background: #ffffff26;
+    color: #dbe9ec;
+  }
+  :root[data-theme='dark'] .dashboard-tab.over > button {
+    border-color: #12b8a6;
+    box-shadow: 0 0 0 3px #12b8a633;
+  }
+  :root[data-theme='dark'] .dashboard-tab-tools button {
+    border: 1px solid #243338;
+    background: #12191c;
+    color: #91a1a6;
+  }
+  :root[data-theme='dark'] .dashboard-tab-tools button:hover {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .dashboard-tab-tools button:last-child:hover {
+    border-color: #c9646b;
+    color: #da8b90;
+  }
+  :root[data-theme='dark'] .dashboard-tab-rename {
+    border: 1px solid #0b2028;
+  }
+  :root[data-theme='dark'] .dashboard-tab-add {
+    border: 1px dashed #30454c;
+    background: transparent;
+    color: #91a1a6;
+  }
+  :root[data-theme='dark'] .dashboard-tab-add:hover {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .dashboard-tab-hint {
+    color: #7de8dc;
+  }
+  :root[data-theme='dark'] .modal-note {
+    color: #a0b2b8;
+  }
   :root[data-theme='dark'] .form-section {
     border: 1px solid #202d32;
     background: #12191c;
