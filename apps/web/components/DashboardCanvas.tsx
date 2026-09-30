@@ -47,6 +47,42 @@ import { QuickChart, seriesColor, valueLabel } from './QuickChart';
 
 export type ProductionPeriod = NonNullable<DashboardWidget['config']['productionDefaultPeriod']>;
 
+/**
+ * One group of settings, folded until it is wanted.
+ *
+ * The item's settings had grown into one column of thirty fields: everything a card could
+ * ever need, all at once, so finding the one field to change meant reading the whole form.
+ * Panel editors solve this by category -- Grafana folds its options the same way -- and the
+ * groups that are already carrying a setting open by themselves, so nothing configured is
+ * ever hidden behind a closed lid.
+ */
+function Section({
+  title,
+  note,
+  open = false,
+  when = true,
+  children,
+}: {
+  title: string;
+  note?: string;
+  open?: boolean;
+  /** False when this card has nothing in the group: the group is not drawn at all. */
+  when?: boolean;
+  children: React.ReactNode;
+}) {
+  if (!when) return null;
+  return (
+    <details className="form-section" open={open}>
+      <summary>
+        <span className="form-section-name">{title}</span>
+        {note && <small>{note}</small>}
+        <i className="form-section-chevron" aria-hidden="true" />
+      </summary>
+      <div className="form-section-body">{children}</div>
+    </details>
+  );
+}
+
 const periodOptions: Array<[ProductionPeriod, string]> = [
   ['today', 'Hoje'],
   ['7d', '7 dias'],
@@ -954,6 +990,9 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [overCalc, setOverCalc] = useState<string | null>(null);
   const [showingVariables, setShowingVariables] = useState(false);
   const [mainFormula, setMainFormula] = useState('');
+  // Most cards read a variable, not a formula. The field is offered, not presented: an empty
+  // formula box sitting in every card's settings was a row of nothing to scroll past.
+  const [usingFormula, setUsingFormula] = useState(false);
   const [mainFormulaUnit, setMainFormulaUnit] = useState('');
   const [colSpanInput, setColSpanInput] = useState(4);
   const [rowSpanInput, setRowSpanInput] = useState(4);
@@ -1151,6 +1190,7 @@ export function DashboardCanvas({ id }: { id: string }) {
       calculatedFields(widget.config).map((field) => ({ ...field, formula: modernizeFormula(field.formula) })),
     );
     setMainFormula(modernizeFormula(widget.config.mainFormula ?? ''));
+    setUsingFormula(Boolean((widget.config.mainFormula ?? '').trim()));
     setMainFormulaUnit(widget.config.mainFormulaUnit ?? '');
     setColSpanInput(spansOf(widget).cols);
     setRowSpanInput(spansOf(widget).rows);
@@ -1626,7 +1666,9 @@ export function DashboardCanvas({ id }: { id: string }) {
                 ×
               </button>
             </div>
-            <div className="form-grid">
+            <div className="form-sections">
+              <Section title="Identificação e tamanho" open>
+              <div className="form-grid">
               <label className="field full-field">
                 Título
                 <input required value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -1681,7 +1723,16 @@ export function DashboardCanvas({ id }: { id: string }) {
                   }
                 />
               </label>
-              {editingWidget.widget_type === 'value' && (
+              </div>
+              </Section>
+              <Section
+                title="Fórmulas"
+                note="contas suas sobre as variáveis"
+                open={Boolean(mainFormula.trim() || calculatedList.length)}
+              >
+              <div className="form-grid">
+              {editingWidget.widget_type === 'value' &&
+                (usingFormula ? (
                 <div className="field full-field">
                   <span className="field-label">
                     Fórmula do valor
@@ -1720,8 +1771,32 @@ export function DashboardCanvas({ id }: { id: string }) {
                         {mainFormulaUnit}
                       </small>
                     ))}
+                  <button
+                    type="button"
+                    className="field-drop"
+                    onClick={() => {
+                      setUsingFormula(false);
+                      setMainFormula('');
+                      setMainFormulaUnit('');
+                    }}
+                  >
+                    Voltar a usar a variável
+                  </button>
                 </div>
-              )}
+              ) : (
+                <div className="field full-field">
+                  <button
+                    type="button"
+                    className="field-offer"
+                    onClick={() => setUsingFormula(true)}
+                  >
+                    + Calcular o valor por uma fórmula
+                  </button>
+                  <small className="field-offer-note">
+                    No lugar de ler uma variável, o card mostra o resultado de uma conta sua.
+                  </small>
+                </div>
+              ))}
               <div className="field full-field">
                 <span className="field-label">
                   Informações calculadas
@@ -1867,6 +1942,19 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </small>
                 </div>
               </div>
+              </div>
+              </Section>
+              <Section
+                title="O número no card"
+                open
+                when={
+                  editingWidget.widget_type === 'status' ||
+                  (editingWidget.widget_type === 'value' && editingWidget.data_type === 'boolean') ||
+                  numericTypes.has(editingWidget.widget_type) ||
+                  Boolean(editingWidget.tag_id && editingWidget.data_type === 'number')
+                }
+              >
+              <div className="form-grid">
               {(editingWidget.widget_type === 'status' ||
                 (editingWidget.widget_type === 'value' && editingWidget.data_type === 'boolean')) && (
                 <>
@@ -1964,6 +2052,13 @@ export function DashboardCanvas({ id }: { id: string }) {
               </label>
               </>
               )}
+              </div>
+              </Section>
+              <Section
+                title="Aparência"
+                when={colouredTypes.has(editingWidget.widget_type) || editingWidget.widget_type === 'gauge'}
+              >
+              <div className="form-grid">
               {colouredTypes.has(editingWidget.widget_type) && (
               <label className="field">
                 Cor
@@ -2025,6 +2120,10 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </label>
                 </>
               )}
+              </div>
+              </Section>
+              <Section title="Análise de produção" when={analyticTypes.has(editingWidget.widget_type)}>
+              <div className="form-grid">
               {analyticTypes.has(editingWidget.widget_type) && (
                 <>
                   <label className="field">
@@ -2216,6 +2315,14 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </small>
                 </>
               )}
+              </div>
+              </Section>
+              <Section
+                title="Contador acumulativo"
+                open={counterMode}
+                when={editingWidget.widget_type === 'value' && editingWidget.data_type === 'number'}
+              >
+              <div className="form-grid">
               {editingWidget.widget_type === 'value' && editingWidget.data_type === 'number' && (
                 <>
                   <label className="check-field full-field">
@@ -2244,6 +2351,10 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </small>
                 </>
               )}
+              </div>
+              </Section>
+              <Section title="Parâmetros de produção" open when={editingWidget.widget_type === 'shift_board'}>
+              <div className="form-grid">
               {editingWidget.widget_type === 'shift_board' && (
                 <div className="notice full-field">
                   <b>Parâmetros de produção</b>
@@ -2265,6 +2376,14 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </div>
                 </div>
               )}
+              </div>
+              </Section>
+              <Section
+                title="Alarme por limite"
+                open={alarmEnabled}
+                when={!quickTypes.has(editingWidget.widget_type) && editingWidget.widget_type !== 'shift_board'}
+              >
+              <div className="form-grid">
               {!quickTypes.has(editingWidget.widget_type) &&
                 editingWidget.widget_type !== 'shift_board' && (
                 <label className="check-field full-field">
@@ -2405,9 +2524,12 @@ export function DashboardCanvas({ id }: { id: string }) {
                   {!alarmRanges.length && <small>Adicione ao menos uma faixa de operação.</small>}
                 </div>
               )}
+              </div>
+              </Section>
             </div>
             {error && <div className="form-error">{error}</div>}
-            <div className="modal-actions">
+            <div className="modal-tools">
+              <span className="modal-tools-title">Ações deste item</span>
               <button
                 type="button"
                 disabled={savingModal}
@@ -2471,6 +2593,8 @@ export function DashboardCanvas({ id }: { id: string }) {
                   <span className="action-text">Zerar histórico da variável</span>
                 </button>
               )}
+            </div>
+            <div className="modal-actions">
               <button type="button" disabled={savingModal} onClick={() => setEditingWidget(null)}>
                 Cancelar
               </button>

@@ -1104,6 +1104,12 @@ input:focus-visible {
   padding: 3px;
   height: 40px;
 }
+/* A swatch is a swatch: stretched across the row it read as a filled bar, not as a colour
+   someone picks. */
+.modal-card .field > input[type='color'] {
+  width: 120px;
+  padding: 3px;
+}
 .full-field {
   grid-column: 1/-1;
 }
@@ -7675,6 +7681,144 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   align-items: center;
   gap: 6px;
 }
+
+/* ---------- Settings, by group ----------
+   Thirty fields in one column meant reading the whole form to change one thing. They are
+   folded by subject, the groups a card cannot use are not drawn, and a group already
+   carrying a setting opens by itself so nothing configured hides behind a closed lid. */
+.form-sections {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+}
+.form-section {
+  border: 1px solid #e3ebed;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.form-section[open] {
+  border-color: #d3e0e3;
+  background: #fcfefe;
+}
+.form-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  color: #17414c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.form-section > summary::-webkit-details-marker {
+  display: none;
+}
+.form-section > summary:hover {
+  background: #f6fafb;
+}
+.form-section > summary small {
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.form-section-chevron {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid #7f959b;
+  border-bottom: 1.5px solid #7f959b;
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 0.16s ease;
+}
+.form-section[open] > summary .form-section-chevron {
+  transform: rotate(-135deg) translate(-2px, -2px);
+}
+.form-section-body {
+  padding: 2px 14px 14px;
+}
+/* The grid inside a group carries no top margin of its own: the group already spaced it. */
+.modal-card .form-section-body .form-grid {
+  margin-top: 0;
+}
+
+/* Maintenance actions live above the footer, not in it: they are not the form's answer. */
+.modal-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid #e9eff0;
+  border-radius: 12px;
+  background: #fafcfc;
+}
+.modal-tools-title {
+  width: 100%;
+  color: #8a9ca2;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.modal-card .modal-tools button {
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+/* Something the card can have but usually does not: offered as one line, opened on demand. */
+.modal-card .field > button.field-offer,
+.field-offer {
+  justify-self: start;
+  width: auto;
+  padding: 8px 14px;
+  border: 1px dashed #c3d3d7;
+  border-radius: 999px;
+  background: #fff;
+  color: #17414c;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.field-offer:hover {
+  border-style: solid;
+  border-color: #0b2028;
+  color: #0b2028;
+}
+.modal-card .field-offer-note,
+.field-offer-note {
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.modal-card .field > button.field-drop,
+.field-drop {
+  justify-self: start;
+  width: auto;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8a9ca2;
+  font-size: 11px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.field-drop:hover {
+  color: #a3272f;
+}
 .hint {
   display: inline-grid;
   place-items: center;
@@ -7691,65 +7835,49 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   position: relative;
 }
 .hint:hover,
-.hint:focus-visible {
-  border-color: var(--brand-accent, #0d8f82);
-  color: var(--brand-accent, #0d8f82);
+.hint:focus-visible,
+.hint.showing {
+  border-color: #0b2028;
+  color: #0b2028;
 }
-.hint::after {
-  content: attr(data-hint);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
-  width: max-content;
-  max-width: 260px;
+/* Drawn on the body, at coordinates measured from the "i", so no scrolling ancestor can
+   crop it. */
+.hint-balloon {
+  position: fixed;
+  /* Above the modal backdrop (1000) and the modal itself: the balloon belongs to whatever the
+     reader is pointing at, wherever that is. */
+  z-index: 1200;
+  max-width: min(300px, calc(100vw - 20px));
   padding: 9px 11px;
-  border-radius: 8px;
+  border-radius: 9px;
   background: #16333c;
   color: #eaf3f4;
   font-size: 11.5px;
   font-weight: 400;
+  font-style: normal;
   line-height: 1.45;
   letter-spacing: 0;
   text-align: left;
+  text-transform: none;
   white-space: normal;
-  opacity: 0;
   pointer-events: none;
-  transition:
-    opacity 0.14s ease,
-    transform 0.14s ease;
-  z-index: 5;
+  box-shadow: 0 10px 26px #0b202833;
+  animation: hint-in 0.13s ease-out;
 }
-.hint::before {
-  content: '';
-  position: absolute;
-  bottom: calc(100% + 3px);
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: #16333c;
-  opacity: 0;
-  transition: opacity 0.14s ease;
-  z-index: 5;
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
 }
-.hint:hover::after,
-.hint:focus-visible::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
+.hint-balloon.below {
+  animation-name: hint-in-below;
 }
-.hint:hover::before,
-.hint:focus-visible::before {
-  opacity: 1;
-}
-/* Near the right edge the balloon would leave the modal: it opens to the left instead. */
-.hint.left::after {
-  left: auto;
-  right: -4px;
-  transform: translateY(4px);
-}
-.hint.left:hover::after,
-.hint.left:focus-visible::after {
-  transform: translateY(0);
+@keyframes hint-in-below {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
 }
 
 /* The S curve can be zoomed and dragged; its tooltip speaks the machine's state. */
@@ -8971,33 +9099,55 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 /* Saying that a broken number still has to be divided. It takes the whole width under the comma
    selector it qualifies, because on its own the sentence means nothing -- and because a taller
    cell in this grid would stretch the field beside it. */
-.comma-always {
+.comma-always,
+.modal-card .check-field {
   grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  margin: -4px 0 2px;
-  padding: 9px 11px;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
   border: 1px solid #dce6e8;
   border-radius: 10px;
   background: #f8fbfb;
+  color: #24505a;
+  font-size: 12px;
   font-weight: 500;
+  line-height: 1.35;
   text-transform: none;
   letter-spacing: 0;
+  cursor: pointer;
 }
-/* A field never stretches to match a taller neighbour: its control keeps its own height. */
-.form-grid .field > input,
-.form-grid .field > select,
-.form-grid .field > textarea {
-  align-self: start;
+.comma-always:hover,
+.modal-card .check-field:hover {
+  border-color: #b9ccd1;
 }
+.modal-card .check-field input[type='checkbox'],
 .comma-always input[type='checkbox'] {
   flex: none;
   width: 16px;
   height: 16px;
   min-width: 0;
   min-height: 0;
-  margin-top: 1px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: #0b2028;
+}
+/* A checked row is visibly on, without needing to look at the box itself. */
+.comma-always:has(input:checked),
+.modal-card .check-field:has(input:checked) {
+  border-color: #0b2028;
+  background: #f3f7f8;
+}
+.comma-always:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* A field never stretches to match a taller neighbour: its control keeps its own height. */
+.form-grid .field > input,
+.form-grid .field > select,
+.form-grid .field > textarea {
+  align-self: start;
 }
 .comma-always span { min-width: 0; color: #24505a; font-size: 11px; line-height: 1.35; }
 .comma-always small { display: block; margin-top: 2px; color: #7b9097; font-size: 10px; }

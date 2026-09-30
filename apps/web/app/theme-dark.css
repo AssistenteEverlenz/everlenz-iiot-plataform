@@ -2286,23 +2286,72 @@
     border-top: 1px solid #1e2b2f;
     background: inherit;
   }
+  :root[data-theme='dark'] .form-section {
+    border: 1px solid #202d32;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .form-section[open] {
+    border-color: #28393e;
+    background: #121f1f;
+  }
+  :root[data-theme='dark'] .form-section > summary {
+    color: #ccd6d9;
+  }
+  :root[data-theme='dark'] .form-section > summary:hover {
+    background: #171f21;
+  }
+  :root[data-theme='dark'] .form-section > summary small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .form-section-chevron {
+    border-right: 1.5px solid #50717c;
+    border-bottom: 1.5px solid #50717c;
+  }
+  :root[data-theme='dark'] .modal-tools {
+    border: 1px solid #1d292e;
+    background: #141d20;
+  }
+  :root[data-theme='dark'] .modal-tools-title {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .modal-card .field > button.field-offer,
+  :root[data-theme='dark'] .field-offer {
+    border: 1px dashed #30454c;
+    background: #12191c;
+    color: #ccd6d9;
+  }
+  :root[data-theme='dark'] .field-offer:hover {
+    border-color: #0b2028;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .modal-card .field-offer-note,
+  :root[data-theme='dark'] .field-offer-note {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .modal-card .field > button.field-drop,
+  :root[data-theme='dark'] .field-drop {
+    border: 0;
+    background: none;
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .field-drop:hover {
+    color: #da8b90;
+  }
   :root[data-theme='dark'] .hint {
     border: 1px solid #30454c;
     color: #90a2a8;
     background: #12191c;
   }
   :root[data-theme='dark'] .hint:hover,
-  :root[data-theme='dark'] .hint:focus-visible {
-    border-color: var(--brand-accent, #0d8f82);
-    color: var(--brand-accent, #7ce9de);
+  :root[data-theme='dark'] .hint:focus-visible,
+  :root[data-theme='dark'] .hint.showing {
+    border-color: #0b2028;
+    color: #e0e6e8;
   }
-  :root[data-theme='dark'] .hint::after {
+  :root[data-theme='dark'] .hint-balloon {
     background: #16333c;
     color: #eaf3f4;
-  }
-  :root[data-theme='dark'] .hint::before {
-    border: 5px solid transparent;
-    border-top-color: #16333c;
+    box-shadow: 0 10px 26px #0b202833;
   }
   :root[data-theme='dark'] .chart-zoom-hint {
     color: #82969d;
@@ -2733,9 +2782,20 @@
   :root[data-theme='dark'] .wear-events small {
     color: #84979e;
   }
-  :root[data-theme='dark'] .comma-always {
+  :root[data-theme='dark'] .comma-always,
+  :root[data-theme='dark'] .modal-card .check-field {
     border: 1px solid #243338;
     background: #151e21;
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .comma-always:hover,
+  :root[data-theme='dark'] .modal-card .check-field:hover {
+    border-color: #354c53;
+  }
+  :root[data-theme='dark'] .comma-always:has(input:checked),
+  :root[data-theme='dark'] .modal-card .check-field:has(input:checked) {
+    border-color: #0b2028;
+    background: #182225;
   }
   :root[data-theme='dark'] .comma-always span {
     color: #97c4ce;
