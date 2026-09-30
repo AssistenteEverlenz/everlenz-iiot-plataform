@@ -8845,3 +8845,44 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 
 /* Choosing between the shifts of a day, next to the Turno/Dia switch it belongs with. */
 .shift-pick button { font-variant-numeric: tabular-nums; }
+
+/* The day's shifts side by side, above the curve they add up to: the day view used to give one
+   number the plant could not take apart. */
+.shift-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.shift-split > div {
+  padding: 8px 10px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
+  background: #fff;
+}
+.shift-split span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #24505a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.shift-split span small { color: #7b9097; font-weight: 500; letter-spacing: 0; }
+.shift-split b {
+  display: block;
+  margin-top: 1px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.shift-split b em { margin-left: 4px; color: #7b9097; font-size: 11px; font-style: normal; }
+.shift-split > div > small { display: block; color: #7b9097; font-size: 10px; }
+/* The compared day, drawn under the first on the same scale of time. */
+.shift-compare {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed #d8e4e6;
+}
+.shift-compare .shift-chart { height: 180px; }

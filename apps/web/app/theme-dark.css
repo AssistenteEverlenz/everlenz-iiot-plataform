@@ -2724,4 +2724,23 @@
   :root[data-theme='dark'] .stops-empty {
     color: #84979e;
   }
+  :root[data-theme='dark'] .shift-split > div {
+    border: 1px solid #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .shift-split span {
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .shift-split span small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .shift-split b em {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .shift-split > div > small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .shift-compare {
+    border-top: 1px dashed #25353a;
+  }
 }

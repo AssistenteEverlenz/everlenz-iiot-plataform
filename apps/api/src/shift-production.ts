@@ -2475,12 +2475,29 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         },
         now,
       );
+      // Each shift of the day counted on its own, so the day view says what belongs to which
+      // instead of one number the plant cannot take apart.
+      const perShift = await Promise.all(
+        dayOccurrences.map(async (occurrence) => ({
+          ...occurrenceJson(occurrence),
+          board: await buildBoard(db, tenantId, id, config, [occurrence], occurrence, now),
+        })),
+      );
       return {
         ...base,
         status: running ? 'running' : dayOccurrences.length ? 'between' : 'no_shift',
         productionDate: date,
         shifts: dayOccurrences.map(occurrenceJson),
         available: available.map(occurrenceJson),
+        perShift: perShift.map((item) => ({
+          shiftId: item.shiftId,
+          name: item.name,
+          start: item.start,
+          end: item.end,
+          totals: item.board?.totals ?? null,
+          target: item.board?.target ?? null,
+          utilization: item.board?.utilization ?? null,
+        })),
         board,
       };
     }
@@ -2543,6 +2560,47 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         target: row.target_value == null ? null : Number(row.target_value),
       })),
     };
+  });
+
+/**
+   * The median day of a period, as a curve. A single day compared against another single day is
+   * two accidents next to each other; compared against the middle of the last thirty, it says
+   * whether today is unusual. Read from the photographs taken when each day closed, so nothing
+   * is recomputed and no reading is needed.
+   */
+  app.get('/api/devices/:id/production-median', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = z.object({ days: z.coerce.number().int().min(2).max(400).default(7) }).parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const rows = await db.query<{ photo: { detail?: { board?: { curve?: Array<{ actual: number | null }> } } } }>(
+      `SELECT photo FROM production_photos
+       WHERE tenant_id=$1 AND device_id=$2 AND kind='day'
+       ORDER BY production_date DESC LIMIT $3`,
+      [tenantId, id, query.days],
+    );
+    const curves = rows.rows
+      .map((row) => row.photo?.detail?.board?.curve ?? [])
+      .filter((curve) => curve.length > 0);
+    if (!curves.length) return { days: 0, curve: [] };
+    const width = Math.max(...curves.map((curve) => curve.length));
+    const curve: Array<number | null> = [];
+    for (let at = 0; at < width; at += 1) {
+      // Only days that reached this point count: a short day must not drag the middle down.
+      const values = curves
+        .map((day) => day[at]?.actual)
+        .filter((value): value is number => typeof value === 'number');
+      if (!values.length) {
+        curve.push(null);
+        continue;
+      }
+      values.sort((a, b) => a - b);
+      const middle = Math.floor(values.length / 2);
+      curve.push(
+        values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2,
+      );
+    }
+    return { days: curves.length, curve };
   });
 
   app.get('/api/devices/:id/production-photo', async (req, reply) => {

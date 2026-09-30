@@ -106,6 +106,16 @@ export interface ShiftBoardResponse {
   shifts: Occurrence[];
   /** Every shift of the day being looked at: what the plant may choose between. */
   available?: Occurrence[];
+  /** In the day view, each shift counted on its own. */
+  perShift?: Array<{
+    shiftId: string;
+    name: string;
+    start: string;
+    end: string;
+    totals: { pieces: number; milheiros: number; pallets: number; tons: number } | null;
+    target: { value: number; actual: number; projected: number } | null;
+    utilization: number | null;
+  }>;
   board: BoardData | null;
 }
 
@@ -216,6 +226,9 @@ export function ShiftCurve({
   deviceId,
   minuteSeries,
   compare,
+  view: outerView,
+  onView,
+  syncId,
 }: {
   board: BoardData;
   fontSize?: number;
@@ -225,6 +238,11 @@ export function ShiftCurve({
   minuteSeries?: Array<{ t: string; value: number }>;
   /** Another day's realized curve, matched by position in the shift, drawn behind this one. */
   compare?: { label: string; actual: Array<number | null> } | null;
+  /** Held outside when two charts are read together, so zooming one zooms both. */
+  view?: { start: number; end: number } | null;
+  onView?: (view: { start: number; end: number } | null) => void;
+  /** Charts sharing this name show the same point under the cursor. */
+  syncId?: string;
 }) {
   const reactId = useId();
   const info = metricInfo[board.metric];
@@ -237,7 +255,18 @@ export function ShiftCurve({
   }));
   const gradientId = `shift-state-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   // Window of points on screen; null is the whole shift.
-  const [view, setView] = useState<{ start: number; end: number } | null>(null);
+  const [ownView, setOwnView] = useState<{ start: number; end: number } | null>(null);
+  const view = onView ? (outerView ?? null) : ownView;
+  const setView = (
+    next:
+      | { start: number; end: number }
+      | null
+      | ((current: { start: number; end: number } | null) => { start: number; end: number } | null),
+  ) => {
+    const value = typeof next === 'function' ? next(view) : next;
+    if (onView) onView(value);
+    else setOwnView(value);
+  };
   const drag = useRef<{ x: number; start: number; end: number; moving: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
@@ -379,7 +408,7 @@ export function ShiftCurve({
         </span>
       )}
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={visible} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+        <ComposedChart data={visible} syncId={syncId} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
           {stateStops.length > 0 && (
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
@@ -557,10 +586,18 @@ export function ShiftBoard({
     day ? `/devices/${deviceId}/production-photo?date=${day}&kind=day` : null,
     600000,
   );
-  const other = usePoll<{ photo: { detail: ShiftBoardResponse } | null }>(
-    against ? `/devices/${deviceId}/production-photo?date=${against}&kind=day` : null,
+  const comparingDay = against.startsWith('dia:') ? against.slice(4) : '';
+  const medianDays = against.startsWith('mediana:') ? Number(against.slice(8)) : 0;
+  const other = usePoll<{ photo: { detail: ShiftBoardResponse; minutes: Array<{ t: string; value: number }> } | null }>(
+    comparingDay ? `/devices/${deviceId}/production-photo?date=${comparingDay}&kind=day` : null,
     600000,
   );
+  const median = usePoll<{ days: number; curve: Array<number | null> }>(
+    medianDays ? `/devices/${deviceId}/production-median?days=${medianDays}` : null,
+    600000,
+  );
+  // Both charts zoom together when two days are read one above the other.
+  const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
   const response = usePoll<ShiftBoardResponse>(
     day
       ? null
@@ -578,12 +615,13 @@ export function ShiftBoard({
   const settings = calculatedSettings ?? config.data?.calculated ?? [];
   const shown = day ? (photo.data?.photo?.detail ?? null) : (response.data ?? null);
   // The other day's realized curve, by position in the shift, so a late start still lines up.
-  const overlay = against && other.data?.photo?.detail
+  const overlay = medianDays && median.data?.curve.length
     ? {
-        label: dayLabel(against),
-        actual: (other.data.photo.detail.board?.curve ?? []).map((point) => point.actual),
+        label: `mediana de ${median.data.days} dia(s)`,
+        actual: median.data.curve,
       }
     : null;
+  const below = comparingDay ? (other.data?.photo?.detail ?? null) : null;
   const picker = (
     <div className="shift-day-picker">
       <label>
@@ -597,13 +635,20 @@ export function ShiftBoard({
       </label>
       <label>
         Comparar com
-        <select value={against} onChange={(event) => setAgainst(event.target.value)}>
+        <select value={against} onChange={(event) => { setAgainst(event.target.value); setZoom(null); }}>
           <option value="">nenhum</option>
-          {days.data?.days
-            .filter((item) => item.date !== day)
-            .map((item) => (
-              <option key={item.date} value={item.date}>{dayLabel(item.date)}</option>
-            ))}
+          <optgroup label="Referência do período">
+            <option value="mediana:7">Mediana de 7 dias</option>
+            <option value="mediana:30">Mediana de 30 dias</option>
+            <option value="mediana:365">Mediana do ano</option>
+          </optgroup>
+          <optgroup label="Um dia">
+            {days.data?.days
+              .filter((item) => item.date !== day)
+              .map((item) => (
+                <option key={item.date} value={`dia:${item.date}`}>{dayLabel(item.date)}</option>
+              ))}
+          </optgroup>
         </select>
       </label>
     </div>
@@ -633,7 +678,29 @@ export function ShiftBoard({
       calculated={calculated}
       calculatedSettings={settings}
       onChanged={() => void response.refresh()}
+      view={below ? zoom : undefined}
+      onView={below ? setZoom : undefined}
+      syncId={below ? `board-${deviceId}` : undefined}
     />
+    {/* The compared day gets a chart of its own under the first, on the same scale of time.
+        The cursor and the zoom are shared, so the same minute is read on both at once. */}
+    {below?.board && (
+      <div className="shift-compare">
+        <div className="shift-section-title">
+          {dayLabel(comparingDay)}
+          <small> · dia comparado</small>
+        </div>
+        <div className="shift-chart">
+          <ShiftCurve
+            board={below.board}
+            minuteSeries={other.data?.photo?.minutes}
+            view={zoom}
+            onView={setZoom}
+            syncId={`board-${deviceId}`}
+          />
+        </div>
+      </div>
+    )}
     </div>
   );
 }
@@ -664,7 +731,13 @@ export function ShiftBoardView({
   calculatedSettings = [],
   minuteSeries,
   compare,
+  view,
+  onView,
+  syncId,
 }: {
+  view?: { start: number; end: number } | null;
+  onView?: (view: { start: number; end: number } | null) => void;
+  syncId?: string;
   /** Another day drawn behind this one, matched by position in the shift. */
   compare?: { label: string; actual: Array<number | null> } | null;
   /** A shift photo's minute curve: the zoom reads it instead of the readings. */
@@ -913,6 +986,39 @@ export function ShiftBoardView({
 
           {healthText && <div className={`shift-health ${tone}`}>{healthText}</div>}
 
+          {mode === 'day' && (data.perShift?.length ?? 0) > 1 && (
+            <div className="shift-split">
+              {data.perShift?.map((item) => (
+                <div key={item.shiftId}>
+                  <span>
+                    {item.name}
+                    <small>
+                      {item.start.slice(11, 16)}–{item.end.slice(11, 16)}
+                    </small>
+                  </span>
+                  <b>
+                    {/* "blocks" is counted in pieces, as everywhere else on the board. */}
+                    {item.totals
+                      ? formatNumber(
+                          board.metric === 'blocks'
+                            ? item.totals.pieces
+                            : item.totals[board.metric],
+                          info.decimals,
+                        )
+                      : '—'}
+                    <em>{info.unit}</em>
+                  </b>
+                  <small>
+                    {item.target?.value
+                      ? `meta ${formatNumber(item.target.value, info.decimals)}`
+                      : 'sem meta'}
+                    {item.utilization != null && ` · ${formatNumber(item.utilization * 100)}% de aproveitamento`}
+                  </small>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="shift-body">
             <div className="shift-curve">
               <div className="shift-section-title">
@@ -938,6 +1044,9 @@ export function ShiftBoardView({
                   deviceId={minuteSeries ? undefined : deviceId}
                   minuteSeries={minuteSeries}
                   compare={compare}
+                  view={view}
+                  onView={onView}
+                  syncId={syncId}
                 />
               </div>
             </div>
