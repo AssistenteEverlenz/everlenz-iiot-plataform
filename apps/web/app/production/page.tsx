@@ -76,6 +76,14 @@ interface Row {
   target: number | null;
   targetMetric: ProductionMetric | null;
   products: Array<{ product_code: string; pieces: number; pallets: number; tons: number }>;
+  /**
+   * On a day row, the shifts that add up to it.
+   *
+   * A plant that closes two reports a day reads the day first and the shifts second: 238
+   * pallets, and under it 109/129, so the day's number and the split between the turns are
+   * one glance apart instead of two rows apart.
+   */
+  parts: Row[];
 }
 interface ShiftForm {
   name: string;
@@ -149,6 +157,7 @@ function toRow(report: Report): Row {
     id: report.open ? null : report.id,
     source: report.open ? null : (report.source ?? 'auto'),
     date: report.production_date,
+    parts: [],
     shift: report.shift_name,
     start: report.kind === 'shift' ? report.planned_start : null,
     end: report.kind === 'shift' ? report.planned_end : null,
@@ -193,7 +202,9 @@ function groupByDay(rows: Row[]): Row[] {
       planned: 0,
       target: null,
       products: [],
+      parts: [],
     };
+    day.parts.push(row);
     day.pieces += row.pieces;
     day.milheiros += row.milheiros;
     day.pallets += row.pallets;
@@ -208,9 +219,14 @@ function groupByDay(rows: Row[]): Row[] {
       day.target = (day.target ?? 0) + row.target;
       day.targetMetric = row.targetMetric;
     }
-    const shifts = new Set(day.shift ? day.shift.split(', ') : []);
-    shifts.add(row.shift);
-    day.shift = [...shifts].join(', ');
+    // Named in the order the day ran them, not in the order the rows arrived.
+    day.shift = [
+      ...new Set(
+        [...day.parts]
+          .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''))
+          .map((part) => part.shift),
+      ),
+    ].join(', ');
     for (const product of row.products) {
       const existing = day.products.find((item) => item.product_code === product.product_code);
       if (existing) {
@@ -224,12 +240,23 @@ function groupByDay(rows: Row[]): Row[] {
   return [...days.values()].sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/** "109/129": the same number, shift by shift, in the order the day ran. */
+function splitOf(row: Row, of: (part: Row) => string) {
+  if (row.parts.length < 2) return null;
+  return [...row.parts]
+    .sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''))
+    .map(of)
+    .join('/');
+}
+
 const COLUMNS: Array<{
   id: string;
   label: string;
   initial: boolean;
   numeric?: boolean;
   value: (row: Row) => string;
+  /** Shown under the value on a day row, when the day has more than one shift. */
+  split?: (row: Row) => string | null;
   csv?: (row: Row) => string;
 }> = [
   { id: 'date', label: 'Data', initial: true, value: (row) => brDate(row.date) },
@@ -251,6 +278,7 @@ const COLUMNS: Array<{
     initial: true,
     numeric: true,
     value: (row) => formatNumber(row.milheiros, 2),
+    split: (row) => splitOf(row, (part) => formatNumber(part.milheiros, 2)),
   },
   {
     id: 'pieces',
@@ -258,6 +286,7 @@ const COLUMNS: Array<{
     initial: true,
     numeric: true,
     value: (row) => formatNumber(row.pieces),
+    split: (row) => splitOf(row, (part) => formatNumber(part.pieces)),
   },
   {
     id: 'pallets',
@@ -265,6 +294,7 @@ const COLUMNS: Array<{
     initial: false,
     numeric: true,
     value: (row) => formatNumber(row.pallets),
+    split: (row) => splitOf(row, (part) => formatNumber(part.pallets)),
   },
   {
     id: 'tons',
@@ -272,6 +302,7 @@ const COLUMNS: Array<{
     initial: false,
     numeric: true,
     value: (row) => formatNumber(row.tons, 2),
+    split: (row) => splitOf(row, (part) => formatNumber(part.tons, 2)),
   },
   {
     id: 'target',
@@ -907,11 +938,15 @@ function ProductionPage() {
                         )}
                       </td>
                     )}
-                    {visible.map((column) => (
-                      <td key={column.id} className={column.numeric ? 'numeric' : ''}>
-                        {column.value(row)}
-                      </td>
-                    ))}
+                    {visible.map((column) => {
+                      const split = view === 'day' ? column.split?.(row) : null;
+                      return (
+                        <td key={column.id} className={column.numeric ? 'numeric' : ''}>
+                          {column.value(row)}
+                          {split && <small className="day-split">{split}</small>}
+                        </td>
+                      );
+                    })}
                   </tr>
                 </>
               ))}
@@ -1226,12 +1261,25 @@ function DetailModal({
   view: 'shift' | 'day';
   onClose: () => void;
 }) {
+  /*
+   * A day opened from the history offers its shifts too.
+   *
+   * The plant closes two reports a day, and the question after "how much did the day make"
+   * is almost always "and how was it split". Answering it used to mean closing the report,
+   * switching the whole list to the shift view and finding the two rows again.
+   */
+  const [part, setPart] = useState<string>('');
+  const chosen = part ? (row.parts.find((item) => item.key === part) ?? row) : row;
+  const shown = part ? chosen : row;
+  const shownView: 'shift' | 'day' = part ? 'shift' : view;
+  const shifts = [...row.parts].sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
+
   const params = new URLSearchParams({
-    date: row.date,
-    kind: view === 'day' ? 'day' : row.offShift ? 'off_shift' : 'shift',
+    date: shown.date,
+    kind: shownView === 'day' ? 'day' : shown.offShift ? 'off_shift' : 'shift',
   });
-  if (view !== 'day' && row.start) params.set('start', row.start);
-  if (view !== 'day' && row.end) params.set('end', row.end);
+  if (shownView !== 'day' && shown.start) params.set('start', shown.start);
+  if (shownView !== 'day' && shown.end) params.set('end', shown.end);
   // A closed period is read from its photo (taken at the close, migration 028): its readings
   // may be gone. The running shift, and a period without a photo yet, are built live.
   // The card's own calculations ("cortes por minuto"): the report charts the same lines the
@@ -1247,20 +1295,21 @@ function DetailModal({
       calculated?: CalculatedSetting[];
       minutes: Array<{ t: string; value: number }>;
     } | null;
-  }>(row.open ? null : `/devices/${deviceId}/production-photo?${params.toString()}`, 600000);
-  const live = row.open || (photo.data != null && photo.data.photo == null) || Boolean(photo.error);
+  }>(shown.open ? null : `/devices/${deviceId}/production-photo?${params.toString()}`, 600000);
+  const live =
+    shown.open || (photo.data != null && photo.data.photo == null) || Boolean(photo.error);
   const liveDetail = usePoll<ShiftBoardResponse>(
     live ? `/devices/${deviceId}/production-detail?${params.toString()}` : null,
-    row.open ? 30000 : 600000,
+    shown.open ? 30000 : 600000,
   );
   // Hour by hour and pallet by pallet of this very shift, the same charts the board opens.
-  const window = row.start && row.end ? `&from=${encodeURIComponent(row.start)}&to=${encodeURIComponent(row.end)}` : '';
+  const window = shown.start && shown.end ? `&from=${encodeURIComponent(shown.start)}&to=${encodeURIComponent(shown.end)}` : '';
   const liveKeys = formulaKeys(config.data?.calculated ?? []);
   const liveCharts = usePoll<DetailData>(
     live
-      ? `/devices/${deviceId}/shift-detail?mode=${view === 'day' ? 'day' : 'shift'}${window}${liveKeys.length ? `&keys=${encodeURIComponent(liveKeys.join(','))}` : ''}`
+      ? `/devices/${deviceId}/shift-detail?mode=${shownView === 'day' ? 'day' : 'shift'}${window}${liveKeys.length ? `&keys=${encodeURIComponent(liveKeys.join(','))}` : ''}`
       : null,
-    row.open ? 60000 : 600000,
+    shown.open ? 60000 : 600000,
   );
   const stored = photo.data?.photo ?? null;
   const detail = stored
@@ -1269,7 +1318,7 @@ function DetailModal({
   const charts = { data: stored ? stored.charts : liveCharts.data };
   const reached = attainment(row);
   const machine = utilization(row);
-  const products = [...row.products].sort((a, b) => b.pieces - a.pieces || b.pallets - a.pallets);
+  const products = [...shown.products].sort((a, b) => b.pieces - a.pieces || b.pallets - a.pallets);
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
@@ -1278,17 +1327,37 @@ function DetailModal({
       >
         <div className="modal-title">
           <div>
-            <div className="eyebrow">{view === 'day' ? 'DIA DE PRODUÇÃO' : 'TURNO DE PRODUÇÃO'}</div>
+            <div className="eyebrow">{shownView === 'day' ? 'DIA DE PRODUÇÃO' : 'TURNO DE PRODUÇÃO'}</div>
             <h2>
-              {brDate(row.date)}
-              {view === 'day' ? '' : ` · ${row.shift}`}
-              {row.start && view !== 'day' ? ` · ${clockOf(row.start)}–${clockOf(row.end)}` : ''}
+              {brDate(shown.date)}
+              {shownView === 'day' ? '' : ` · ${shown.shift}`}
+              {shown.start && shownView !== 'day' ? ` · ${clockOf(shown.start)}–${clockOf(shown.end)}` : ''}
             </h2>
           </div>
           <button type="button" className="icon-button" onClick={onClose}>
             ×
           </button>
         </div>
+        {/* The day and each of its shifts, in the same report: the question after "how much
+            did the day make" is almost always "and how was it split". */}
+        {view === 'day' && shifts.length > 1 && (
+          <div className="widget-period detail-part-pick" role="group" aria-label="Período">
+            <button type="button" className={part ? '' : 'active'} onClick={() => setPart('')}>
+              Dia inteiro
+            </button>
+            {shifts.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={part === item.key ? 'active' : ''}
+                onClick={() => setPart(item.key)}
+              >
+                {item.shift}
+                {item.start ? ` · ${clockOf(item.start)}` : ''}
+              </button>
+            ))}
+          </div>
+        )}
         {!detail.data ? (
           <div className="production-detail-loading">
             {detail.error ? <p>{detail.error}</p> : <span className="detail-spinner" aria-label="Carregando" />}
@@ -1298,25 +1367,25 @@ function DetailModal({
         <div className="production-detail-summary">
           <div>
             <span>Milheiros</span>
-            <b>{formatNumber(row.milheiros, 2)}</b>
+            <b>{formatNumber(shown.milheiros, 2)}</b>
           </div>
           <div>
             <span>Peças</span>
-            <b>{formatNumber(row.pieces)}</b>
+            <b>{formatNumber(shown.pieces)}</b>
           </div>
           <div>
             <span>Paletes</span>
-            <b>{formatNumber(row.pallets)}</b>
+            <b>{formatNumber(shown.pallets)}</b>
           </div>
           <div>
             <span>Toneladas</span>
-            <b>{formatNumber(row.tons, 1)}</b>
+            <b>{formatNumber(shown.tons, 1)}</b>
           </div>
           <div>
             <span>Meta</span>
             <b>
-              {row.target && row.targetMetric
-                ? `${formatNumber(row.target, metricInfo[row.targetMetric].decimals)} ${metricInfo[row.targetMetric].unit}`
+              {shown.target && shown.targetMetric
+                ? `${formatNumber(shown.target, metricInfo[shown.targetMetric].decimals)} ${metricInfo[shown.targetMetric].unit}`
                 : '—'}
             </b>
           </div>
@@ -1330,7 +1399,7 @@ function DetailModal({
           </div>
           <div>
             <span>Tempo planejado</span>
-            <b>{row.planned ? duration(row.planned) : '—'}</b>
+            <b>{shown.planned ? duration(shown.planned) : '—'}</b>
           </div>
         </div>
         <div className="production-detail-products">

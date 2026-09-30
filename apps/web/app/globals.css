@@ -7682,6 +7682,21 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   gap: 6px;
 }
 
+/* The day's number, and under it the same number shift by shift: "238" then "109/129",
+   so the day and its split are one glance apart instead of two rows apart. */
+.production-table .day-split {
+  display: block;
+  margin-top: 1px;
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+/* Choosing the day or one of its shifts, inside the report that opened. */
+.detail-part-pick {
+  margin: 16px 0 4px;
+}
+
 /* ---------- The panel's own tabs ----------
    A plant's panel grows into one column nobody scrolls to the end of, so whoever owns it
    divides it: the cards the shift leader watches on one tab, the ones maintenance opens on
