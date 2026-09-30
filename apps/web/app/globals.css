@@ -9060,7 +9060,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   /* The calendar takes whatever the buttons leave on the line, never a row to itself. */
   .shift-day-picker select,
   .shift-day-picker input[type='date'] { flex: 1 1 130px; width: auto; }
-  .shift-head-tools .widget-period { flex: 0 0 auto; }
+  .shift-head-tools .shift-mode { flex: 0 0 auto; }
   .shift-chart,
   .shift-compare-chart,
   .shift-board-day.comparing .shift-chart { height: 230px; min-height: 230px; }

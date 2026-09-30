@@ -1073,7 +1073,7 @@ export function ShiftBoardView({
         )}
         {/* A plant with one shift has nothing to choose, so the buttons are not drawn at all. */}
         {onShift && mode === 'shift' && (data.available?.length ?? 0) > 1 && (
-          <div className="widget-period shift-pick" role="group" aria-label="Turno">
+          <div className="shift-mode shift-pick" role="group" aria-label="Turno">
             {data.available?.map((item) => (
               <button
                 key={item.shiftId}
@@ -1089,7 +1089,7 @@ export function ShiftBoardView({
           </div>
         )}
         {onMode && (
-          <div className="widget-period" role="group" aria-label="Período">
+          <div className="shift-mode" role="group" aria-label="Período">
             <button className={mode === 'shift' ? 'active' : ''} onClick={() => onMode('shift')}>
               Turno
             </button>
