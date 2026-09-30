@@ -59,6 +59,23 @@ const periodOptions: Array<[ProductionPeriod, string]> = [
 // Types that read the production statistics: the full production card and the quick
 // analytic charts, which are lighter views of the same metric and filters.
 // Quick charts show product shares; a threshold alarm has no meaning on them.
+/** Cards that print a number of their own, and so are counted and given a unit. */
+const numericTypes = new Set<DashboardWidget['widget_type']>([
+  'value',
+  'gauge',
+  'line',
+  'production',
+  'donut',
+  'bar_vertical',
+  'bar_horizontal',
+]);
+/** Cards whose colour is drawn: a state, a Pareto or the wear panel choose their own. */
+const colouredTypes = new Set<DashboardWidget['widget_type']>([
+  'value',
+  'gauge',
+  'line',
+  'production',
+]);
 const quickTypes = new Set<DashboardWidget['widget_type']>([
   'donut',
   'bar_vertical',
@@ -1847,7 +1864,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                 </div>
               </div>
               {(editingWidget.widget_type === 'status' ||
-                editingWidget.widget_type === 'value') && (
+                (editingWidget.widget_type === 'value' && editingWidget.data_type === 'boolean')) && (
                 <>
                   <label className="field">
                     <span className="field-label">
@@ -1875,7 +1892,8 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </label>
                 </>
               )}
-              {!quickTypes.has(editingWidget.widget_type) && (
+              {numericTypes.has(editingWidget.widget_type) &&
+                !quickTypes.has(editingWidget.widget_type) && (
                 <label className="field">
                   <span className="field-label">
                     Unidade
@@ -1889,19 +1907,23 @@ export function DashboardCanvas({ id }: { id: string }) {
                   />
                 </label>
               )}
-              <label className="field">
-                <span className="field-label">
-                  Casas decimais
-                  <Hint text="Só muda como o número aparece neste card: 73 ou 73,0." />
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  max="6"
-                  value={decimals}
-                  onChange={(event) => setDecimals(Number(event.target.value))}
-                />
-              </label>
+              {numericTypes.has(editingWidget.widget_type) && (
+                <label className="field">
+                  <span className="field-label">
+                    Casas decimais
+                    <Hint text="Só muda como o número aparece neste card: 73 ou 73,0." />
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="6"
+                    value={decimals}
+                    onChange={(event) => setDecimals(Number(event.target.value))}
+                  />
+                </label>
+              )}
+              {editingWidget.tag_id && editingWidget.data_type === 'number' && (
+              <>
               <label className="field">
                 <span className="field-label">
                   Vírgula na IHM
@@ -1936,6 +1958,9 @@ export function DashboardCanvas({ id }: { id: string }) {
                   </small>
                 </span>
               </label>
+              </>
+              )}
+              {colouredTypes.has(editingWidget.widget_type) && (
               <label className="field">
                 Cor
                 <input
@@ -1944,6 +1969,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                   onChange={(event) => setColor(event.target.value)}
                 />
               </label>
+              )}
               {editingWidget.widget_type === 'gauge' && (
                 <>
                   <label className="field">

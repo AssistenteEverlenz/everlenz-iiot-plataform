@@ -440,7 +440,11 @@ export function ShiftCurve({
               formatNumber(value, info.decimals && value < 10 ? 1 : 0)
             }
           />
-          <Tooltip content={<CurveTooltip info={info} />} allowEscapeViewBox={{ x: false, y: true }} offset={16} />
+          <Tooltip
+            content={<CurveTooltip info={info} compareLabel={compare?.label} />}
+            allowEscapeViewBox={{ x: false, y: true }}
+            offset={16}
+          />
           <Area
             type="monotone"
             dataKey="actual"
@@ -493,11 +497,14 @@ export function ShiftCurve({
 /** The realized value wears the colour of the machine state at that moment, as the area does. */
 function CurveTooltip({
   info,
+  compareLabel,
   active,
   payload,
   label,
 }: {
   info: { unit: string; decimals: number };
+  /** What the line behind this one is called, when there is one. */
+  compareLabel?: string;
   active?: boolean;
   payload?: { value?: number | string | null; dataKey?: string | number }[];
   label?: string | number;
@@ -523,6 +530,13 @@ function CurveTooltip({
         <span>
           <i style={{ background: 'var(--accent, #12b8a6)' }} /> Projeção{' '}
           <b>{value(show('projected'))}</b>
+        </span>
+      )}
+      {/* The reference drawn behind: without its number the line could only be eyeballed. */}
+      {show('compare')?.value != null && (
+        <span style={{ color: '#8f63a8' }}>
+          <i style={{ background: '#b07cc6' }} /> {compareLabel ?? 'Comparado'}{' '}
+          <b>{value(show('compare'))}</b>
         </span>
       )}
       <em>{state.label}</em>
@@ -622,8 +636,8 @@ export function ShiftBoard({
       }
     : null;
   const below = comparingDay ? (other.data?.photo?.detail ?? null) : null;
-  const picker = (
-    <div className="shift-day-picker">
+  const pickerFields = (
+    <>
       <label>
         Dia
         <select value={day} onChange={(event) => setDay(event.target.value)}>
@@ -651,12 +665,12 @@ export function ShiftBoard({
           </optgroup>
         </select>
       </label>
-    </div>
+    </>
   );
   if (!shown)
     return (
       <div className="shift-board-day">
-        {picker}
+        <div className="shift-day-picker">{pickerFields}</div>
         <div className="shift-board-empty">
           {day ? (photo.error ?? 'Carregando o dia…') : (response.error ?? 'Carregando produção…')}
         </div>
@@ -664,8 +678,8 @@ export function ShiftBoard({
     );
   return (
     <div className="shift-board-day">
-      {picker}
     <ShiftBoardView
+      tools={<div className="shift-day-picker">{pickerFields}</div>}
       data={shown}
       deviceId={deviceId}
       mode={day ? 'day' : mode}
@@ -690,15 +704,19 @@ export function ShiftBoard({
           {dayLabel(comparingDay)}
           <small> · dia comparado</small>
         </div>
-        <div className="shift-chart">
-          <ShiftCurve
-            board={below.board}
-            minuteSeries={other.data?.photo?.minutes}
-            view={zoom}
-            onView={setZoom}
-            syncId={`board-${deviceId}`}
-          />
-        </div>
+        {/* The whole board of that day, not just its curve: drawing the curve alone left the
+            machine's utilisation missing and a hole where it belonged. */}
+        <ShiftBoardView
+          data={below}
+          deviceId={deviceId}
+          mode="day"
+          historical
+          hideHead
+          minuteSeries={other.data?.photo?.minutes}
+          view={zoom}
+          onView={setZoom}
+          syncId={`board-${deviceId}`}
+        />
       </div>
     )}
     </div>
@@ -734,7 +752,10 @@ export function ShiftBoardView({
   view,
   onView,
   syncId,
+  tools,
 }: {
+  /** Controls belonging to the card around the board, shown in its header. */
+  tools?: React.ReactNode;
   view?: { start: number; end: number } | null;
   onView?: (view: { start: number; end: number } | null) => void;
   syncId?: string;
@@ -840,6 +861,8 @@ export function ShiftBoardView({
             {data.defaultShifts ? ' · turno padrão (seg–sex 07:00–17:00)' : ''}
           </span>
         </div>
+        <div className="shift-head-tools">
+        {tools}
         {!historical && (
           <span
             className="shift-state"
@@ -876,6 +899,7 @@ export function ShiftBoardView({
             </button>
           </div>
         )}
+        </div>
       </div>
 
       {!board ? (

@@ -5075,7 +5075,12 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   align-items: center;
   gap: 10px 14px;
 }
+/* The title keeps the left and everything operated is grouped on the right, so the header has
+   no empty band across the middle and no control claims a line of its own. */
 .shift-board-head > div:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: auto;
   display: grid;
   gap: 2px;
   flex: 1;
@@ -5282,7 +5287,8 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
    wrapper stopped at its content and the card had empty space under it. */
 .shift-board-day {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  /* The board, and the compared day under it when there is one. */
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -8907,4 +8913,14 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   padding-top: 10px;
   border-top: 1px dashed #d8e4e6;
 }
-.shift-compare .shift-chart { height: 180px; }
+.shift-compare .shift-board { margin-top: 0; }
+.shift-compare .shift-chart { min-height: 200px; }
+
+.shift-head-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  min-width: 0;
+}
