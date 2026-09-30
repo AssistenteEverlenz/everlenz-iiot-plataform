@@ -1513,7 +1513,9 @@ export async function createApp(
       (widget) =>
         // Quick charts are views of the same production metric and share its answer.
         ['production', 'donut', 'bar_vertical', 'bar_horizontal'].includes(widget.widget_type) &&
-        widget.tag_id &&
+        // A card fed by the production board needs no variable of its own.
+        (widget.tag_id ||
+          (widget.config as { productionMetricKind?: unknown }).productionMetricKind === 'board') &&
         (!query.widgetId || widget.id === query.widgetId),
     );
     return Promise.all(
@@ -1521,11 +1523,26 @@ export async function createApp(
         const widgetConfig = widget.config as {
           productionMinimumValue?: unknown;
           productionMetricKind?: unknown;
+          productionBoardMetric?: unknown;
         };
         const requestedMinimum = Number(widgetConfig.productionMinimumValue ?? 0.1);
         const minimumValue = Number.isFinite(requestedMinimum) ? requestedMinimum : 0.1;
+        // Three sources. The production board is the consolidated one: it counts what the
+        // plant actually made, and a counter the operators forgot to reset, or a reading that
+        // slipped a decimal place for one sample, cannot inflate it.
         const metricKind =
-          widgetConfig.productionMetricKind === 'counter_delta' ? 'counter_delta' : 'rate_average';
+          widgetConfig.productionMetricKind === 'board'
+            ? 'board'
+            : widgetConfig.productionMetricKind === 'counter_delta'
+              ? 'counter_delta'
+              : 'rate_average';
+        const boardMetric = ['pieces', 'pallets', 'tons', 'milheiros'].includes(
+          String(widgetConfig.productionBoardMetric),
+        )
+          ? String(widgetConfig.productionBoardMetric)
+          : 'pallets';
+        const boardColumn =
+          boardMetric === 'milheiros' ? 'b.pieces/1000.0' : `b.${boardMetric}`;
         const rows = (
           await db.query<{
             date: string;
@@ -1536,7 +1553,32 @@ export async function createApp(
             maximum: number | null;
             is_current: boolean;
           }>(
-            `WITH selected AS (
+            metricKind === 'board'
+              ? `WITH selected AS (
+           SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date today
+         ), bounds AS (
+           SELECT coalesce($4::date,today-($3::int-1)) start_date,
+             coalesce($5::date,today) end_date FROM selected
+         ), dated AS (
+           SELECT b.*,(b.start_date-(b.end_date-b.start_date+1)) previous_start FROM bounds b
+         )
+         SELECT to_char((b.bucket AT TIME ZONE 'America/Sao_Paulo')::date,'YYYY-MM-DD') date,
+           b.product_code,
+           sum(${boardColumn}) value,
+           count(*)::int samples,
+           min(${boardColumn}) minimum,
+           max(${boardColumn}) maximum,
+           (b.bucket AT TIME ZONE 'America/Sao_Paulo')::date >= d.start_date is_current
+         FROM production_buckets b CROSS JOIN dated d
+         WHERE b.tenant_id=$1 AND b.device_id=$2
+           AND b.product_code NOT IN (
+             SELECT h.product_code FROM hidden_products h WHERE h.device_id=b.device_id
+           )
+           AND b.bucket >= (d.previous_start::timestamp AT TIME ZONE 'America/Sao_Paulo')
+           AND b.bucket < ((d.end_date+1)::timestamp AT TIME ZONE 'America/Sao_Paulo')
+         GROUP BY (b.bucket AT TIME ZONE 'America/Sao_Paulo')::date,b.product_code,d.start_date
+         ORDER BY date,b.product_code`
+              : `WITH selected AS (
            SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date today
          ), bounds AS (
            SELECT coalesce($7::date,today-($5::int-1)) start_date,
@@ -1569,16 +1611,18 @@ export async function createApp(
            AND r.bucket < ((d.end_date+1)::timestamp AT TIME ZONE 'America/Sao_Paulo')
          GROUP BY (r.bucket AT TIME ZONE 'America/Sao_Paulo')::date,r.product_code,d.start_date
          ORDER BY date,r.product_code`,
-            [
-              current.tenantId,
-              widget.device_id,
-              widget.tag_id,
-              metricKind,
-              periodDays,
-              minimumValue,
-              customFrom,
-              customTo,
-            ],
+            metricKind === 'board'
+              ? [current.tenantId, widget.device_id, periodDays, customFrom, customTo]
+              : [
+                  current.tenantId,
+                  widget.device_id,
+                  widget.tag_id,
+                  metricKind,
+                  periodDays,
+                  minimumValue,
+                  customFrom,
+                  customTo,
+                ],
           )
         ).rows;
         const hidden = (
@@ -1592,7 +1636,7 @@ export async function createApp(
         const summarize = (selected: typeof rows) => {
           const usable = selected.filter((row) => row.value != null);
           if (!usable.length) return null;
-          return metricKind === 'counter_delta'
+          return metricKind === 'counter_delta' || metricKind === 'board'
             ? usable.reduce((total, row) => total + Number(row.value), 0)
             : usable.reduce((total, row) => total + Number(row.value) * row.samples, 0) /
                 Math.max(

@@ -139,7 +139,10 @@ export interface DashboardWidget {
     formulaDecimals?: number;
     productionPeriodMinutes?: number;
     productionMinimumValue?: number;
-    productionMetricKind?: 'rate_average' | 'counter_delta';
+    /** Where the card's number comes from: the consolidated board, or a variable of the HMI. */
+    productionMetricKind?: 'rate_average' | 'counter_delta' | 'board';
+    /** Which figure of the board, when the board is the source. */
+    productionBoardMetric?: string;
     productionTrendDays?: 7 | 30;
     /** Period a production chart opens with; each chart can then change it on its own. */
     productionDefaultPeriod?: 'today' | '7d' | 'week' | 'month' | 'year' | '30d' | 'custom';

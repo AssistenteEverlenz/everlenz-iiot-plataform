@@ -938,6 +938,8 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [minimum, setMinimum] = useState(0);
   const [maximum, setMaximum] = useState(100);
   const [decimals, setDecimals] = useState(1);
+  // Which figure of the production board the card shows, when the board is its source.
+  const [productionBoardMetric, setProductionBoardMetric] = useState('pallets');
   const [onLabel, setOnLabel] = useState('');
   const [offLabel, setOffLabel] = useState('');
   // Two different things: where the HMI's number has its comma (the variable's scale) and how
@@ -961,7 +963,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [gaugeNeedle, setGaugeNeedle] = useState(true);
   const [productionMinimumValue, setProductionMinimumValue] = useState(0.1);
   const [productionMetricKind, setProductionMetricKind] = useState<
-    'rate_average' | 'counter_delta'
+    'rate_average' | 'counter_delta' | 'board'
   >('rate_average');
   const [productionDefaultPeriod, setProductionDefaultPeriod] = useState<ProductionPeriod>('7d');
   const [chartDimension, setChartDimension] = useState<'product' | 'day'>('product');
@@ -1139,6 +1141,7 @@ export function DashboardCanvas({ id }: { id: string }) {
     setMinimum(widget.config.min ?? 0);
     setMaximum(widget.config.max ?? 100);
     setDecimals(widget.config.decimals ?? 1);
+    setProductionBoardMetric((widget.config.productionBoardMetric as string) ?? 'pallets');
     setOnLabel(((widget.config.onLabel as string) ?? '') || '');
     setOffLabel(((widget.config.offLabel as string) ?? '') || '');
     setCommaPlaces(placesOfScale(widget.scale_multiplier));
@@ -1231,6 +1234,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           min: minimum,
           max: maximum,
           decimals,
+          productionBoardMetric,
           onLabel: onLabel.trim(),
           offLabel: offLabel.trim(),
           // Picking a preset width replaces a dragged width; otherwise keep the squares.
@@ -2029,14 +2033,32 @@ export function DashboardCanvas({ id }: { id: string }) {
                       value={productionMetricKind}
                       onChange={(event) =>
                         setProductionMetricKind(
-                          event.target.value as 'rate_average' | 'counter_delta',
+                          event.target.value as 'rate_average' | 'counter_delta' | 'board',
                         )
                       }
                     >
-                      <option value="rate_average">Taxa instantânea (ex.: ton/h)</option>
-                      <option value="counter_delta">Contador acumulativo (ex.: paletes)</option>
+                      <option value="board">Quadro de produção (consolidado)</option>
+                      <option value="rate_average">Taxa instantânea da IHM (ex.: ton/h)</option>
+                      <option value="counter_delta">Contador acumulativo da IHM (ex.: paletes)</option>
                     </select>
                   </label>
+                  {productionMetricKind === 'board' && (
+                    <label className="field">
+                      <span className="field-label">
+                        Número do quadro
+                        <Hint text="O quadro conta o que a planta fez de verdade. Um contador que ninguém zerou, ou uma leitura que escorregou uma casa decimal por um instante, não entram nele." />
+                      </span>
+                      <select
+                        value={productionBoardMetric}
+                        onChange={(event) => setProductionBoardMetric(event.target.value)}
+                      >
+                        <option value="pallets">Paletes</option>
+                        <option value="milheiros">Milheiros</option>
+                        <option value="pieces">Peças</option>
+                        <option value="tons">Toneladas</option>
+                      </select>
+                    </label>
+                  )}
                   {(editingWidget.widget_type === 'bar_vertical' ||
                     editingWidget.widget_type === 'bar_horizontal') && (
                     <label className="field">
