@@ -28,6 +28,8 @@ export type ProductionMetric = 'milheiros' | 'tons' | 'blocks' | 'pallets';
 type MachineState = 'producing' | 'idle' | 'manual' | 'offline' | 'unknown';
 
 interface Occurrence {
+  /** Which of the site's shifts this is: how a plant with two of them picks one. */
+  shiftId: string;
   name: string;
   productionDate: string;
   start: string;
@@ -102,6 +104,8 @@ export interface ShiftBoardResponse {
   status: 'running' | 'finished' | 'upcoming' | 'between' | 'no_shift';
   productionDate: string;
   shifts: Occurrence[];
+  /** Every shift of the day being looked at: what the plant may choose between. */
+  available?: Occurrence[];
   board: BoardData | null;
 }
 
@@ -539,6 +543,8 @@ export function ShiftBoard({
   calculated?: CalculatedField[];
 }) {
   const [mode, setMode] = useState<'shift' | 'day'>('shift');
+  // Which shift of the day is open. Empty means the running one, as before.
+  const [shiftId, setShiftId] = useState('');
   // A day of the history instead of today, and another day drawn behind it. Both read the
   // photograph taken when the day closed, so no reading is needed and nothing is recomputed.
   const [day, setDay] = useState('');
@@ -556,7 +562,11 @@ export function ShiftBoard({
     600000,
   );
   const response = usePoll<ShiftBoardResponse>(
-    day ? null : `/devices/${deviceId}/shift-board?mode=${mode}`,
+    day
+      ? null
+      : `/devices/${deviceId}/shift-board?mode=${mode}${
+          mode === 'shift' && shiftId ? `&shift=${encodeURIComponent(shiftId)}` : ''
+        }`,
     30000,
   );
   // Opened without the card's formulas (the operations report does that): take the ones the
@@ -615,6 +625,8 @@ export function ShiftBoard({
       deviceId={deviceId}
       mode={day ? 'day' : mode}
       onMode={day ? undefined : setMode}
+      shiftId={shiftId}
+      onShift={day ? undefined : setShiftId}
       historical={Boolean(day)}
       minuteSeries={day ? photo.data?.photo?.minutes : undefined}
       compare={overlay}
@@ -643,6 +655,8 @@ export function ShiftBoardView({
   deviceId,
   mode = data.mode,
   onMode,
+  shiftId = '',
+  onShift,
   onChanged,
   historical = false,
   hideHead = false,
@@ -663,6 +677,9 @@ export function ShiftBoardView({
   deviceId: string;
   mode?: 'shift' | 'day';
   onMode?: (mode: 'shift' | 'day') => void;
+  /** The shift open now, and how to change it. Only offered when the day has more than one. */
+  shiftId?: string;
+  onShift?: (shiftId: string) => void;
   /** The target was edited: reload the board. */
   onChanged?: () => void;
   historical?: boolean;
@@ -758,6 +775,23 @@ export function ShiftBoardView({
             <i />
             {stateInfo[data.state]?.label ?? 'Sem dados'}
           </span>
+        )}
+        {/* A plant with one shift has nothing to choose, so the buttons are not drawn at all. */}
+        {onShift && mode === 'shift' && (data.available?.length ?? 0) > 1 && (
+          <div className="shift-mode shift-pick" role="group" aria-label="Turno">
+            {data.available?.map((item) => (
+              <button
+                key={item.shiftId}
+                className={
+                  (shiftId || data.shifts[0]?.shiftId) === item.shiftId ? 'active' : ''
+                }
+                onClick={() => onShift(item.shiftId)}
+                title={`${item.start.slice(11, 16)}–${item.end.slice(11, 16)}`}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
         )}
         {onMode && (
           <div className="shift-mode" role="group" aria-label="Período">

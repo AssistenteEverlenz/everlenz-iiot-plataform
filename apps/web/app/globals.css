@@ -5278,11 +5278,17 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   background: repeating-linear-gradient(90deg, #b07cc6 0 3px, transparent 3px 6px);
 }
 /* Picking which day the board shows, and which day is drawn behind it. */
+/* The pickers sit above the board, and the board takes whatever height is left: without this the
+   wrapper stopped at its content and the card had empty space under it. */
 .shift-board-day {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
+  min-height: 0;
 }
+.dashboard-widget.sized .shift-board-day { flex: 1; }
+.dashboard-widget.sized .shift-board-day .shift-board { margin-top: 0; }
 .shift-day-picker {
   display: flex;
   flex-wrap: wrap;
@@ -8836,3 +8842,6 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .stops-empty { color: #7b9097; font-size: 12px; }
 /* The wear content sits either in its window or on a panel card. */
 .wear-panel { display: grid; gap: 12px; min-width: 0; }
+
+/* Choosing between the shifts of a day, next to the Turno/Dia switch it belongs with. */
+.shift-pick button { font-variant-numeric: tabular-nums; }

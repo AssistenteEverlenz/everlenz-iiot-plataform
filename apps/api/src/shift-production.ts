@@ -2422,7 +2422,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   app.get('/api/devices/:id/shift-board', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
-    const { mode } = z.object({ mode: z.enum(['shift', 'day']).default('shift') }).parse(req.query);
+    // A plant with two shifts could only ever reach the running one: the board chose it alone.
+    // "shift" names which of the day's shifts to open.
+    const { mode, shift } = z
+      .object({ mode: z.enum(['shift', 'day']).default('shift'), shift: z.string().optional() })
+      .parse(req.query);
     const tenantId = access.principal(req).tenantId;
     const config = await loadConfig(db, tenantId, id);
     if (!config) return reply.code(404).send({ error: 'Device not found' });
@@ -2451,6 +2455,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       product: state.product,
       next: next ? occurrenceJson(next) : null,
     };
+    // Every shift of the day being looked at, so the board can offer the choice. One shift means
+    // there is nothing to choose and the buttons are not drawn.
+    const dayOf = running ?? last ?? next;
+    const availableDate = dayOf?.productionDate ?? today;
+    const available = occurrences.filter((item) => item.productionDate === availableDate);
     if (mode === 'day') {
       const date = running?.productionDate ?? today;
       const dayOccurrences = occurrences.filter((item) => item.productionDate === date);
@@ -2471,18 +2480,26 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         status: running ? 'running' : dayOccurrences.length ? 'between' : 'no_shift',
         productionDate: date,
         shifts: dayOccurrences.map(occurrenceJson),
+        available: available.map(occurrenceJson),
         board,
       };
     }
-    const selected = running ?? last ?? next;
+    const chosen = shift ? available.find((item) => item.shiftId === shift) : null;
+    const selected = chosen ?? running ?? last ?? next;
     if (!selected)
       return { ...base, status: 'no_shift', productionDate: today, shifts: [], board: null };
     const board = await buildBoard(db, tenantId, id, config, [selected], selected, now);
     return {
       ...base,
-      status: running ? 'running' : selected === last ? 'finished' : 'upcoming',
+      status:
+        selected === running
+          ? 'running'
+          : selected.end <= now
+            ? 'finished'
+            : 'upcoming',
       productionDate: selected.productionDate,
       shifts: [occurrenceJson(selected)],
+      available: available.map(occurrenceJson),
       board,
     };
   });
