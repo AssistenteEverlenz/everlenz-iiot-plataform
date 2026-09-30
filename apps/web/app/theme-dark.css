@@ -2292,13 +2292,24 @@
   :root[data-theme='dark'] .hmi-check-hours {
     border: 1px solid #1a2629;
   }
+  :root[data-theme='dark'] .dashboard-sheet {
+    border: 1px solid #2c3e44;
+    background: #151e21;
+  }
   :root[data-theme='dark'] .dashboard-tabs {
-    border-bottom: 1px solid #243339;
     background: #192326;
   }
+  :root[data-theme='dark'] .dashboard-tab {
+    border: 1px solid transparent;
+  }
+  :root[data-theme='dark'] .dashboard-tab:not(.active) + .dashboard-tab:not(.active)::before {
+    background: #233237;
+  }
   :root[data-theme='dark'] .dashboard-tab.active {
-    background: #12191c;
-    box-shadow: inset 1px 0 0 #202d32, inset -1px 0 0 #202d32, inset 0 1px 0 #202d32;
+    border-color: #2c3e44;
+    border-bottom-color: transparent;
+    background: #151e21;
+    box-shadow: 0 -2px 8px #0b202810;
   }
   :root[data-theme='dark'] .dashboard-tab.active::after {
     background: #0b2028;
@@ -2313,7 +2324,7 @@
   }
   :root[data-theme='dark'] .dashboard-tab:not(.active) > button:hover {
     color: #e0e6e8;
-    background: #1d292e;
+    background: #1e2b30;
   }
   :root[data-theme='dark'] .dashboard-tab > button:hover::after {
     background: #30454c;
@@ -2323,6 +2334,9 @@
   }
   :root[data-theme='dark'] .dashboard-tab.active > button::after {
     background: transparent;
+  }
+  :root[data-theme='dark'] .dashboard-tab.active > button {
+    color: #e0e6e8;
   }
   :root[data-theme='dark'] .dashboard-tab > button em {
     background: #1f2d31;

@@ -1672,6 +1672,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           setDragOverId(null);
         }}
       />
+      {/* With tabs, the cards live on the surface the open tab opens into. */}
+      <div className={tabs.length ? 'dashboard-sheet' : undefined}>
       <section className="widget-grid">
         {printList.map((item) =>
           item.kind === 'head' ? (
@@ -1714,6 +1716,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           </button>
         )}
       </section>
+      </div>
       <footer className="dashboard-footer">
         <span>EVERLENZ INDUSTRIAL INTELLIGENCE</span>
         <span>Dados recebidos via MQTT · atualização automática</span>
