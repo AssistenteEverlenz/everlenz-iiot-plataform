@@ -8980,3 +8980,33 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
    body to nothing and let the curve paint over the gauge -- and the card grew to make the share
    big enough for both curves. */
 .shift-board-day.comparing { grid-template-rows: minmax(0, 1fr) auto; }
+
+/* On a phone the board's controls had been pushed to the right edge and wrapped into a staircase.
+   They take the width and read from the left, and the curve gets height enough to be followed. */
+@media (max-width: 760px) {
+  .shift-board-head > div:first-child { min-width: 100%; }
+  .shift-head-tools {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .shift-day-picker { width: 100%; }
+  /* Label above the field, as forms read on a phone: inline, "comparar com" broke in two and
+     made its row taller than the one beside it. */
+  .shift-day-picker label {
+    flex: 1 1 140px;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+  }
+  .shift-day-picker select { width: 100%; }
+  .shift-head-tools .shift-mode { flex: 0 0 auto; }
+  .shift-chart,
+  .shift-compare-chart,
+  .shift-board-day.comparing .shift-chart { height: 230px; min-height: 230px; }
+  /* Two curves plus the cards need more rows than a desktop card does. */
+  .dashboard-widget.sized:has(.shift-board-day.comparing) {
+    grid-row: span calc(var(--rows) + 8);
+  }
+}
