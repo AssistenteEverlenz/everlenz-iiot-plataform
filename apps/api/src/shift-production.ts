@@ -2359,9 +2359,93 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       [tenantId, id, from, to],
     );
 
+    /*
+     * Every stop of the window, for the detail behind each number. A count alone says the line
+     * stopped fifty-five times and nothing about which fifty-five, so the card can open the
+     * list that produced any of its figures. Capped, because a ninety-day window on a line
+     * that trips often is thousands of rows and nobody reads past the first hundreds.
+     */
+    const all = await db.query<{
+      started_at: Date;
+      ended_at: Date | null;
+      seconds: number | null;
+      state: string;
+      product_code: string | null;
+      during_pause: boolean;
+      production_date: string;
+    }>(
+      `SELECT started_at,ended_at,seconds,state,product_code,during_pause,production_date::text
+       FROM production_stops
+       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
+       ORDER BY started_at DESC LIMIT 1000`,
+      [tenantId, id, from, to],
+    );
+
+    /*
+     * How the window was spent, and how fast the line goes when it is going.
+     *
+     * Availability is run time over the time the line was meant to run, which here is
+     * producing + idle + manual: the same ratio the production board calls "aproveitamento",
+     * so the two boards never disagree. The reference rate is the p95 of the full five-minute
+     * buckets -- the pace the line actually reaches on a good stretch -- because nobody ever
+     * wrote down an ideal cycle time, and a rate taken from the line itself is honest about
+     * what this line can do.
+     */
+    const spent = await db.query<{
+      producing: string | null;
+      idle: string | null;
+      manual: string | null;
+      pieces: string | null;
+      reference: string | null;
+    }>(
+      `WITH b AS (
+         SELECT * FROM production_buckets
+         WHERE tenant_id=$1 AND device_id=$2
+           AND (bucket AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $3::date AND $4::date
+       )
+       SELECT coalesce(sum(producing_s),0)::text producing,
+              coalesce(sum(idle_s),0)::text idle,
+              coalesce(sum(manual_s),0)::text manual,
+              coalesce(sum(pieces),0)::text pieces,
+              (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY pieces*12.0)
+                 FROM b WHERE producing_s >= 285 AND pieces > 0)::text reference
+       FROM b`,
+      [tenantId, id, from, to],
+    );
+
+    const planned = await db.query<{ seconds: string | null; reports: string }>(
+      `SELECT coalesce(sum(planned_seconds),0)::text seconds, count(*)::text reports
+       FROM shift_reports
+       WHERE tenant_id=$1 AND device_id=$2 AND kind='shift' AND deleted_at IS NULL
+         AND production_date BETWEEN $3::date AND $4::date`,
+      [tenantId, id, from, to],
+    );
+
+    const spentRow = spent.rows[0];
+    const plannedRow = planned.rows[0];
+
     return {
       from,
       to,
+      time: {
+        producing: Number(spentRow?.producing ?? 0),
+        idle: Number(spentRow?.idle ?? 0),
+        manual: Number(spentRow?.manual ?? 0),
+        pieces: Number(spentRow?.pieces ?? 0),
+        // Pieces per hour the line reaches on a good five minutes; null until there is one.
+        reference: spentRow?.reference == null ? null : Number(spentRow.reference),
+        plannedSeconds: Number(plannedRow?.seconds ?? 0),
+        reports: Number(plannedRow?.reports ?? 0),
+      },
+      all: all.rows.map((row) => ({
+        startedAt: new Date(row.started_at).toISOString(),
+        endedAt: row.ended_at ? new Date(row.ended_at).toISOString() : null,
+        seconds: row.seconds == null ? null : Number(row.seconds),
+        state: row.state,
+        product: row.product_code,
+        planned: row.during_pause,
+        date: row.production_date,
+      })),
       days: byDay.rows.map((row) => ({
         date: row.dia,
         stops: Number(row.paradas),

@@ -9174,39 +9174,310 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 
 /* How often the line stopped, and for how long. */
 .stops-panel { display: grid; gap: 12px; min-width: 0; }
-.stops-window { display: flex; flex-wrap: wrap; gap: 6px; }
-.stops-window button {
-  padding: 5px 11px;
-  border: 1px solid #cbdadd;
-  border-radius: 999px;
+/* ---------- Paradas de produção ----------
+   The production board says how much was made; this one says what took the rest of the day.
+   It is read by maintenance, so it carries a Pareto, availability and the time between stops,
+   and it is split into tabs because all of that in one column is a scroll nobody finishes. */
+.stops-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+.stops-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+/* The filters sit to the right, where every other card keeps them. */
+.stops-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.stops-tabs {
+  flex: none;
+}
+.stops-detail-filter,
+.stops-tools .widget-period {
+  gap: 6px;
+}
+
+/* Each figure opens the stops behind it: a count nobody can open is a count nobody trusts. */
+.stops-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.stops-totals > * {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
   background: #fff;
-  color: #4b6670;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.stops-totals > button {
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.stops-totals > button:hover {
+  border-color: #0b2028;
+  box-shadow: 0 4px 14px #0b20281a;
+}
+.stops-totals span {
+  display: block;
+  color: #788d94;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.stops-totals b {
+  display: block;
+  margin-top: 1px;
+  color: #12303a;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.stops-totals small {
+  display: block;
+  color: #7b9097;
+  font-size: 10px;
+}
+.stops-quiet > div {
+  background: #fafcfc;
+}
+.stops-title {
+  color: #24505a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.stops-title small {
+  color: #8a9ca2;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Producing against stopped, on one bar. */
+.stops-spent {
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  background: #eef4f5;
+  overflow: hidden;
+}
+.stops-spent i {
+  display: block;
+  height: 100%;
+}
+.stops-spent-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  color: #6d8087;
   font-size: 11px;
 }
-.stops-window button.active { border-color: #12b8a6; background: #e7f7f5; color: #0b6b62; font-weight: 700; }
-.stops-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.stops-totals > div { padding: 9px 11px; border: 1px solid #dce6e8; border-radius: 10px; background: #fff; }
-.stops-totals span { display: block; color: #788d94; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.stops-totals b { display: block; margin-top: 1px; font-size: 21px; font-variant-numeric: tabular-nums; }
-.stops-totals small { display: block; color: #7b9097; font-size: 10px; }
-.stops-title { color: #24505a; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.stops-reasons { display: grid; gap: 8px; }
-.stops-reason-head { display: flex; align-items: center; gap: 7px; font-size: 12px; }
-.stops-reason-head i { flex: none; width: 9px; height: 9px; border-radius: 50%; }
-.stops-reason-head span { margin-left: auto; color: #7b9097; font-variant-numeric: tabular-nums; }
-.stops-bar { height: 6px; border-radius: 999px; background: #eef4f5; overflow: hidden; }
-.stops-bar i { display: block; height: 100%; border-radius: 999px; }
+.stops-spent-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 50%;
+}
+.stops-spent-legend b {
+  margin-left: auto;
+  color: #12303a;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The vital few, ranked, with the running share marked on each bar. */
+.stops-pareto {
+  display: grid;
+  gap: 10px;
+}
+.stops-pareto > button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #e9eff0;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.stops-pareto > button:hover {
+  border-color: #0b2028;
+}
+/* Above the 80 % cut: the ones worth attacking first. */
+.stops-pareto > button.vital {
+  border-color: #cfdcdf;
+  background: #fbfdfd;
+}
+.stops-pareto-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.stops-pareto-head i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.stops-pareto-head em {
+  margin-left: auto;
+  color: #7b9097;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.stops-pareto-bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: #eef4f5;
+  overflow: hidden;
+}
+.stops-pareto-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.stops-pareto-bar u {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 12px;
+  background: #0b2028;
+  opacity: 0.55;
+}
+.stops-pareto-foot {
+  color: #8a9ca2;
+  font-size: 10px;
+}
+.stops-note {
+  color: #8a9ca2;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+.stops-future {
+  padding: 10px 12px;
+  border: 1px dashed #dce6e8;
+  border-radius: 10px;
+  background: #fafcfc;
+}
+.stops-future b {
+  color: #24505a;
+}
+
+.stops-planned {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+.stops-planned > div {
+  padding: 10px 12px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
+  background: #fff;
+}
+.stops-planned span {
+  display: block;
+  color: #788d94;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.stops-planned b {
+  display: block;
+  color: #12303a;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+.stops-planned small {
+  display: block;
+  color: #7b9097;
+  font-size: 10px;
+}
+
 .stops-days { display: flex; align-items: flex-end; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
 .stops-day { display: grid; justify-items: center; gap: 2px; min-width: 30px; }
 .stops-day-bar { display: flex; align-items: flex-end; width: 18px; height: 56px; border-radius: 5px; background: #eef4f5; }
 .stops-day-bar i { width: 100%; min-height: 2px; border-radius: 5px; background: #12b8a6; }
 .stops-day b { font-size: 11px; font-variant-numeric: tabular-nums; }
 .stops-day small { color: #7b9097; font-size: 9px; }
+
 .stops-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.stops-table th, .stops-table td { padding: 5px 7px; border-bottom: 1px solid #e6eef0; text-align: left; }
+.stops-table th, .stops-table td { padding: 6px 7px; border-bottom: 1px solid #e6eef0; text-align: left; }
 .stops-table th { color: #788d94; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
 .stops-table .n { text-align: right; font-variant-numeric: tabular-nums; }
-.stops-empty { color: #7b9097; font-size: 12px; }
+.stops-table tr.planned { color: #8a9ca2; }
+.stops-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
+.stops-until { color: #9fb2b7; }
+.stops-more {
+  justify-self: start;
+  padding: 7px 13px;
+  border: 1px solid #cbdadd;
+  border-radius: 999px;
+  background: #fff;
+  color: #17414c;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stops-more:hover { border-color: #0b2028; }
+
+.modal-card.stops-detail-modal { width: min(880px, 100%); }
+.stops-detail-modal .modal-title small { display: block; margin-top: 3px; color: #7b9097; font-size: 11px; }
+.stops-detail-filter { margin: 16px 0 10px; }
+.stops-detail-body { max-height: 60vh; overflow: auto; }
+
+.stops-list { display: grid; gap: 10px; }
+.stops-list-body { max-height: 420px; overflow: auto; }
+
+/* On a phone the tabs take the row and the filters the next one, both reading from the left. */
+@media (max-width: 760px) {
+  .stops-head { gap: 8px; }
+  .stops-tools { width: 100%; margin-left: 0; }
+  .stops-tabs { width: 100%; }
+  .stops-tabs button { flex: 1 1 auto; }
+  .stops-totals { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  /* A four-column table does not fit 390 px: each stop becomes a small block instead, with
+     the duration kept on the first line where it is looked for. */
+  .stops-list-body { max-height: 320px; }
+  .stops-table thead { display: none; }
+  /* A row that is a grid inside a table shrinks to its content unless the table body stops
+     being a table: without this the duration sat against the time instead of the edge. */
+  .stops-table, .stops-table tbody { display: block; width: 100%; }
+  .stops-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1px 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid #e6eef0;
+  }
+  .stops-table td { padding: 0; border: 0; }
+  .stops-table td:nth-child(1) { grid-column: 1; grid-row: 1; font-weight: 600; }
+  .stops-table td:nth-child(4) { grid-column: 2; grid-row: 1; text-align: right; }
+  .stops-table td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; color: #6d8087; font-size: 11px; }
+  .stops-table td:nth-child(3) { grid-column: 1 / -1; grid-row: 3; color: #8a9ca2; font-size: 10px; }
+}
+
 /* The wear content sits either in its window or on a panel card. */
 .wear-panel { display: grid; gap: 12px; min-width: 0; }
 
