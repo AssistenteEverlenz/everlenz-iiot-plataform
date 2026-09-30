@@ -160,13 +160,15 @@ export function WearPanel({ deviceId }: { deviceId: string }) {
 
   return (
     <div className="wear-panel">
-        <div className="wear-explain">
+        <div className="wear-lead">
+          <div className="wear-explain">
           O ritmo cai por dois motivos. Com a boquilha gasta o tijolo pesa mais e a mesma massa
           rende menos peças; com o caracol gasto a maromba entrega menos massa e o tijolo continua
-          igual. Pesando o tijolo, dá para saber qual dos dois está acontecendo.
+            igual. Pesando o tijolo, dá para saber qual dos dois está acontecendo.
+          </div>
         </div>
 
-        {latest && (
+        {latest ? (
           <div className="wear-verdict">
             <div>
               <span>Capacidade da semana</span>
@@ -184,10 +186,15 @@ export function WearPanel({ deviceId }: { deviceId: string }) {
               <small>{latest.augerDrift == null ? 'precisa do peso' : 'o que a boquilha não explica'}</small>
             </div>
           </div>
+        ) : (
+          <div className="wear-waiting">
+            Ainda sem semanas completas para comparar. A capacidade é medida só em trechos em que
+            a linha produziu os cinco minutos inteiros, sempre na mesma receita.
+          </div>
         )}
 
         {mayLog && (
-          <div className="wear-form">
+          <div className="wear-form wear-box">
             <div className="wear-section-title">Peso do tijolo hoje</div>
             <div className="wear-fields">
               <label>
@@ -258,10 +265,14 @@ export function WearPanel({ deviceId }: { deviceId: string }) {
 
         {error && <div className="notice error">{error}</div>}
 
-        <div className="wear-section-title">
-          Semana a semana{wear.data?.product ? ` · ${wear.data.product}` : ''}
-          {wear.data?.since && <small> desde a troca de {day(wear.data.since)}</small>}
-        </div>
+        {/* The title only appears with a table under it: the waiting message above already
+            says why there is nothing yet. */}
+        {Boolean(rows.length) && (
+          <div className="wear-section-title">
+            Semana a semana{wear.data?.product ? ` · ${wear.data.product}` : ''}
+            {wear.data?.since && <small> desde a troca de {day(wear.data.since)}</small>}
+          </div>
+        )}
         {rows.length ? (
           <table className="wear-table">
             <thead>
@@ -287,12 +298,7 @@ export function WearPanel({ deviceId }: { deviceId: string }) {
               ))}
             </tbody>
           </table>
-        ) : (
-          <div className="wear-empty">
-            Ainda sem semanas completas para comparar. A capacidade é medida só em trechos em que
-            a linha produziu os cinco minutos inteiros.
-          </div>
-        )}
+        ) : null}
 
         <div className="wear-section-title">Últimos lançamentos</div>
         {weights.data?.weights.length ? (

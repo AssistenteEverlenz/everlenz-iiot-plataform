@@ -2608,9 +2608,20 @@
     color: #84979e;
   }
   :root[data-theme='dark'] .wear-explain {
-    border: 1px solid #293b41;
-    background: #182323;
-    color: #afbec4;
+    border-left: 3px solid #384d4b;
+    background: #172121;
+    color: #9eb1b7;
+  }
+  :root[data-theme='dark'] .wear-waiting {
+    border: 1px dashed #293b41;
+    color: #91a1a6;
+  }
+  :root[data-theme='dark'] .wear-box {
+    border: 1px solid #202d32;
+    background: #151e1e;
+  }
+  :root[data-theme='dark'] .wear-verdict > div:first-child {
+    background: #172121;
   }
   :root[data-theme='dark'] .wear-verdict > div {
     border: 1px solid #243338;

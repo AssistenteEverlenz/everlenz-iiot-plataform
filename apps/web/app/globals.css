@@ -8669,20 +8669,42 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .wear-modal h2 { margin: 0; font-size: 19px; }
 .wear-modal .modal-title small { display: block; color: #7b9097; font-size: 12px; }
+/* The explanation is read once and then ignored, so it sits quietly instead of competing with
+   the numbers under it. */
+.wear-lead { display: grid; gap: 10px; }
 .wear-explain {
-  padding: 10px 12px;
-  border: 1px solid #cfe0e2;
+  padding: 9px 11px;
+  border-left: 3px solid #b6d9d6;
+  border-radius: 0 8px 8px 0;
+  background: #f6fbfb;
+  color: #52707a;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+/* What is said while there is not enough to say anything. */
+.wear-waiting {
+  padding: 12px 14px;
+  border: 1px dashed #cfe0e2;
   border-radius: 10px;
-  background: #f4fafa;
-  color: #3f5e67;
+  color: #6d8087;
   font-size: 12px;
   line-height: 1.45;
 }
+/* Everything that is typed in, framed together and set apart from what is read. */
+.wear-box {
+  padding: 12px;
+  border: 1px solid #e3ebed;
+  border-radius: 12px;
+  background: #fbfdfd;
+}
 .wear-verdict {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 10px;
 }
+/* The first box is the reading; the two beside it are the verdict, and carry the weight. */
+.wear-verdict > div:first-child { background: #f6fbfb; }
+.wear-verdict > div:not(:first-child) b { font-size: 24px; }
 .wear-verdict > div {
   padding: 10px 12px;
   border: 1px solid #dce6e8;
