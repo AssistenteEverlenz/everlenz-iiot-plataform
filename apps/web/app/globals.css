@@ -7714,140 +7714,169 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 
 /* ---------- The panel's own tabs ----------
-   A plant's panel grows into one column nobody scrolls to the end of, so whoever owns it
-   divides it: the cards the shift leader watches on one tab, the ones maintenance opens on
-   another. The strip rides with the page, because choosing a tab from the bottom of a long
-   panel is exactly when it is needed. */
+   These were built out of the filter pills, and they read as filters: a pill says "narrow
+   what is on screen", a tab says "this is another section". The convention that separates
+   them is a baseline under the whole strip with the open tab marked on it -- Material calls
+   it the active indicator -- so the strip is a bar, not a row of buttons. Nothing else on
+   the page looks like this, which is the point. */
 .dashboard-tabs {
   position: sticky;
   top: 0;
   z-index: 30;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 0 14px;
-  padding: 6px 0;
-  border-bottom: 1px solid #e3ebed;
+  align-items: stretch;
+  gap: 2px;
+  margin: 4px 0 16px;
+  /* The baseline the open tab sits on. */
+  border-bottom: 1px solid #dbe5e7;
   background: #f2f5f6;
 }
 .dashboard-tabs:empty {
   display: none;
 }
 .dashboard-tab {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
+  align-items: stretch;
+  border-radius: 9px 9px 0 0;
+}
+/* The open tab is a sheet standing on the baseline, not a button that happens to be darker:
+   the label and its tools sit on the same white, and the indicator closes it against the
+   line. Nothing else on the page is shaped like this. */
+.dashboard-tab.active {
+  background: #fff;
+  box-shadow: inset 1px 0 0 #e3ebed, inset -1px 0 0 #e3ebed, inset 0 1px 0 #e3ebed;
+}
+.dashboard-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: #0b2028;
 }
 .dashboard-tab > button {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 6px 15px;
-  border: 1px solid #dce6e8;
-  border-radius: 999px;
-  background: #fff;
-  color: #4d6770;
-  font-size: 13px;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #6d8087;
+  font-size: 13.5px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
-.dashboard-tab > button:hover {
-  border-color: #0b2028;
+/* The indicator, drawn over the baseline so it reads as the tab owning that stretch of it. */
+.dashboard-tab > button::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.dashboard-tab:not(.active) > button:hover {
   color: #0b2028;
+  background: #e9eef0;
+}
+.dashboard-tab > button:hover::after {
+  background: #c3d3d7;
+}
+.dashboard-tab.active > button {
+  color: #0b2028;
+  font-weight: 700;
+}
+.dashboard-tab.active > button::after {
+  background: transparent;
 }
 .dashboard-tab > button em {
   padding: 1px 7px;
   border-radius: 999px;
-  background: #eef4f5;
+  background: #e4ecee;
   color: #6d8087;
-  font-size: 10px;
+  font-size: 10.5px;
   font-style: normal;
   font-variant-numeric: tabular-nums;
-}
-/* The open tab is one pill that holds its own tools, instead of two loose buttons floating
-   between it and the next tab. */
-.dashboard-tab.active {
-  border-color: #0b2028;
-  background: #0b2028;
-  padding-right: 5px;
-}
-.dashboard-tab.active > button {
-  border-color: transparent;
-  background: transparent;
-  color: #fff;
-}
-.dashboard-tab.active .dashboard-tab-tools button {
-  border-color: #ffffff3d;
-  background: transparent;
-  color: #cfe2e6;
-}
-.dashboard-tab.active .dashboard-tab-tools button:hover {
-  border-color: #fff;
-  color: #fff;
-}
-.dashboard-tab.active .dashboard-tab-tools button:last-child:hover {
-  border-color: #f0a2a7;
-  color: #ffd7d9;
+  font-weight: 600;
 }
 .dashboard-tab.active > button em {
-  background: #ffffff26;
-  color: #dbe9ec;
+  background: #0b2028;
+  color: #fff;
 }
 .dashboard-tab.dragging {
-  opacity: 0.5;
+  opacity: 0.45;
 }
-/* A card is being carried: the tab it would land on says so. */
+/* A card is being carried: the tab it would land on says so, on the same indicator. */
 .dashboard-tab.over > button {
-  border-color: #12b8a6;
-  box-shadow: 0 0 0 3px #12b8a633;
+  background: #e7f7f5;
+  color: #0b6b62;
 }
+.dashboard-tab.over > button::after {
+  background: #12b8a6;
+  height: 3px;
+}
+/* The pencil and the cross belong to the open tab, quiet until wanted. */
 .dashboard-tab-tools {
   display: inline-flex;
+  align-items: center;
   gap: 2px;
-  margin-left: 4px;
+  margin: 0 6px 0 -8px;
+  align-self: center;
 }
 .dashboard-tab-tools button {
-  width: 26px;
-  min-height: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
   padding: 0;
-  border: 1px solid #dce6e8;
+  border: 0;
   border-radius: 50%;
-  background: #fff;
-  color: #6d8087;
+  background: transparent;
+  color: #9fb2b7;
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
 }
 .dashboard-tab-tools button:hover {
-  border-color: #0b2028;
+  background: #e4ecee;
   color: #0b2028;
 }
 .dashboard-tab-tools button:last-child:hover {
-  border-color: #c9646b;
+  background: #fdeceb;
   color: #a3272f;
 }
 .dashboard-tab-rename {
   min-width: 0;
-  width: 150px;
+  width: 160px;
   min-height: 34px;
-  padding: 6px 12px;
+  margin: 4px 6px;
+  padding: 6px 10px;
   border: 1px solid #0b2028;
-  border-radius: 999px;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: 13.5px;
   font-weight: 600;
 }
+/* Adding a tab is an action, not a tab: it stands off the baseline. */
 .dashboard-tab-add {
-  min-height: 34px;
-  padding: 6px 14px;
+  align-self: center;
+  min-height: 30px;
+  margin-left: 8px;
+  padding: 5px 12px;
   border: 1px dashed #c3d3d7;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
-  color: #6d8087;
+  color: #7f959b;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -7858,7 +7887,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   color: #0b2028;
 }
 .dashboard-tab-hint {
+  align-self: center;
   margin-left: auto;
+  padding-right: 4px;
   color: #12b8a6;
   font-size: 11px;
   font-weight: 600;
@@ -7868,12 +7899,11 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   color: #536d76;
   font-size: 13px;
 }
-/* On a phone the strip scrolls sideways instead of stacking into a wall of buttons. */
+/* On a phone the strip scrolls sideways instead of stacking into a wall. */
 @media (max-width: 760px) {
   .dashboard-tabs {
-    flex-wrap: nowrap;
+    gap: 0;
     overflow-x: auto;
-    gap: 5px;
     scrollbar-width: none;
   }
   .dashboard-tabs::-webkit-scrollbar {
@@ -7882,6 +7912,10 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .dashboard-tab,
   .dashboard-tab-add {
     flex: none;
+  }
+  .dashboard-tab > button {
+    padding: 10px 13px;
+    font-size: 13px;
   }
   .dashboard-tab-hint {
     display: none;
