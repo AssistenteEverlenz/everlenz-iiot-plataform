@@ -4,7 +4,6 @@ import { migrate } from '../packages/database/src/migrate.js';
 import { seed, TENANT, HAIWELL } from '../packages/database/src/seed.js';
 import { createApp } from '../apps/api/src/app.js';
 
-const SITE = '22222222-2222-4222-8222-222222222222';
 
 async function platform() {
   const { db } = await memoryDatabase();

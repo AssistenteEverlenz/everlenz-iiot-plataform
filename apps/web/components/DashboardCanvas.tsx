@@ -36,6 +36,7 @@ import { hmiVariables, knownVariables, panelVariables, variableOptionsFor } from
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
 import { DashboardTabs } from './DashboardTabs';
+import { Section } from './Section';
 import type { DashboardTab } from './data';
 import { ShiftBoard } from './ShiftBoard';
 import { StopsPanel } from './StopsPanel';
@@ -114,42 +115,6 @@ function RemoveTabModal({
         </div>
       </div>
     </div>
-  );
-}
-
-/**
- * One group of settings, folded until it is wanted.
- *
- * The item's settings had grown into one column of thirty fields: everything a card could
- * ever need, all at once, so finding the one field to change meant reading the whole form.
- * Panel editors solve this by category -- Grafana folds its options the same way -- and the
- * groups that are already carrying a setting open by themselves, so nothing configured is
- * ever hidden behind a closed lid.
- */
-function Section({
-  title,
-  note,
-  open = false,
-  when = true,
-  children,
-}: {
-  title: string;
-  note?: string;
-  open?: boolean;
-  /** False when this card has nothing in the group: the group is not drawn at all. */
-  when?: boolean;
-  children: React.ReactNode;
-}) {
-  if (!when) return null;
-  return (
-    <details className="form-section" open={open}>
-      <summary>
-        <span className="form-section-name">{title}</span>
-        {note && <small>{note}</small>}
-        <i className="form-section-chevron" aria-hidden="true" />
-      </summary>
-      <div className="form-section-body">{children}</div>
-    </details>
   );
 }
 
@@ -542,7 +507,6 @@ function Widget({
   const productionStats = usePoll<Statistic[]>(productionPath, 30000);
   const statistics = productionStats.data?.[0];
   const { user } = usePlatform();
-  const hiddenProducts = statistics?.hidden_products ?? [];
   const [hidingProduct, setHidingProduct] = useState<string | null>(null);
   async function toggleProduct(productCode: string, hidden: boolean) {
     await mutate(`/devices/${widget.device_id}/hidden-products`, 'POST', { productCode, hidden });

@@ -112,7 +112,6 @@ export function useTvData(id: string) {
     () =>
       stateSince ? Math.max(0, Math.round((Date.now() - new Date(stateSince).getTime()) / 60000)) : 0,
     // Recomputed with every board refresh (20 s).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [stateSince, board.data],
   );
 

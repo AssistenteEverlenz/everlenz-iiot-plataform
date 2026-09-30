@@ -2289,6 +2289,9 @@
   :root[data-theme='dark'] .production-table .day-split {
     color: #798e95;
   }
+  :root[data-theme='dark'] .hmi-check-hours {
+    border: 1px solid #1a2629;
+  }
   :root[data-theme='dark'] .dashboard-tabs {
     border-bottom: 1px solid #202d32;
     background: #192326;

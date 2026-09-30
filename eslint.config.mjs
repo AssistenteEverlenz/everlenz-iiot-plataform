@@ -17,6 +17,14 @@ export default ts.config(
   ...ts.configs.recommended,
   {
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
-    rules: { '@typescript-eslint/no-explicit-any': 'error' },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      // A name starting with an underscore says "this exists only to be thrown away" -- it is
+      // how a key is taken out of an object with rest, and it is not an oversight.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+    },
   },
 );

@@ -182,6 +182,7 @@ export function HmiCheckModal({
                   A plataforma está {formatNumber(Math.abs(data.difference ?? 0))}{' '}
                   {(data.difference ?? 0) > 0 ? 'acima' : 'abaixo'} da contagem da IHM.
                 </div>
+                <div className="hmi-check-hours">
                 <table className="production-table">
                   <thead>
                     <tr>
@@ -202,6 +203,7 @@ export function HmiCheckModal({
                     ))}
                   </tbody>
                 </table>
+                </div>
               </>
             )}
             <p className="shifts-help">

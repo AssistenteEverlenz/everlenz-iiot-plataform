@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { mutate, usePoll } from './data';
 import { Hint } from './Hint';
+import { Section } from './Section';
 import { metricInfo, type ProductionMetric } from './ShiftBoard';
 
 // Production parameters of one device: counters, automatic signal, idle and end-of-shift
@@ -188,7 +189,9 @@ export function ProductionConfigModal({
         {!form ? (
           <p>Carregando…</p>
         ) : (
-          <div className="form-grid">
+          <div className="form-sections">
+            <Section title="O que a IHM conta" open>
+            <div className="form-grid">
             <label className="field">
               Contador de peças (blocos)
               <select
@@ -231,6 +234,10 @@ export function ProductionConfigModal({
                 ))}
               </select>
             </label>
+            </div>
+            </Section>
+            <Section title="Quando a máquina conta como parada" open>
+            <div className="form-grid">
             <label className="field">
               Ociosa depois de (segundos sem contar)
               <input
@@ -254,6 +261,10 @@ export function ProductionConfigModal({
                 }
               />
             </label>
+            </div>
+            </Section>
+            <Section title="Peso da peça" note="converte peças em toneladas">
+            <div className="form-grid">
             <label className="field">
               Peso por peça — variável da IHM
               <select
@@ -297,6 +308,10 @@ export function ProductionConfigModal({
                 onChange={(event) => setForm({ ...form, weight: event.target.value })}
               />
             </label>
+            </div>
+            </Section>
+            <Section title="Meta do turno" open>
+            <div className="form-grid">
             <label className="field">
               Meta por turno
               <select
@@ -350,7 +365,9 @@ export function ProductionConfigModal({
                 </label>
               </>
             )}
-            <div className="notice full-field">
+            </div>
+            </Section>
+            <div className="notice">
               <b>Como a máquina é classificada</b>
               Em automático e contando: produzindo. Em automático sem contar há mais que o tempo
               acima: ociosa. Fora do automático: manual/parada. Sem mensagens: sem comunicação. 1

@@ -90,7 +90,7 @@ export function WearPanel({ deviceId }: { deviceId: string }) {
   );
   const weights = usePoll<{ weights: Weight[] }>(`/devices/${deviceId}/weights`, 300000);
   const events = usePoll<{ events: Event[] }>(`/devices/${deviceId}/maintenance`, 300000);
-  const [product, setProduct] = useState('');
+  const [product] = useState('');
   const wear = usePoll<Wear>(
     `/devices/${deviceId}/wear${product ? `?product=${encodeURIComponent(product)}` : ''}`,
     300000,

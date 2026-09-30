@@ -7697,6 +7697,22 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   margin: 16px 0 4px;
 }
 
+/* The hour-by-hour comparison scrolls inside the window, so the footer stays where the
+   reader left it instead of a thousand pixels below. */
+.hmi-check-hours {
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid #eef3f4;
+  border-radius: 10px;
+}
+/* Cards whose labels run to three lines must still line up: the value sits at the bottom. */
+.production-detail-summary > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+}
+
 /* ---------- The panel's own tabs ----------
    A plant's panel grows into one column nobody scrolls to the end of, so whoever owns it
    divides it: the cards the shift leader watches on one tab, the ones maintenance opens on
