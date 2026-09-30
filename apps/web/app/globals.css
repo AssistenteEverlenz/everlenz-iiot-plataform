@@ -3760,12 +3760,36 @@ input:focus-visible {
 }
 
 /* Period filter inside each production chart. */
-.production-insight .widget-period {
-  grid-column: 1 / -1;
+.widget-period {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+.production-insight .widget-period {
+  grid-column: 1 / -1;
+}
+/* On the board they sit inside a field, beside its label, so they are one line of an
+   inline row rather than a block of their own. */
+.shift-field .widget-period {
+  display: inline-flex;
+  width: auto;
+  /* A flex item will not shrink past its max-content width on its own, and six pills are wider
+     than a phone: without this they ran off the right edge instead of wrapping. */
+  min-width: 0;
+  max-width: 100%;
+}
+.shift-field .widget-period button {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.widget-period button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.widget-period button:disabled:hover {
+  border-color: #dce6e8;
+  color: #4d6770;
 }
 .widget-period button {
   border: 1px solid #dce6e8;
@@ -5328,14 +5352,6 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   align-items: center;
   gap: 6px;
   min-width: 0;
-}
-/* The buttons inside a field are the board's own segmented filter, one size smaller so a row
-   of five does not tower over the field beside it. */
-.shift-field .shift-mode button {
-  padding: 4px 9px;
-  font-size: 11px;
-  text-transform: none;
-  letter-spacing: 0;
 }
 .shift-day-picker select,
 .shift-day-picker input[type='date'] {
@@ -9040,11 +9056,11 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   }
   .shift-day-picker .shift-field > span { width: 100%; }
   .shift-day-picker .shift-field-controls { width: 100%; }
-  .shift-day-picker .shift-field .shift-mode { flex-wrap: wrap; }
+  .shift-day-picker .shift-field .widget-period { flex-wrap: wrap; }
   /* The calendar takes whatever the buttons leave on the line, never a row to itself. */
   .shift-day-picker select,
   .shift-day-picker input[type='date'] { flex: 1 1 130px; width: auto; }
-  .shift-head-tools .shift-mode { flex: 0 0 auto; }
+  .shift-head-tools .widget-period { flex: 0 0 auto; }
   .shift-chart,
   .shift-compare-chart,
   .shift-board-day.comparing .shift-chart { height: 230px; min-height: 230px; }

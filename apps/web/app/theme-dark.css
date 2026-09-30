@@ -1182,6 +1182,10 @@
   :root[data-theme='dark'] .scroll-hint-arrow:hover {
     color: #7de8dc;
   }
+  :root[data-theme='dark'] .widget-period button:disabled:hover {
+    border-color: #243338;
+    color: #a5b6bc;
+  }
   :root[data-theme='dark'] .widget-period button {
     border: 1px solid #243338;
     background: #12191c;

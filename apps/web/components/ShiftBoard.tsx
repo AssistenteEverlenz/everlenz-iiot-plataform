@@ -591,7 +591,10 @@ export function ShiftBoard({
   // A day of the history instead of today, and another day drawn behind it. Both read the
   // photograph taken when the day closed, so no reading is needed and nothing is recomputed.
   const [day, setDay] = useState('');
-  const [against, setAgainst] = useState('');
+  // The comparison is named with the same words as every other card's filter, so a plant reads
+  // one vocabulary across the dashboard instead of two.
+  const [against, setAgainst] = useState<Comparison>('');
+  const [againstDay, setAgainstDay] = useState('');
   const days = usePoll<{ days: Array<{ date: string; pallets: number | null; pieces: number | null }> }>(
     `/devices/${deviceId}/production-days?limit=400`,
     600000,
@@ -600,8 +603,10 @@ export function ShiftBoard({
     day ? `/devices/${deviceId}/production-photo?date=${day}&kind=day` : null,
     600000,
   );
-  const comparingDay = against.startsWith('dia:') ? against.slice(4) : '';
-  const medianDays = against.startsWith('mediana:') ? Number(against.slice(8)) : 0;
+  const comparingDay = against === 'custom' ? againstDay : '';
+  // Today as a comparison only means something while a past day is open; the pill says so.
+  const againstToday = against === 'today';
+  const medianDays = medianWindow(against);
   const other = usePoll<{ photo: { detail: ShiftBoardResponse; minutes: Array<{ t: string; value: number }> } | null }>(
     comparingDay ? `/devices/${deviceId}/production-photo?date=${comparingDay}&kind=day` : null,
     600000,
@@ -609,6 +614,12 @@ export function ShiftBoard({
   const median = usePoll<{ days: number; curve: Array<number | null> }>(
     medianDays ? `/devices/${deviceId}/production-median?days=${medianDays}` : null,
     600000,
+  );
+  // Comparing a past day against today reads the running day board, not a photograph: today
+  // has not closed yet, so there is no photograph of it to read.
+  const live = usePoll<ShiftBoardResponse>(
+    againstToday && day ? `/devices/${deviceId}/shift-board?mode=day` : null,
+    30000,
   );
   // Both charts zoom together when two days are read one above the other.
   const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
@@ -630,12 +641,14 @@ export function ShiftBoard({
   const shown = day ? (photo.data?.photo?.detail ?? null) : (response.data ?? null);
   // The other day's realized curve, by position in the shift, so a late start still lines up.
   const overlay = medianDays && median.data?.curve.length
-    ? {
-        label: `mediana de ${median.data.days} dia(s)`,
-        actual: median.data.curve,
-      }
+    ? { label: medianLabel(against), actual: median.data.curve }
     : null;
-  const below = comparingDay ? (other.data?.photo?.detail ?? null) : null;
+  const below = comparingDay
+    ? (other.data?.photo?.detail ?? null)
+    : againstToday && day
+      ? (live.data ?? null)
+      : null;
+  const belowLabel = comparingDay ? dayLabel(comparingDay) : againstToday ? 'hoje' : '';
 
   // A plant that has run for a year has a year of days, and a year of days is not a list anyone
   // can scroll: the day is picked on a calendar. The closed days are still read, to bound that
@@ -648,74 +661,81 @@ export function ShiftBoard({
   // The references of the period are buttons like every other filter of the board; only the
   // one specific day needs a field, and it is only shown once that button is chosen.
   const [pickingDay, setPickingDay] = useState(false);
-  const comparisons = [
-    { id: '', label: 'Nenhum' },
-    { id: 'mediana:7', label: '7 dias' },
-    { id: 'mediana:30', label: '30 dias' },
-    { id: 'mediana:365', label: 'Ano' },
-  ];
   const pickerFields = (
     <>
       <div className="shift-field">
         <span>Dia</span>
         <span className="shift-field-controls">
-        <span className="shift-mode">
-          <button type="button" className={day ? '' : 'active'} onClick={() => setDay('')}>
-            Hoje
-          </button>
-        </span>
-        <input
-          type="date"
-          value={day}
-          min={firstDay}
-          max={lastDay}
-          onChange={(event) => setDay(event.target.value)}
-        />
+          <span className="widget-period" role="group" aria-label="Dia">
+            <button
+              type="button"
+              className={day || pickingDay ? '' : 'active'}
+              onClick={() => {
+                setPickingDay(false);
+                setDay('');
+              }}
+            >
+              Hoje
+            </button>
+            <button
+              type="button"
+              className={day || pickingDay ? 'active' : ''}
+              onClick={() => setPickingDay(true)}
+            >
+              Personalizado
+            </button>
+          </span>
+          {(day || pickingDay) && (
+            <input
+              type="date"
+              aria-label="Dia"
+              value={day}
+              min={firstDay}
+              max={lastDay}
+              onChange={(event) => setDay(event.target.value)}
+            />
+          )}
         </span>
       </div>
       <div className="shift-field">
         <span>Comparar com</span>
         <span className="shift-field-controls">
-        <span className="shift-mode">
-          {comparisons.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={!pickingDay && !comparingDay && against === option.id ? 'active' : ''}
-              onClick={() => {
-                setPickingDay(false);
-                setAgainst(option.id);
+          <span className="widget-period" role="group" aria-label="Comparar com">
+            {COMPARISONS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={against === value ? 'active' : ''}
+                disabled={value === 'today' && !day}
+                title={
+                  value === 'today' && !day ? 'O quadro já está mostrando hoje' : undefined
+                }
+                // Clicking the pill that is already on turns the comparison off, the way the
+                // other cards work: no place is spent on a "none" button.
+                onClick={() => {
+                  setAgainst(against === value ? '' : value);
+                  setAgainstDay('');
+                  setZoom(null);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
+          {against === 'custom' && (
+            <input
+              type="date"
+              aria-label="Dia comparado"
+              value={againstDay}
+              min={firstDay}
+              max={lastDay}
+              onChange={(event) => {
+                setAgainstDay(event.target.value);
                 setZoom(null);
               }}
-            >
-              {option.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={pickingDay || comparingDay ? 'active' : ''}
-            onClick={() => {
-              setPickingDay(true);
-              setAgainst('');
-              setZoom(null);
-            }}
-          >
-            Um dia
-          </button>
-        </span>
-        {(pickingDay || comparingDay) && (
-          <input
-            type="date"
-            value={comparingDay}
-            min={firstDay}
-            max={lastDay}
-            onChange={(event) => {
-              setAgainst(event.target.value ? `dia:${event.target.value}` : '');
-              setZoom(null);
-            }}
-          />
-        )}
-        {missingAgainst && <em className="shift-pick-hint">sem apontamento nesse dia</em>}
+            />
+          )}
+          {missingAgainst && <em className="shift-pick-hint">sem apontamento nesse dia</em>}
         </span>
       </div>
     </>
@@ -737,7 +757,7 @@ export function ShiftBoard({
     <div className={`shift-board-day${below ? ' comparing' : ''}`}>
     <ShiftBoardView
       compareBoard={below?.board ?? null}
-      compareLabel={comparingDay ? dayLabel(comparingDay) : undefined}
+      compareLabel={belowLabel || undefined}
       tools={<div className="shift-day-picker">{pickerFields}</div>}
       data={shown}
       deviceId={deviceId}
@@ -760,7 +780,7 @@ export function ShiftBoard({
     {below?.board && (
       <div className="shift-compare">
         <div className="shift-section-title">
-          {dayLabel(comparingDay)}
+          {belowLabel}
           <small> · dia comparado</small>
         </div>
         {/* Its curve and its gauge, in the same two columns as the day above: the numbers are
@@ -771,14 +791,15 @@ export function ShiftBoard({
               <div className="shift-chart shift-compare-chart">
                 <ShiftCurve
                   board={below.board}
-                  minuteSeries={other.data?.photo?.minutes}
+                  deviceId={comparingDay ? undefined : deviceId}
+                  minuteSeries={comparingDay ? other.data?.photo?.minutes : undefined}
                   view={zoom}
                   onView={setZoom}
                   syncId={`board-${deviceId}`}
                 />
               </div>
             </div>
-            <Availability board={below.board} label={dayLabel(comparingDay)} />
+            <Availability board={below.board} label={belowLabel} />
           </div>
         )}
       </div>
@@ -786,6 +807,52 @@ export function ShiftBoard({
     </div>
   );
 }
+
+/**
+ * What a day can be compared against, in the words every other card of the dashboard uses.
+ * "today" draws the running day under a past one; the four middles are the median of that
+ * period; "custom" is one chosen day.
+ */
+type Comparison = '' | 'today' | '7d' | 'week' | 'month' | 'year' | 'custom';
+const COMPARISONS: Array<[Comparison, string]> = [
+  ['today', 'Hoje'],
+  ['7d', '7 dias'],
+  ['week', 'Semana'],
+  ['month', 'Mês'],
+  ['year', 'Ano'],
+  ['custom', 'Personalizado'],
+];
+
+/**
+ * How many days back the median reads. "7 dias" is a rolling week; "Semana", "Mês" and "Ano"
+ * are the calendar ones so far, which is what those words mean on the other cards. The API
+ * wants at least two days and takes at most four hundred.
+ */
+function medianWindow(against: Comparison) {
+  const now = new Date();
+  const elapsed =
+    against === '7d'
+      ? 7
+      : against === 'week'
+        ? ((now.getDay() + 6) % 7) + 1
+        : against === 'month'
+          ? now.getDate()
+          : against === 'year'
+            ? Math.round(
+                (now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000,
+              ) + 1
+            : 0;
+  return elapsed ? Math.min(400, Math.max(2, elapsed)) : 0;
+}
+
+const medianLabel = (against: Comparison) =>
+  against === 'week'
+    ? 'mediana da semana'
+    : against === 'month'
+      ? 'mediana do mês'
+      : against === 'year'
+        ? 'mediana do ano'
+        : 'mediana de 7 dias';
 
 /** A production date as the plant reads it: "29/09 (seg)". */
 function dayLabel(date: string) {
@@ -1006,7 +1073,7 @@ export function ShiftBoardView({
         )}
         {/* A plant with one shift has nothing to choose, so the buttons are not drawn at all. */}
         {onShift && mode === 'shift' && (data.available?.length ?? 0) > 1 && (
-          <div className="shift-mode shift-pick" role="group" aria-label="Turno">
+          <div className="widget-period shift-pick" role="group" aria-label="Turno">
             {data.available?.map((item) => (
               <button
                 key={item.shiftId}
@@ -1022,7 +1089,7 @@ export function ShiftBoardView({
           </div>
         )}
         {onMode && (
-          <div className="shift-mode" role="group" aria-label="Período">
+          <div className="widget-period" role="group" aria-label="Período">
             <button className={mode === 'shift' ? 'active' : ''} onClick={() => onMode('shift')}>
               Turno
             </button>
