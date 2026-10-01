@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useFirstDraw } from './firstDraw';
 import { createPortal } from 'react-dom';
 import {
   Area,
@@ -431,6 +432,7 @@ function Widget({
   edit,
   remove,
   reset,
+  enter,
   dragStart,
   drop,
   dropTarget,
@@ -458,6 +460,8 @@ function Widget({
   edit: () => void;
   remove: () => void;
   reset: () => void;
+  /** Posição do card na ordem em que a aba foi desenhada. */
+  enter?: number;
   dragStart: () => void;
   drop: () => void;
   dropTarget: boolean;
@@ -526,6 +530,8 @@ function Widget({
       timestamp: new Date(sample.timestamp!).getTime(),
       value: sample.value_number,
     }));
+  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
+  const drawing = useFirstDraw(points.length > 0);
   const min = widget.config.min ?? 0;
   const max = widget.config.max ?? 100;
   const progress =
@@ -668,6 +674,8 @@ function Widget({
           '--cols': shownSpan.cols,
           '--rows': shownSpan.rows,
           '--stack-order': order,
+          // Posição na entrada: os cards aparecem em cascata, não todos de uma vez.
+          '--enter': enter ?? 0,
         } as React.CSSProperties
       }
     >
@@ -776,7 +784,8 @@ function Widget({
                   stroke={activeColor}
                   strokeWidth={2.5}
                   fill={`url(#fill-${widget.id})`}
-                  isAnimationActive={false}
+                  isAnimationActive={drawing}
+                animationDuration={700}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -1675,7 +1684,7 @@ export function DashboardCanvas({ id }: { id: string }) {
       {/* With tabs, the cards live on the surface the open tab opens into. */}
       <div className={tabs.length ? 'dashboard-sheet' : undefined}>
       <section className="widget-grid">
-        {printList.map((item) =>
+        {printList.map((item, position) =>
           item.kind === 'head' ? (
             <h2 className="print-tab-title" key={`t-${item.id}`}>
               {item.name}
@@ -1687,6 +1696,7 @@ export function DashboardCanvas({ id }: { id: string }) {
             latest={item.widget.tag_id ? byTag.get(item.widget.tag_id) : undefined}
             missing={Boolean(item.widget.tag_id && signals.data && !publishedTagIds.has(item.widget.tag_id))}
             order={stackOrder.get(item.widget.id)}
+            enter={position}
             history={history.data ?? []}
             values={readings}
             dashboardId={id}
@@ -2905,6 +2915,8 @@ export function ProductionInsight({
   onHideProduct?: (productCode: string) => void;
   onRestoreProduct?: (productCode: string) => void;
 }) {
+  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
+  const drawing = useFirstDraw(Boolean(statistics));
   const color = widget.config.color ?? '#12b8a6';
   const hiddenProducts = statistics?.hidden_products ?? [];
   const [showHidden, setShowHidden] = useState(false);
@@ -2999,7 +3011,8 @@ export function ProductionInsight({
                 fill={color}
                 radius={[5, 5, 0, 0]}
                 maxBarSize={44}
-                isAnimationActive={false}
+                isAnimationActive={drawing}
+                animationDuration={700}
               >
                 {/* Past two weeks of columns the labels would only crowd the chart. */}
                 {(statistics?.daily_series?.length ?? 0) <= 14 && (

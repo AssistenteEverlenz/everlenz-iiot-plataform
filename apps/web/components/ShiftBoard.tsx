@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useMemo, useRef, useState } from 'react';
+import { useFirstDraw } from './firstDraw';
 import {
   Area,
   CartesianGrid,
@@ -313,6 +314,8 @@ export function ShiftCurve({
     });
   }, [minutes.data, wantsMinutes, coarse]);
   const visible = detailed ?? coarse;
+  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
+  const drawing = useFirstDraw(visible.length > 0);
 
   function zoom(factor: number, anchor = 0.5) {
     setView((current) => {
@@ -454,7 +457,8 @@ export function ShiftCurve({
             fill={stateStops.length ? `url(#${gradientId})` : 'var(--accent, #12b8a6)'}
             fillOpacity={stateStops.length ? 0.45 : 0.14}
             strokeWidth={2.5}
-            isAnimationActive={false}
+            isAnimationActive={drawing}
+                animationDuration={700}
             connectNulls={false}
           />
           {compare && (
@@ -466,7 +470,8 @@ export function ShiftCurve({
               strokeWidth={2}
               strokeDasharray="2 4"
               dot={false}
-              isAnimationActive={false}
+              isAnimationActive={drawing}
+                animationDuration={700}
               connectNulls={false}
             />
           )}
@@ -477,7 +482,8 @@ export function ShiftCurve({
             stroke="#8a9ca2"
             strokeWidth={1.8}
             dot={false}
-            isAnimationActive={false}
+            isAnimationActive={drawing}
+                animationDuration={700}
           />
           <Line
             type="monotone"
@@ -487,7 +493,8 @@ export function ShiftCurve({
             strokeDasharray="5 5"
             strokeWidth={2}
             dot={false}
-            isAnimationActive={false}
+            isAnimationActive={drawing}
+                animationDuration={700}
           />
         </ComposedChart>
       </ResponsiveContainer>

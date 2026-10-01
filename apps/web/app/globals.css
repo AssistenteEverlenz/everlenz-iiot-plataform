@@ -1405,7 +1405,26 @@ input:focus-visible {
   gap: 14px;
   align-items: stretch;
 }
+/*
+ * The cards build themselves when a panel or a tab opens.
+ *
+ * The cards of a tab are mounted when that tab opens, so the animation plays by itself on
+ * every change without anything having to watch for one. It runs on mount only: a panel
+ * refreshes every two seconds and a card that re-enters on every refresh is a flicker.
+ *
+ * They come in a cascade rather than all at once, which is what lets the eye follow the
+ * panel being laid out instead of being handed a finished wall. The delay is capped so a
+ * panel of thirty cards still finishes in under a second.
+ */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
 .dashboard-widget {
+  animation: card-in 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation-delay: calc(min(var(--enter, 0), 14) * 40ms);
   grid-column: span 3;
   min-height: 190px;
   background: #fff;
@@ -4418,6 +4437,10 @@ input:focus-visible {
 .dashboard-widget.resizing .resize-handle {
   opacity: 1;
 }
+.dashboard-widget.resizing,
+.dashboard-widget.drop-target {
+  animation: none;
+}
 .dashboard-widget.resizing {
   outline: 2px dashed #12b8a6;
   outline-offset: -2px;
@@ -4814,6 +4837,10 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 @media (prefers-reduced-motion: reduce) {
   .heartbeat.online svg {
+    animation: none;
+  }
+  /* Someone who asked the system for less movement gets the panel already laid out. */
+  .dashboard-widget {
     animation: none;
   }
 }

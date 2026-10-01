@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useFirstDraw } from './firstDraw';
 import {
   Bar,
   BarChart,
@@ -252,6 +253,8 @@ function DonutChart({
   formatValue: (value: number) => string;
   tooltip: (value: unknown) => string;
 }) {
+  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
+  const drawing = useFirstDraw(slices.length > 0);
   // SVG ids for the disc's clip and blur; useId can contain characters url(#…) rejects.
   const svgId = `donut${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const [box, setBox] = useState<HTMLDivElement | null>(null);
@@ -334,7 +337,8 @@ function DonutChart({
                 startAngle={DONUT_START}
                 endAngle={DONUT_START - 360}
                 stroke="none"
-                isAnimationActive={false}
+                isAnimationActive={drawing}
+                animationDuration={700}
               >
                 {slices.map((slice) => (
                   <Cell key={slice.name} fill={slice.color} />
@@ -517,6 +521,8 @@ export function QuickChart({
     bars.reduce((longest, bar) => Math.max(longest, String(bar.label).length), 0),
   );
   const tickHeight = angledTicks ? Math.round(18 + longestLabel * 5.4) : 30;
+  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
+  const drawing = useFirstDraw(bars.length > 0);
   const empty = donut ? !products.length : !bars.some((bar) => bar.value > 0);
   const changeText =
     change == null ? '—' : `${change >= 0 ? '▲' : '▼'} ${format(Math.abs(change), 1)}%`;
@@ -639,7 +645,8 @@ export function QuickChart({
                   dataKey="value"
                   radius={horizontal ? [0, 6, 6, 0] : [6, 6, 0, 0]}
                   maxBarSize={horizontal ? 26 : 56}
-                  isAnimationActive={false}
+                  isAnimationActive={drawing}
+                animationDuration={700}
                 >
                   {bars.map((bar, index) => (
                     <Cell key={bar.label} fill={barColors[index]} />

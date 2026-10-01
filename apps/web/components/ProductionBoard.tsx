@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useFirstDraw } from './firstDraw';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
@@ -112,6 +113,8 @@ export function ProductionBoard({ id }: { id: string }) {
 
   const data = overview.data;
   // One stable colour per product across every chart on the board.
+  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
+  const drawing = useFirstDraw(Boolean(data));
   const colors = useMemo(() => {
     const names = new Set<string>();
     for (const metric of [data?.pallets, data?.tons, data?.blocks])
@@ -245,7 +248,8 @@ export function ProductionBoard({ id }: { id: string }) {
                     dataKey={product}
                     stackId="day"
                     fill={colors.get(product)}
-                    isAnimationActive={false}
+                    isAnimationActive={drawing}
+                animationDuration={700}
                   />
                 ))}
               </BarChart>
@@ -268,7 +272,8 @@ export function ProductionBoard({ id }: { id: string }) {
                     innerRadius="58%"
                     outerRadius="95%"
                     stroke="none"
-                    isAnimationActive={false}
+                    isAnimationActive={drawing}
+                animationDuration={700}
                   >
                     {(mix?.today.products ?? []).map((product) => (
                       <Cell key={product.product_code} fill={colors.get(product.product_code)} />
@@ -348,7 +353,8 @@ export function ProductionBoard({ id }: { id: string }) {
                   dataKey="value"
                   fill="#12b8a6"
                   radius={[6, 6, 0, 0]}
-                  isAnimationActive={false}
+                  isAnimationActive={drawing}
+                animationDuration={700}
                 />
               </BarChart>
             </ResponsiveContainer>
