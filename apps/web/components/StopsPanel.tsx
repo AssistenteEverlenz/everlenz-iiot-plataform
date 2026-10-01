@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { usePoll } from './data';
+import { ModalPortal } from './ModalPortal';
 
 /**
  * Why the production was not reached.
@@ -444,13 +445,15 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
         </>
 
       {opening && (
-        <StopsDetail
-          rows={stops.data.all}
-          focus={opening}
-          from={stops.data.from}
-          to={stops.data.to}
-          onClose={() => setOpening(null)}
-        />
+        <ModalPortal>
+          <StopsDetail
+            rows={stops.data.all}
+            focus={opening}
+            from={stops.data.from}
+            to={stops.data.to}
+            onClose={() => setOpening(null)}
+          />
+        </ModalPortal>
       )}
     </div>
   );

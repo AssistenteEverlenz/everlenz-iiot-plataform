@@ -1423,7 +1423,11 @@ input:focus-visible {
   }
 }
 .dashboard-widget {
-  animation: card-in 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  /* backwards, não both: enquanto uma animação de transform está "valendo" o elemento vira o
+     bloco de contenção dos filhos fixos, e um modal aberto de dentro do card ficaria preso
+     dentro dele. Com backwards ela vale só durante o atraso e o desenho; depois o card volta a
+     ser um elemento comum. */
+  animation: card-in 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
   animation-delay: calc(min(var(--enter, 0), 14) * 40ms);
   grid-column: span 3;
   min-height: 190px;
@@ -10001,7 +10005,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 /* The bar grows first and the value lands on it afterwards (the LabelList is only mounted
    once the growth is over -- Recharts will not draw it inside a bar that is animating). */
 .recharts-wrapper .bar-value {
-  animation: value-in 0.3s ease-out both;
+  animation: value-in 0.3s ease-out backwards;
 }
 @keyframes grow-right {
   from {
@@ -10023,15 +10027,15 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .stops-spent i,
 .stops-pareto-bar i {
   transform-origin: left center;
-  animation: grow-right 0.62s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: grow-right 0.62s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 .stops-day-bar i {
   transform-origin: center bottom;
-  animation: grow-up 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: grow-up 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 .stops-totals > *,
 .stops-planned > * {
-  animation: figure-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: figure-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 /* The reasons and the days arrive in order, left to right, so the eye follows the board being
    built instead of being handed it finished. Past the twelfth the delay stops growing. */
@@ -10065,7 +10069,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 /* The mark that sits at the cumulative share is a reading, not a bar: it does not grow. */
 .stops-pareto-bar u {
-  animation: value-in 0.3s ease-out 0.6s both;
+  animation: value-in 0.3s ease-out 0.6s backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .recharts-wrapper .bar-value,
@@ -10090,17 +10094,17 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 .gauge-needle {
   transform-box: view-box;
   transform-origin: 110px 108px;
-  animation: needle-sweep 0.82s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: needle-sweep 0.82s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 .gauge-reading,
 .gauge-limit {
-  animation: value-in 0.4s ease-out 0.34s both;
+  animation: value-in 0.4s ease-out 0.34s backwards;
 }
 /* The single large figure of a card, and the running/stopped lamp. */
 .hero-value,
 .machine-status,
 .wear-verdict > div {
-  animation: figure-in 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: figure-in 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 .wear-verdict > div:nth-child(2) {
   animation-delay: 70ms;
@@ -10123,7 +10127,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
    the same way the maintenance board builds its reasons. */
 .product-ranking-row i span {
   transform-origin: left center;
-  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 .product-ranking-row:nth-child(2) i span {
   animation-delay: 60ms;

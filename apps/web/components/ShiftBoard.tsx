@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { usePoll } from './data';
 import { DayCalendar, dayLabel } from './DayCalendar';
+import { ModalPortal } from './ModalPortal';
 import { TargetModal } from './TargetModal';
 import {
   ShiftDetailModal,
@@ -1338,22 +1339,26 @@ export function ShiftBoardView({
         </>
       )}
       {detail && (
-        <ShiftDetailModal
-          deviceId={deviceId}
-          mode={mode}
-          focus={detail}
-          calculated={calculatedSettings}
-          onClose={() => setDetail(null)}
-        />
+        <ModalPortal>
+          <ShiftDetailModal
+            deviceId={deviceId}
+            mode={mode}
+            focus={detail}
+            calculated={calculatedSettings}
+            onClose={() => setDetail(null)}
+          />
+        </ModalPortal>
       )}
       {editingTarget && (
-        <TargetModal
-          deviceId={deviceId}
-          onClose={(saved) => {
-            setEditingTarget(false);
-            if (saved) onChanged?.();
-          }}
-        />
+        <ModalPortal>
+          <TargetModal
+            deviceId={deviceId}
+            onClose={(saved) => {
+              setEditingTarget(false);
+              if (saved) onChanged?.();
+            }}
+          />
+        </ModalPortal>
       )}
     </div>
   );
