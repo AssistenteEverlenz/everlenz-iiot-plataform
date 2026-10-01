@@ -9982,3 +9982,163 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     grid-row: span calc(var(--rows) + 8);
   }
 }
+
+/* ---------- The build-up: what a card does on its first draw ----------
+ *
+ * The Recharts cards animate themselves through `useFirstDraw`. These are the ones drawn in
+ * plain CSS -- the number on top of a bar, and the whole maintenance board, whose bars are
+ * divs and not a chart -- so the build-up is written here. Every rule below runs on mount and
+ * never again: a panel refreshes every two seconds and React keeps the same elements, so the
+ * animation does not replay on a refresh. Opening a tab mounts its cards afresh, which is
+ * exactly when it should play again.
+ */
+@keyframes value-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+/* The bar grows first and the value lands on it afterwards (the LabelList is only mounted
+   once the growth is over -- Recharts will not draw it inside a bar that is animating). */
+.recharts-wrapper .bar-value {
+  animation: value-in 0.3s ease-out both;
+}
+@keyframes grow-right {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes grow-up {
+  from {
+    transform: scaleY(0);
+  }
+}
+@keyframes figure-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+/* Scale, not width: the width is the measurement itself and comes from the data. */
+.stops-spent i,
+.stops-pareto-bar i {
+  transform-origin: left center;
+  animation: grow-right 0.62s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.stops-day-bar i {
+  transform-origin: center bottom;
+  animation: grow-up 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.stops-totals > *,
+.stops-planned > * {
+  animation: figure-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+/* The reasons and the days arrive in order, left to right, so the eye follows the board being
+   built instead of being handed it finished. Past the twelfth the delay stops growing. */
+.stops-totals > *:nth-child(2),
+.stops-planned > *:nth-child(2),
+.stops-pareto > button:nth-child(2) i,
+.stops-day:nth-child(2) .stops-day-bar i {
+  animation-delay: 60ms;
+}
+.stops-totals > *:nth-child(3),
+.stops-pareto > button:nth-child(3) i,
+.stops-day:nth-child(3) .stops-day-bar i {
+  animation-delay: 120ms;
+}
+.stops-totals > *:nth-child(4),
+.stops-pareto > button:nth-child(4) i,
+.stops-day:nth-child(4) .stops-day-bar i {
+  animation-delay: 180ms;
+}
+.stops-pareto > button:nth-child(n + 5) i,
+.stops-day:nth-child(n + 5) .stops-day-bar i {
+  animation-delay: 240ms;
+}
+.stops-pareto > button:nth-child(n + 8) i,
+.stops-day:nth-child(n + 8) .stops-day-bar i {
+  animation-delay: 300ms;
+}
+.stops-pareto > button:nth-child(n + 12) i,
+.stops-day:nth-child(n + 12) .stops-day-bar i {
+  animation-delay: 360ms;
+}
+/* The mark that sits at the cumulative share is a reading, not a bar: it does not grow. */
+.stops-pareto-bar u {
+  animation: value-in 0.3s ease-out 0.6s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .recharts-wrapper .bar-value,
+  .stops-spent i,
+  .stops-pareto-bar i,
+  .stops-pareto-bar u,
+  .stops-day-bar i,
+  .stops-totals > *,
+  .stops-planned > * {
+    animation: none;
+  }
+}
+
+/* The needle sweeps from the minimum to the reading, which is how a real dial answers: it
+   shows where the value sits on the scale, not just the number. `--sweep` is the path it has
+   to make, written by the card because only it knows the reading. */
+@keyframes needle-sweep {
+  from {
+    transform: rotate(var(--sweep, 0deg));
+  }
+}
+.gauge-needle {
+  transform-box: view-box;
+  transform-origin: 110px 108px;
+  animation: needle-sweep 0.82s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.gauge-reading,
+.gauge-limit {
+  animation: value-in 0.4s ease-out 0.34s both;
+}
+/* The single large figure of a card, and the running/stopped lamp. */
+.hero-value,
+.machine-status,
+.wear-verdict > div {
+  animation: figure-in 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.wear-verdict > div:nth-child(2) {
+  animation-delay: 70ms;
+}
+.wear-verdict > div:nth-child(3) {
+  animation-delay: 140ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gauge-needle,
+  .gauge-reading,
+  .gauge-limit,
+  .hero-value,
+  .machine-status,
+  .wear-verdict > div {
+    animation: none;
+  }
+}
+
+/* The ranking inside the production card: each product's share grows from the left, in order,
+   the same way the maintenance board builds its reasons. */
+.product-ranking-row i span {
+  transform-origin: left center;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.product-ranking-row:nth-child(2) i span {
+  animation-delay: 60ms;
+}
+.product-ranking-row:nth-child(3) i span {
+  animation-delay: 120ms;
+}
+.product-ranking-row:nth-child(n + 4) i span {
+  animation-delay: 180ms;
+}
+.product-ranking-row:nth-child(n + 7) i span {
+  animation-delay: 240ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .product-ranking-row i span {
+    animation: none;
+  }
+}

@@ -817,7 +817,12 @@ function Widget({
                   );
                 })}
               {widget.config.gaugeNeedle !== false && numeric != null && (
-                <g className="gauge-needle">
+                // O ponteiro varre do mínimo até a leitura ao abrir o cartão; a CSS precisa
+                // saber de quanto foi o caminho, que só o componente conhece.
+                <g
+                  className="gauge-needle"
+                  style={{ '--sweep': `${(-progress * 1.8).toFixed(2)}deg` } as React.CSSProperties}
+                >
                   <line x1="110" y1="108" x2={needleTip.x} y2={needleTip.y} />
                   <circle cx="110" cy="108" r="5" />
                 </g>
@@ -2918,6 +2923,8 @@ export function ProductionInsight({
   const color = widget.config.color ?? '#12b8a6';
   const hiddenProducts = statistics?.hidden_products ?? [];
   const [showHidden, setShowHidden] = useState(false);
+  // A barra cresce uma vez; o rótulo no topo chega quando ela para (ver .bar-value).
+  const drawing = useFirstDraw((statistics?.daily_series?.length ?? 0) > 0);
   return (
     <div className="production-insight">
       {periodChips}
@@ -3004,13 +3011,15 @@ export function ProductionInsight({
                   widget.title,
                 ]}
               />
-              {/* Animar a barra apaga o rótulo que ela carrega; o rótulo vem primeiro. */}
               <Bar
                 dataKey="value"
                 fill={color}
                 radius={[5, 5, 0, 0]}
                 maxBarSize={44}
-                isAnimationActive={false}
+                // Ver QuickChart: a duração é que zera, não a animação.
+                isAnimationActive
+                animationDuration={drawing ? 700 : 0}
+                animationEasing="ease-out"
               >
                 {/* Past two weeks of columns the labels would only crowd the chart. */}
                 {(statistics?.daily_series?.length ?? 0) <= 14 && (

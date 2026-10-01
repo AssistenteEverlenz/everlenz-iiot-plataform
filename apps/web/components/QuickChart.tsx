@@ -146,6 +146,7 @@ export function valueLabel(
       const inside = width > textWidth;
       return (
         <text
+          className="bar-value"
           x={inside ? x + width - 7 : x + width + 7}
           y={y + height / 2}
           textAnchor={inside ? 'end' : 'start'}
@@ -162,6 +163,7 @@ export function valueLabel(
     if (height > 24 && width > textWidth - 10)
       return (
         <text
+          className="bar-value"
           x={center}
           y={y + 13}
           textAnchor="middle"
@@ -174,7 +176,7 @@ export function valueLabel(
         </text>
       );
     return (
-      <g>
+      <g className="bar-value">
         <line x1={center} x2={center} y1={y - 3} y2={y - 9} stroke="#9fb3b8" strokeWidth={1} />
         <text
           x={center}
@@ -525,6 +527,9 @@ export function QuickChart({
   const changeText =
     change == null ? '—' : `${change >= 0 ? '▲' : '▼'} ${format(Math.abs(change), 1)}%`;
   const tooltip = (value: unknown) => `${amount(Number(value))} ${unit}`;
+  // O Recharts esconde o LabelList enquanto a barra cresce e o devolve ao terminar, então o
+  // número chega depois da barra, com um fade curto da CSS (.bar-value).
+  const drawing = useFirstDraw(bars.length > 0);
 
   return (
     <div className="quick-chart">
@@ -639,14 +644,16 @@ export function QuickChart({
                   formatter={(value) => [tooltip(value), widget.title]}
                   cursor={{ fill: 'rgba(18, 184, 166, 0.06)' }}
                 />
-                {/* O valor no topo da barra é a razão de ela existir, e o Recharts não desenha
-                    um LabelList dentro de uma barra que anima. Entre o número e o efeito,
-                    fica o número. */}
                 <Bar
                   dataKey="value"
                   radius={horizontal ? [0, 6, 6, 0] : [6, 6, 0, 0]}
                   maxBarSize={horizontal ? 26 : 56}
-                  isAnimationActive={false}
+                  // A animação fica sempre ligada e é a duração que zera depois do primeiro
+                  // desenho: desligá-la no meio do caminho cancela o desenho, e aí o Recharts
+                  // nunca avisa que terminou -- é esse aviso que faz o número no topo aparecer.
+                  isAnimationActive
+                  animationDuration={drawing ? 700 : 0}
+                  animationEasing="ease-out"
                 >
                   {bars.map((bar, index) => (
                     <Cell key={bar.label} fill={barColors[index]} />
