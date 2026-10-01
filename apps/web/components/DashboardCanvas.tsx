@@ -3006,13 +3006,13 @@ export function ProductionInsight({
                   widget.title,
                 ]}
               />
+              {/* Animar a barra apaga o rótulo que ela carrega; o rótulo vem primeiro. */}
               <Bar
                 dataKey="value"
                 fill={color}
                 radius={[5, 5, 0, 0]}
                 maxBarSize={44}
-                isAnimationActive={drawing}
-                animationDuration={700}
+                isAnimationActive={false}
               >
                 {/* Past two weeks of columns the labels would only crowd the chart. */}
                 {(statistics?.daily_series?.length ?? 0) <= 14 && (

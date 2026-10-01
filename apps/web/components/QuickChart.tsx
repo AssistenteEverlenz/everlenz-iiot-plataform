@@ -641,12 +641,14 @@ export function QuickChart({
                   formatter={(value) => [tooltip(value), widget.title]}
                   cursor={{ fill: 'rgba(18, 184, 166, 0.06)' }}
                 />
+                {/* O valor no topo da barra é a razão de ela existir, e o Recharts não desenha
+                    um LabelList dentro de uma barra que anima. Entre o número e o efeito,
+                    fica o número. */}
                 <Bar
                   dataKey="value"
                   radius={horizontal ? [0, 6, 6, 0] : [6, 6, 0, 0]}
                   maxBarSize={horizontal ? 26 : 56}
-                  isAnimationActive={drawing}
-                animationDuration={700}
+                  isAnimationActive={false}
                 >
                   {bars.map((bar, index) => (
                     <Cell key={bar.label} fill={barColors[index]} />
