@@ -521,8 +521,6 @@ export function QuickChart({
     bars.reduce((longest, bar) => Math.max(longest, String(bar.label).length), 0),
   );
   const tickHeight = angledTicks ? Math.round(18 + longestLabel * 5.4) : 30;
-  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
-  const drawing = useFirstDraw(bars.length > 0);
   const empty = donut ? !products.length : !bars.some((bar) => bar.value > 0);
   const changeText =
     change == null ? '—' : `${change >= 0 ? '▲' : '▼'} ${format(Math.abs(change), 1)}%`;

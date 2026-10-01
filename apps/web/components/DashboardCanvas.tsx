@@ -2915,8 +2915,6 @@ export function ProductionInsight({
   onHideProduct?: (productCode: string) => void;
   onRestoreProduct?: (productCode: string) => void;
 }) {
-  // Desenha-se uma vez ao montar; as atualizações seguintes entram sem repintar.
-  const drawing = useFirstDraw(Boolean(statistics));
   const color = widget.config.color ?? '#12b8a6';
   const hiddenProducts = statistics?.hidden_products ?? [];
   const [showHidden, setShowHidden] = useState(false);
