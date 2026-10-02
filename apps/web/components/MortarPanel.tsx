@@ -85,17 +85,20 @@ export function MortarPanel({
         ) : view === 'bagging' ? (
           <Bagging
             data={data}
+            deviceId={deviceId}
+            boardDate={range.from === range.to ? range.to : null}
             live={range.to >= windowOf('today').to}
             onLink={master ? () => setModal('products') : undefined}
           />
         ) : view === 'mortar_output' ? (
           <Output
             data={data}
+            deviceId={deviceId}
             displayKey={'mortar-output-display:' + deviceId}
             onLink={master ? () => setModal('products') : undefined}
           />
         ) : view === 'mortar_materials' ? (
-          <Materials data={data} />
+          <Materials data={data} deviceId={deviceId} />
         ) : (
           <Yield data={data} onLink={master ? () => setModal('products') : undefined} />
         )}
@@ -115,7 +118,7 @@ export function MortarPanel({
 }
 
 type Catalog = {
-  products: Array<{ id: string; name: string; nominal_kg: number }>;
+  products: Array<{ id: string; name: string; nominal_kg: number; standard_rate: number | null }>;
   recipes: Array<{ recipe: string; productId: string | null; bags: number; lastAt: string | null }>;
 };
 
@@ -124,7 +127,21 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
   const catalog = usePoll<Catalog>('/mortar/products', 600000);
   const [name, setName] = useState('');
   const [kg, setKg] = useState('');
-  const [editing, setEditing] = useState<{ id: string; name: string; kg: string } | null>(null);
+  const [rate, setRate] = useState('');
+  const [editing, setEditing] = useState<{
+    id: string;
+    name: string;
+    kg: string;
+    rate: string;
+  } | null>(null);
+  // What a ton of each material costs: the labels come from the mixer settings and the prices
+  // already saved, so a material is never typed twice under two names.
+  const prices = usePoll<{ prices: Array<{ label: string; pricePerTon: number }> }>(
+    '/mortar/prices',
+    600000,
+  );
+  const [priceForm, setPriceForm] = useState<Record<string, string> | null>(null);
+  const [newMaterial, setNewMaterial] = useState('');
   const [error, setError] = useState('');
   const run = async (action: () => Promise<unknown>) => {
     setError('');
@@ -136,6 +153,15 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
     }
   };
   const number = (text: string) => Number(text.replace(',', '.'));
+  const optional = (text: string) => (text.trim() ? number(text) : null);
+  const priceRows =
+    priceForm ??
+    Object.fromEntries(
+      (prices.data?.prices ?? []).map((item) => [
+        item.label,
+        String(item.pricePerTon).replace('.', ','),
+      ]),
+    );
   const products = catalog.data?.products ?? [];
   const recipes = catalog.data?.recipes ?? [];
   const pending = recipes.filter((row) => !row.productId).length;
@@ -167,9 +193,11 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
               await mutate('/mortar/products', 'POST', {
                 name: name.trim(),
                 nominalKg: number(kg),
+                standardRate: optional(rate),
               });
               setName('');
               setKg('');
+              setRate('');
             });
           }}
         >
@@ -183,6 +211,13 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
             inputMode="decimal"
             value={kg}
             onChange={(e) => setKg(e.target.value)}
+          />
+          <input
+            placeholder="Ritmo padrão (sacos/h)"
+            title="Quantos sacos por hora um bico bem regulado faz deste produto. Com ele o quadro mostra o desempenho."
+            inputMode="decimal"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
           />
           <button type="submit" className="primary">
             Adicionar
@@ -206,6 +241,14 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
                       onChange={(e) => setEditing({ ...editing, kg: e.target.value })}
                     />
                   </td>
+                  <td>
+                    <input
+                      inputMode="decimal"
+                      placeholder="sacos/h"
+                      value={editing.rate}
+                      onChange={(e) => setEditing({ ...editing, rate: e.target.value })}
+                    />
+                  </td>
                   <td className="n">
                     <button
                       type="button"
@@ -214,6 +257,7 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
                           await mutate(`/mortar/products/${product.id}`, 'PATCH', {
                             name: editing.name.trim(),
                             nominalKg: number(editing.kg),
+                            standardRate: optional(editing.rate),
                           });
                           setEditing(null);
                         })
@@ -228,7 +272,12 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
                   <td>
                     <b>{product.name}</b>
                   </td>
-                  <td>{product.nominal_kg.toLocaleString('pt-BR')} kg</td>
+                  <td>saco de {product.nominal_kg.toLocaleString('pt-BR')} kg</td>
+                  <td className="muted">
+                    {product.standard_rate
+                      ? `ritmo padrão ${product.standard_rate.toLocaleString('pt-BR')} sacos/h`
+                      : 'sem ritmo padrão'}
+                  </td>
                   <td className="n">
                     <button
                       type="button"
@@ -237,6 +286,10 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
                           id: product.id,
                           name: product.name,
                           kg: String(product.nominal_kg).replace('.', ','),
+                          rate:
+                            product.standard_rate == null
+                              ? ''
+                              : String(product.standard_rate).replace('.', ','),
                         })
                       }
                     >
@@ -266,6 +319,62 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
             )}
           </tbody>
         </table>
+
+        <div className="stops-title">
+          Preço dos insumos
+          <small> · R$ por tonelada; com eles o card de matéria-prima mostra o custo</small>
+        </div>
+        <div className="mortar-prices">
+          {Object.entries(priceRows).map(([label, value]) => (
+            <label key={label}>
+              {label}
+              <span>
+                R$
+                <input
+                  inputMode="decimal"
+                  value={value}
+                  onChange={(e) => setPriceForm({ ...priceRows, [label]: e.target.value })}
+                />
+                /t
+              </span>
+            </label>
+          ))}
+          <form
+            className="mortar-form-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!newMaterial.trim()) return;
+              setPriceForm({ ...priceRows, [newMaterial.trim()]: '' });
+              setNewMaterial('');
+            }}
+          >
+            <input
+              placeholder="Material (o mesmo nome da configuração da mistura)"
+              value={newMaterial}
+              onChange={(e) => setNewMaterial(e.target.value)}
+            />
+            <button type="submit">Adicionar material</button>
+          </form>
+          {priceForm && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() =>
+                void run(async () => {
+                  await mutate('/mortar/prices', 'PUT', {
+                    prices: Object.entries(priceForm)
+                      .filter(([, value]) => value.trim() !== '')
+                      .map(([label, value]) => ({ label, pricePerTon: number(value) })),
+                  });
+                  setPriceForm(null);
+                  await prices.refresh();
+                })
+              }
+            >
+              Salvar preços
+            </button>
+          )}
+        </div>
 
         <div className="stops-title">
           Receitas das ensacadeiras

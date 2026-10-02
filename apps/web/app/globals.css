@@ -10961,3 +10961,167 @@ button.mortar-figure:hover > u {
 .utilization-builder > small { color: #71868d; font-size: 11px; }
 .utilization-preview span { overflow-wrap: anywhere; }
 .shift-gauge-caption { overflow-wrap: anywhere; }
+
+/* Mortar shift board: the ceramic board's reading of a shift, for the bagging line. */
+.mortar-shift {
+  display: grid;
+  gap: 12px;
+}
+.mortar-shift-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mortar-shift-head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+.mortar-shift-head b {
+  color: #0f2a33;
+  font-size: 18px;
+  font-weight: 600;
+}
+.mortar-shift-head small {
+  color: #7b9097;
+  font-size: 12px;
+}
+.mortar-shift-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mortar-shift-caption {
+  align-self: center;
+  padding: 0 4px 0 2px;
+  color: #7b9097;
+  font-size: 11px;
+}
+.mortar-shift-figures .hero {
+  border-color: var(--brand-accent, #12b8a6);
+}
+.mortar-shift-figures .hero > b {
+  font-size: 30px;
+}
+.mortar-pencil {
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #7b9097;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mortar-pencil:hover {
+  color: var(--brand-accent, #12b8a6);
+}
+.mortar-banner {
+  padding: 11px 14px;
+  border: 1px solid #cfe9dc;
+  border-radius: 10px;
+  background: #eef9f3;
+  color: #1d5b3d;
+  font-size: 13.5px;
+}
+.mortar-banner.warn {
+  border-color: #f4d9a6;
+  background: #fff8ec;
+  color: #7a5414;
+}
+.mortar-banner.bad {
+  border-color: #f2c4b8;
+  background: #fdf1ee;
+  color: #8a2d16;
+}
+.mortar-curve {
+  width: 100%;
+  height: 260px;
+  min-width: 0;
+}
+.stops-spent-legend i.dash {
+  width: 14px;
+  height: 0;
+  border-top: 2px dashed;
+  border-radius: 0;
+  background: transparent !important;
+}
+.mortar-target-editor {
+  display: grid;
+  gap: 8px;
+  max-width: 360px;
+  padding: 12px 14px;
+  border: 1px solid var(--brand-accent, #12b8a6);
+  border-radius: 12px;
+  background: #fff;
+}
+.mortar-target-editor > div:last-child {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.mortar-target-editor small {
+  color: #7b9097;
+}
+.mortar-spout-stops {
+  color: #5d747b;
+  font-size: 11px;
+}
+.mortar-spout-stops b {
+  color: #24505a;
+  font-weight: 600;
+}
+
+/* Every row that opens something says so when the mouse is over it. */
+.mortar-products tbody tr,
+.mortar-recipes tbody tr,
+.mortar-lots tbody tr {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.mortar-products tbody tr:hover td,
+.mortar-recipes tbody tr:hover td,
+.mortar-lots tbody tr:hover td {
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 7%, #fff);
+}
+.mortar-products tbody tr:hover td:first-child,
+.mortar-recipes tbody tr:hover td:first-child,
+.mortar-lots tbody tr:hover td:first-child {
+  box-shadow: inset 3px 0 var(--brand-accent, #12b8a6);
+}
+.mortar-donut-legend button:hover {
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 7%, #fff);
+}
+.mortar-prices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+.mortar-prices > label {
+  display: grid;
+  gap: 4px;
+  color: #5d747b;
+  font-size: 12px;
+}
+.mortar-prices > label span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mortar-prices > label input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+.mortar-prices > form,
+.mortar-prices > button {
+  grid-column: 1 / -1;
+}
+.mortar-prices > button {
+  justify-self: end;
+}
+.mortar-lot {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}

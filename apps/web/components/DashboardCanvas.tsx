@@ -32,7 +32,14 @@ import { FormulaInput, type VariableOption } from './FormulaInput';
 import { VariablesModal } from './VariablesModal';
 import type { ShiftBoardResponse } from './ShiftBoard';
 import { evaluateFormula, formulaError, modernizeFormula } from './formula';
-import { hmiVariables, knownVariables, panelVariables, variableOptionsFor } from './variables';
+import {
+  hmiVariables,
+  knownVariables,
+  mortarVariables,
+  panelVariables,
+  variableOptionsFor,
+  type MortarSource,
+} from './variables';
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
@@ -186,9 +193,9 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   stops: 10,
   wear: 12,
   // Mortar plants (migration 037).
-  bagging: 18,
+  bagging: 26,
   mortar_output: 10,
-  mortar_materials: 12,
+  mortar_materials: 19,
   mortar_yield: 9,
 };
 /**
@@ -1301,8 +1308,18 @@ export function DashboardCanvas({ id }: { id: string }) {
     (signal) => signal.id === signalId || signal.tag_id === signalId,
   );
   // The running shift, for the platform's own variables in a formula.
+  // A mortar plant reads its own board (argamassa.*), never the ceramic one (painel.*).
+  const platform = device.data?.site_segment === 'argamassa' ? 'argamassa' : 'painel';
   const shift = usePoll<ShiftBoardResponse>(
-    deviceId ? `/devices/${deviceId}/shift-board?mode=shift` : null,
+    deviceId && device.data && platform === 'painel'
+      ? `/devices/${deviceId}/shift-board?mode=shift`
+      : null,
+    60000,
+  );
+  const mortarShift = usePoll<MortarSource>(
+    deviceId && platform === 'argamassa'
+      ? `/devices/${deviceId}/mortar/board?mode=shift&compare=none`
+      : null,
     60000,
   );
   // Latest reading of each variable by key: what a card's formula is evaluated against.
@@ -1310,11 +1327,19 @@ export function DashboardCanvas({ id }: { id: string }) {
     const map: Record<string, number> = {};
     for (const sample of latest.data ?? [])
       if (typeof sample.value_number === 'number') map[sample.key] = sample.value_number;
-    return { ...hmiVariables(map), ...panelVariables(shift.data?.board) };
-  }, [latest.data, shift.data]);
+    return {
+      ...hmiVariables(map),
+      ...(platform === 'argamassa'
+        ? mortarVariables(mortarShift.data)
+        : panelVariables(shift.data?.board)),
+    };
+  }, [latest.data, shift.data, mortarShift.data, platform]);
 
   // What the suggestion list under the formula box offers.
-  const variableOptions = useMemo<VariableOption[]>(() => variableOptionsFor(readings), [readings]);
+  const variableOptions = useMemo<VariableOption[]>(
+    () => variableOptionsFor(readings, {}, platform),
+    [readings, platform],
+  );
   const byTag = useMemo(
     () => new Map((latest.data ?? []).map((sample) => [sample.tag_id, sample])),
     [latest.data],
@@ -2084,9 +2109,9 @@ export function DashboardCanvas({ id }: { id: string }) {
                           />
                         </div>
                         {mainFormula.trim() &&
-                          (formulaError(mainFormula, knownVariables(readings)) ? (
+                          (formulaError(mainFormula, knownVariables(readings, {}, platform)) ? (
                             <small className="formula-error">
-                              {formulaError(mainFormula, knownVariables(readings))}
+                              {formulaError(mainFormula, knownVariables(readings, {}, platform))}
                             </small>
                           ) : (
                             <small className="formula-preview">
@@ -2135,7 +2160,7 @@ export function DashboardCanvas({ id }: { id: string }) {
                     </span>
                     {calculatedList.map((field, index) => {
                       const problem = field.formula.trim()
-                        ? formulaError(field.formula, knownVariables(readings))
+                        ? formulaError(field.formula, knownVariables(readings, {}, platform))
                         : null;
                       const now = field.formula.trim()
                         ? evaluateFormula(field.formula, readings)
@@ -2713,7 +2738,10 @@ export function DashboardCanvas({ id }: { id: string }) {
                       : 'Dados do card'
                 }
                 open
-                when={isMortarView(editingWidget.widget_type)}
+                when={
+                  editingWidget.widget_type === 'bagging' ||
+                  editingWidget.widget_type === 'mortar_materials'
+                }
               >
                 <div className="form-grid">
                   {isMortarView(editingWidget.widget_type) && (

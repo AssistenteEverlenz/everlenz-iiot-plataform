@@ -11,6 +11,7 @@
  */
 import type { Database } from '../packages/database/src/index.js';
 import { createApp } from '../apps/api/src/app.js';
+import { lotNumberOf } from '../packages/shared/src/index.js';
 
 export const DEMO_REFERENCE = 'ARG-DEMO';
 const BUCKET_MS = 300_000;
@@ -160,6 +161,8 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
         await call<{ id: string }>('POST', '/api/mortar/products', {
           name: product.name,
           nominalKg: product.nominal,
+          // What a well-tuned spout does on it: heavier bags take longer.
+          standardRate: product.nominal >= 40 ? 190 : product.nominal >= 25 ? 240 : 270,
         })
       ).id;
     for (const spout of SPOUTS)
@@ -176,6 +179,10 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
   const today = Math.floor((now - offset) / 86_400_000) * 86_400_000 + offset;
   const buckets: unknown[][] = [];
   const batches: unknown[][] = [];
+  const stops: unknown[][] = [];
+  // A lot is a run of batches of one recipe: it changes with the recipe or after the run the
+  // operator asked for (3 to 8 batches).
+  let lot = { number: '', recipe: '', left: 0 };
   for (let day = days - 1; day >= 0; day -= 1) {
     const midnight = today - day * 86_400_000;
     const weekday = new Date(midnight - offset).getUTCDay();
@@ -221,6 +228,17 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
         // Mostly filling, with the odd stretch waiting for bags, pallets or the silo.
         const stopped = rand() < 0.12 ? 120 + rand() * 180 : rand() * 25;
         const running = 300 - stopped;
+        if (stopped >= 120)
+          stops.push([
+            tenantId,
+            deviceId,
+            spout.id,
+            'idle',
+            new Date(at + running * 1000),
+            new Date(at + 300_000),
+            stopped,
+            recipe,
+          ]);
         // A heavier bag takes longer to fill: 40 kg runs at about 70 % of the pace of 20 kg.
         const pace = spoutPlan.pace * Math.sqrt(20 / product.nominal);
         const bags = Math.round((running / 60) * pace * (0.92 + rand() * 0.16));
@@ -242,6 +260,14 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
       mixCarry += bucketKg * 1.015;
       while (mixCarry >= BATCH_KG) {
         mixCarry -= BATCH_KG;
+        const finished = at + Math.floor(rand() * BUCKET_MS);
+        if (lot.recipe !== mixRecipe || lot.left <= 0)
+          lot = {
+            number: lotNumberOf(finished),
+            recipe: mixRecipe,
+            left: 3 + Math.floor(rand() * 6),
+          };
+        lot.left -= 1;
         const [sand, cement, complement] = MIX[mixRecipe];
         const materials = [
           { label: 'Areia', kg: BATCH_KG * sand },
@@ -251,11 +277,12 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
         batches.push([
           tenantId,
           deviceId,
-          new Date(at + Math.floor(rand() * BUCKET_MS)),
+          new Date(finished),
           mixRecipe,
           JSON.stringify(materials),
           BATCH_KG,
           Math.round(BATCH_KG * (1 + (rand() - 0.4) * 0.012) * 10) / 10,
+          lot.number,
         ]);
       }
     }
@@ -278,11 +305,27 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
     9,
   );
   await insert(
-    `INSERT INTO mix_batches(tenant_id,device_id,finished_at,recipe,materials,total_kg,scale_kg)
+    `INSERT INTO mix_batches(tenant_id,device_id,finished_at,recipe,materials,total_kg,scale_kg,lot_number)
      VALUES %VALUES%`,
-    batches.map((row) => [...row.slice(0, 4), row[4], row[5], row[6]]),
-    7,
+    batches,
+    8,
   );
+  await insert(
+    `INSERT INTO bagging_stops(tenant_id,device_id,spout_id,state,started_at,ended_at,seconds,recipe)
+     VALUES %VALUES%`,
+    stops,
+    8,
+  );
+
+  // A target of 6.000 bags per shift, and what a ton of each material costs.
+  await call('PATCH', `/api/devices/${deviceId}/mortar/target`, { metric: 'bags', perShift: 6000 });
+  await call('PUT', '/api/mortar/prices', {
+    prices: [
+      { label: 'Areia', pricePerTon: 95 },
+      { label: 'Cimento', pricePerTon: 720 },
+      { label: 'Cal / complemento', pricePerTon: 650 },
+    ],
+  });
 
   // What each spout is doing now: the left one filling, the centre waiting, the right one off.
   for (const [index, spout] of spouts.entries())

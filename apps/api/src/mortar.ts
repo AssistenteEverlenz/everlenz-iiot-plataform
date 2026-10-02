@@ -64,101 +64,134 @@ export function registerMortarRoutes(
       )
     ).rows[0];
 
-    const [spouts, bySpout, series, links, batches, materials, cycles, mixSeries] =
-      await Promise.all([
-        db.query<{
-          id: string;
-          position: number;
-          name: string;
-          last_at: Date | null;
-          last_increment_at: Date | null;
-          enabled: boolean | null;
-          recipe: string | null;
-        }>(
-          `SELECT s.id,s.position,s.name,r.last_at,r.last_increment_at,r.enabled,r.recipe
+    const [
+      spouts,
+      bySpout,
+      series,
+      links,
+      batches,
+      materials,
+      cycles,
+      mixSeries,
+      stopRows,
+      prices,
+    ] = await Promise.all([
+      db.query<{
+        id: string;
+        position: number;
+        name: string;
+        last_at: Date | null;
+        last_increment_at: Date | null;
+        enabled: boolean | null;
+        recipe: string | null;
+      }>(
+        `SELECT s.id,s.position,s.name,r.last_at,r.last_increment_at,r.enabled,r.recipe
          FROM bagging_spouts s LEFT JOIN bagging_runtime r ON r.spout_id=s.id
          WHERE s.tenant_id=$1 AND s.device_id=$2 ORDER BY s.position`,
-          [tenantId, id],
-        ),
-        db.query<{
-          spout_id: string;
-          recipe: string;
-          bags: number;
-          running_s: number;
-          idle_s: number;
-          off_s: number;
-        }>(
-          `SELECT spout_id,recipe,sum(bags)::float bags,sum(running_s)::float running_s,
+        [tenantId, id],
+      ),
+      db.query<{
+        spout_id: string;
+        recipe: string;
+        bags: number;
+        running_s: number;
+        idle_s: number;
+        off_s: number;
+      }>(
+        `SELECT spout_id,recipe,sum(bags)::float bags,sum(running_s)::float running_s,
                 sum(idle_s)::float idle_s,sum(off_s)::float off_s
          FROM bagging_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4
          GROUP BY spout_id,recipe`,
-          [tenantId, id, start, end],
-        ),
-        db.query<{
-          slot: string;
-          spout_id: string;
-          recipe: string;
-          bags: number;
-          running_s: number;
-          idle_s: number;
-          off_s: number;
-        }>(
-          `SELECT ${hourly ? PLANT_QUARTER('bucket') : slot('bucket')} slot,spout_id,recipe,sum(bags)::float bags,
+        [tenantId, id, start, end],
+      ),
+      db.query<{
+        slot: string;
+        spout_id: string;
+        recipe: string;
+        bags: number;
+        running_s: number;
+        idle_s: number;
+        off_s: number;
+      }>(
+        `SELECT ${hourly ? PLANT_QUARTER('bucket') : slot('bucket')} slot,spout_id,recipe,sum(bags)::float bags,
                 sum(running_s)::float running_s,sum(idle_s)::float idle_s,sum(off_s)::float off_s
          FROM bagging_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4
          GROUP BY 1,2,3 ORDER BY 1`,
-          [tenantId, id, start, end],
-        ),
-        db.query<{ recipe: string; product_id: string; name: string; nominal_kg: number }>(
-          `SELECT l.recipe,p.id product_id,p.name,p.nominal_kg::float nominal_kg
+        [tenantId, id, start, end],
+      ),
+      db.query<{
+        recipe: string;
+        product_id: string;
+        name: string;
+        nominal_kg: number;
+        standard_rate: number | null;
+      }>(
+        `SELECT l.recipe,p.id product_id,p.name,p.nominal_kg::float nominal_kg,p.standard_rate::float standard_rate
          FROM mortar_recipe_links l JOIN mortar_products p ON p.id=l.product_id
          WHERE l.tenant_id=$1`,
-          [tenantId],
-        ),
-        db.query<{
-          recipe: string;
-          batches: number;
-          total_kg: number;
-          scale_kg: number | null;
-          scale_batches: number;
-          scale_theoretical: number;
-          last_at: Date;
-        }>(
-          `SELECT recipe,sum(batches)::int batches,sum(total_kg)::float total_kg,
+        [tenantId],
+      ),
+      db.query<{
+        recipe: string;
+        batches: number;
+        total_kg: number;
+        scale_kg: number | null;
+        scale_batches: number;
+        scale_theoretical: number;
+        last_at: Date;
+      }>(
+        `SELECT recipe,sum(batches)::int batches,sum(total_kg)::float total_kg,
                 sum(scale_kg)::float scale_kg,
                 coalesce(sum(batches) FILTER (WHERE scale_kg IS NOT NULL),0)::int scale_batches,
                 coalesce(sum(total_kg) FILTER (WHERE scale_kg IS NOT NULL),0)::float scale_theoretical,
                 max(finished_at) last_at
          FROM mix_batches WHERE tenant_id=$1 AND device_id=$2 AND finished_at>=$3 AND finished_at<$4
          GROUP BY recipe ORDER BY sum(total_kg) DESC`,
-          [tenantId, id, start, end],
-        ),
-        db.query<{ recipe: string; label: string; kg: number }>(
-          `SELECT b.recipe,m->>'label' label,sum((m->>'kg')::float)::float kg
+        [tenantId, id, start, end],
+      ),
+      db.query<{ recipe: string; label: string; kg: number }>(
+        `SELECT b.recipe,m->>'label' label,sum((m->>'kg')::float)::float kg
          FROM mix_batches b CROSS JOIN LATERAL jsonb_array_elements(b.materials) m
          WHERE b.tenant_id=$1 AND b.device_id=$2 AND b.finished_at>=$3 AND b.finished_at<$4
          GROUP BY 1,2`,
-          [tenantId, id, start, end],
-        ),
-        // The pace of the mixer: minutes between one batch and the next on the same day. A gap of
-        // more than 40 minutes is a stop, not a cycle, and is left out.
-        db.query<{ cycles: number; minutes: number | null }>(
-          `SELECT count(*)::int cycles,avg(gap)::float minutes FROM (
+        [tenantId, id, start, end],
+      ),
+      // The pace of the mixer: minutes between one batch and the next on the same day. A gap of
+      // more than 40 minutes is a stop, not a cycle, and is left out.
+      db.query<{ cycles: number; minutes: number | null }>(
+        `SELECT count(*)::int cycles,avg(gap)::float minutes FROM (
            SELECT extract(epoch FROM finished_at - lag(finished_at) OVER (
              PARTITION BY ${PLANT_DAY('finished_at')} ORDER BY finished_at))/60 gap
            FROM mix_batches WHERE tenant_id=$1 AND device_id=$2 AND finished_at>=$3 AND finished_at<$4
          ) g WHERE gap IS NOT NULL AND gap>0 AND gap<=40`,
-          [tenantId, id, start, end],
-        ),
-        db.query<{ slot: string; label: string; kg: number; batches: number }>(
-          `SELECT ${slot('b.finished_at')} slot,m->>'label' label,sum((m->>'kg')::float)::float kg,
+        [tenantId, id, start, end],
+      ),
+      db.query<{ slot: string; label: string; kg: number; batches: number }>(
+        `SELECT ${slot('b.finished_at')} slot,m->>'label' label,sum((m->>'kg')::float)::float kg,
                 sum(b.batches)::int batches
          FROM mix_batches b CROSS JOIN LATERAL jsonb_array_elements(b.materials) m
          WHERE b.tenant_id=$1 AND b.device_id=$2 AND b.finished_at>=$3 AND b.finished_at<$4
          GROUP BY 1,2 ORDER BY 1`,
+        [tenantId, id, start, end],
+      ),
+      // Stops of each spout in the period (migration 040): how many times, not only how long.
+      db
+        .query<{ spout_id: string; stops: number; seconds: number; longest: number }>(
+          `SELECT spout_id,count(*)::int stops,sum(seconds)::float seconds,max(seconds)::float longest
+             FROM bagging_stops WHERE tenant_id=$1 AND device_id=$2 AND state='idle'
+               AND started_at>=$3 AND started_at<$4 GROUP BY spout_id`,
           [tenantId, id, start, end],
-        ),
-      ]);
+        )
+        .catch(() => ({
+          rows: [] as Array<{ spout_id: string; stops: number; seconds: number; longest: number }>,
+        })),
+      db
+        .query<{ label: string; price_per_ton: number }>(
+          'SELECT label,price_per_ton::float price_per_ton FROM mortar_material_prices WHERE tenant_id=$1',
+          [tenantId],
+        )
+        .catch(() => ({ rows: [] as Array<{ label: string; price_per_ton: number }> })),
+    ]);
 
     const product = new Map(links.rows.map((row) => [row.recipe, row]));
     const kgOf = (recipe: string, bags: number) => {
@@ -201,6 +234,24 @@ export function registerMortarRoutes(
         bagsPerHour: runningS > 0 ? bags / (runningS / 3600) : null,
         // Like the time per pallet: seconds filling divided by the bags, stops left out.
         secondsPerBag: bags > 0 ? runningS / bags : null,
+        ...(() => {
+          const own = stopRows.rows.find((item) => item.spout_id === row.id);
+          // Bags the standard pace of each product would have made in the time spent filling.
+          let expected = 0;
+          let rated = 0;
+          for (const item of rows) {
+            const rate = product.get(item.recipe)?.standard_rate;
+            if (!rate) continue;
+            expected += (Number(item.running_s) / 3600) * Number(rate);
+            rated += Number(item.bags);
+          }
+          return {
+            stops: own ? Number(own.stops) : 0,
+            stopSeconds: own ? Number(own.seconds) : 0,
+            longestStop: own ? Number(own.longest) : 0,
+            performance: expected > 0 ? rated / expected : null,
+          };
+        })(),
         // What the spout filled in the period, product by product (the recipe it came from too).
         products: rows
           .filter((item) => Number(item.bags) > 0 || Number(item.running_s) > 0)
@@ -364,6 +415,38 @@ export function registerMortarRoutes(
           .map(([label, kg]) => ({ label, kg }))
           .sort((a, b) => rank(a.label) - rank(b.label)),
         cycleMinutes: cycles.rows[0]?.minutes ?? null,
+        // What the raw materials cost, at the prices set in Produtos e receitas.
+        cost: (() => {
+          const price = new Map(prices.rows.map((row) => [row.label, Number(row.price_per_ton)]));
+          if (!price.size) return null;
+          const items = [...materialTotals.entries()].map(([label, kg]) => ({
+            label,
+            pricePerTon: price.get(label) ?? null,
+            cost: price.has(label) ? (kg / 1000) * (price.get(label) ?? 0) : null,
+          }));
+          const total = items.reduce((sum, item) => sum + (item.cost ?? 0), 0);
+          const byRecipe = batches.rows.map((row) => {
+            const cost = materials.rows
+              .filter((item) => item.recipe === row.recipe)
+              .reduce(
+                (sum, item) => sum + (Number(item.kg) / 1000) * (price.get(item.label) ?? 0),
+                0,
+              );
+            return {
+              recipe: row.recipe,
+              cost,
+              perTon: Number(row.total_kg) ? cost / (Number(row.total_kg) / 1000) : null,
+            };
+          });
+          return {
+            total,
+            perTon: mixedKg ? total / (mixedKg / 1000) : null,
+            perBatch: batchCount ? total / batchCount : null,
+            missing: items.filter((item) => item.pricePerTon == null).map((item) => item.label),
+            materials: items,
+            byRecipe,
+          };
+        })(),
         recipes: batches.rows.map((row) => ({
           recipe: row.recipe,
           batches: Number(row.batches),
@@ -541,8 +624,8 @@ export function registerMortarRoutes(
     const current = access.principal(req);
     const deviceIds = await access.accessibleDeviceIds(req);
     const [products, recipes] = await Promise.all([
-      db.query<{ id: string; name: string; nominal_kg: number }>(
-        'SELECT id,name,nominal_kg::float nominal_kg FROM mortar_products WHERE tenant_id=$1 ORDER BY name',
+      db.query<{ id: string; name: string; nominal_kg: number; standard_rate: number | null }>(
+        'SELECT id,name,nominal_kg::float nominal_kg,standard_rate::float standard_rate FROM mortar_products WHERE tenant_id=$1 ORDER BY name',
         [current.tenantId],
       ),
       db.query<{ recipe: string; product_id: string | null; bags: number; last_at: Date | null }>(
@@ -572,15 +655,17 @@ export function registerMortarRoutes(
   const productBody = z.object({
     name: z.string().trim().min(1).max(80),
     nominalKg: z.number().positive().max(2000),
+    // Bags per hour a spout should reach on it; optional, it only feeds the performance.
+    standardRate: z.number().positive().max(10_000).nullable().optional(),
   });
   app.post('/api/mortar/products', async (req, reply) => {
     if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
     const body = productBody.parse(req.body);
     const created = await db.query(
-      `INSERT INTO mortar_products(tenant_id,name,nominal_kg) VALUES($1,$2,$3)
+      `INSERT INTO mortar_products(tenant_id,name,nominal_kg,standard_rate) VALUES($1,$2,$3,$4)
        ON CONFLICT(tenant_id,name) DO NOTHING RETURNING id,name,nominal_kg::float nominal_kg`,
-      [current.tenantId, body.name, body.nominalKg],
+      [current.tenantId, body.name, body.nominalKg, body.standardRate ?? null],
     );
     if (!created.rows[0])
       return reply.code(409).send({ error: 'Já existe um produto com esse nome' });
@@ -592,8 +677,8 @@ export function registerMortarRoutes(
     const { productId } = z.object({ productId: uuid }).parse(req.params);
     const body = productBody.parse(req.body);
     const updated = await db.query(
-      'UPDATE mortar_products SET name=$3,nominal_kg=$4 WHERE tenant_id=$1 AND id=$2 RETURNING id',
-      [current.tenantId, productId, body.name, body.nominalKg],
+      'UPDATE mortar_products SET name=$3,nominal_kg=$4,standard_rate=$5 WHERE tenant_id=$1 AND id=$2 RETURNING id',
+      [current.tenantId, productId, body.name, body.nominalKg, body.standardRate ?? null],
     );
     if (!updated.rows[0]) return reply.code(404).send({ error: 'Produto não encontrado' });
     return { ok: true };

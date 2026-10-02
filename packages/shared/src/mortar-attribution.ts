@@ -23,6 +23,9 @@ export interface SpoutRuntime {
   enabled: boolean | null;
   running: boolean | null;
   recipe: string | null;
+  /** The stop going on now, if the spout is stopped: when it began and why. */
+  stopStartedAt?: number | null;
+  stopState?: 'idle' | 'off' | null;
 }
 export interface SpoutObservation {
   at: number;
@@ -40,6 +43,15 @@ export interface SpoutDelta {
   off: number;
 }
 
+/** A stop that ended in this message: written once, like a ceramic stop. */
+export interface SpoutStop {
+  state: 'idle' | 'off';
+  startedAt: number;
+  endedAt: number;
+  seconds: number;
+  recipe: string | null;
+}
+
 export function recipeOf(value: unknown) {
   if (value == null) return null;
   const text = String(value).replace(/\s+/g, ' ').trim();
@@ -51,7 +63,7 @@ export function attributeSpout(
   observation: SpoutObservation,
   idleSeconds: number,
   offlineSeconds: number,
-): { runtime: SpoutRuntime; deltas: SpoutDelta[] } {
+): { runtime: SpoutRuntime; deltas: SpoutDelta[]; stops: SpoutStop[] } {
   if (!runtime)
     return {
       runtime: {
@@ -61,8 +73,11 @@ export function attributeSpout(
         enabled: observation.enabled,
         running: observation.running,
         recipe: observation.recipe,
+        stopStartedAt: null,
+        stopState: null,
       },
       deltas: [],
+      stops: [],
     };
   const buckets = new Map<string, SpoutDelta>();
   const entry = (at: number, recipe: string) => {
@@ -102,6 +117,43 @@ export function attributeSpout(
   }
   if (step.delta) entry(observation.at, recipe).bags += step.delta;
 
+  // Stops, as they happen. A stop opens when the idle limit runs out (or the operator disables
+  // the spout), and closes when the next bag comes out; a silence longer than the offline limit
+  // closes it where the messages stopped, since nobody knows what happened after.
+  const stops: SpoutStop[] = [];
+  let stopStartedAt = runtime.stopStartedAt ?? null;
+  let stopState = runtime.stopState ?? null;
+  const close = (at: number) => {
+    if (stopStartedAt == null || !stopState) return;
+    if (at > stopStartedAt)
+      stops.push({
+        state: stopState,
+        startedAt: stopStartedAt,
+        endedAt: at,
+        seconds: (at - stopStartedAt) / 1000,
+        recipe,
+      });
+    stopStartedAt = null;
+    stopState = null;
+  };
+  if (gap > offlineSeconds * 1000) close(runtime.lastAt);
+  const enabled = observation.enabled ?? runtime.enabled;
+  if (step.delta) close(observation.at);
+  else if (enabled === false) {
+    if (stopState === 'idle') close(observation.at);
+    if (stopState == null) {
+      stopState = 'off';
+      stopStartedAt = runtime.enabled === false ? runtime.lastAt : observation.at;
+    }
+  } else {
+    if (stopState === 'off') close(observation.at);
+    const idleFrom = (runtime.lastIncrementAt ?? runtime.lastAt) + idleSeconds * 1000;
+    if (stopState == null && observation.at > idleFrom) {
+      stopState = 'idle';
+      stopStartedAt = Math.max(idleFrom, gap > offlineSeconds * 1000 ? observation.at : 0);
+    }
+  }
+
   return {
     runtime: {
       lastAt: Math.max(runtime.lastAt, observation.at),
@@ -110,10 +162,13 @@ export function attributeSpout(
       enabled: observation.enabled ?? runtime.enabled,
       running: observation.running ?? runtime.running,
       recipe: observation.recipe ?? runtime.recipe,
+      stopStartedAt,
+      stopState,
     },
     deltas: [...buckets.values()].filter(
       (delta) => delta.bags || delta.running || delta.idle || delta.off,
     ),
+    stops,
   };
 }
 
@@ -122,6 +177,9 @@ export interface MixRuntime {
   lastCount: number | null;
   /** Heaviest scale reading since the last batch: what was really dosed into the hopper. */
   scalePeak: number | null;
+  /** The lot being made: the recipe it was started with. */
+  lotNumber?: string | null;
+  lotRecipe?: string | null;
 }
 export interface MixObservation {
   at: number;
@@ -138,6 +196,14 @@ export interface MixBatch {
   materials: Array<{ label: string; kg: number }>;
   totalKg: number;
   scaleKg: number | null;
+  lotNumber: string;
+}
+
+/** A lot's number: the plant date and time it started, "261001-0715". Readable and unique. */
+export function lotNumberOf(at: number) {
+  const local = new Date(at - 3 * 3600_000);
+  const two = (value: number) => String(value).padStart(2, '0');
+  return `${two(local.getUTCFullYear() % 100)}${two(local.getUTCMonth() + 1)}${two(local.getUTCDate())}-${two(local.getUTCHours())}${two(local.getUTCMinutes())}`;
 }
 
 /**
@@ -155,29 +221,49 @@ export function attributeMix(
       : (runtime?.scalePeak ?? null);
   if (!runtime)
     return {
-      runtime: { lastAt: observation.at, lastCount: observation.count, scalePeak: peak },
+      runtime: {
+        lastAt: observation.at,
+        lastCount: observation.count,
+        scalePeak: peak,
+        lotNumber: null,
+        lotRecipe: null,
+      },
       batch: null,
     };
   const step = counterStep(runtime.lastCount, observation.count);
-  const next = { lastAt: Math.max(runtime.lastAt, observation.at), lastCount: step.reading };
+  const next = {
+    lastAt: Math.max(runtime.lastAt, observation.at),
+    lastCount: step.reading,
+    lotNumber: runtime.lotNumber ?? null,
+    lotRecipe: runtime.lotRecipe ?? null,
+  };
   if (!step.delta) return { runtime: { ...next, scalePeak: peak }, batch: null };
   const batches = Math.round(step.delta);
   if (batches <= 0) return { runtime: { ...next, scalePeak: peak }, batch: null };
+  // A new lot when the recipe changed or the counter was reset for a new run of batches.
+  const recipe = observation.recipe ?? NO_RECIPE;
+  const reset =
+    observation.count != null && runtime.lastCount != null && observation.count < runtime.lastCount;
+  const lotNumber =
+    !runtime.lotNumber || reset || recipe !== runtime.lotRecipe
+      ? lotNumberOf(observation.at)
+      : runtime.lotNumber;
   const materials = observation.materials.map((item) => ({
     label: item.label,
     kg: Math.max(item.kg ?? 0, 0) * batches,
   }));
   return {
     // The cycle closed: the next batch starts measuring its own peak.
-    runtime: { ...next, scalePeak: null },
+    runtime: { ...next, scalePeak: null, lotNumber, lotRecipe: recipe },
     batch: {
       at: observation.at,
-      recipe: observation.recipe ?? NO_RECIPE,
+      recipe,
       batches,
       materials,
       totalKg: materials.reduce((sum, item) => sum + item.kg, 0),
       // A single batch only: a peak cannot be split between batches that arrived together.
       scaleKg: batches === 1 && peak ? peak : null,
+      lotNumber,
     },
   };
 }

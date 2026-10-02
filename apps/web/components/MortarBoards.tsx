@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useContext, useMemo, useState, type ReactNode } from 'react';
 import {
   Bar,
   BarChart,
@@ -18,6 +18,8 @@ import {
 } from 'recharts';
 import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
+import { MortarShiftBoard } from './MortarShift';
+import { LotsTable, useLots } from './MortarLots';
 import {
   PRODUCT_COLORS,
   STATES,
@@ -25,14 +27,14 @@ import {
   duration,
   integer,
   kilos,
+  money,
   perBag,
   percent,
   periodText,
   slotLabel,
   tons,
-  paletteOf,
+  MortarColors,
   type BagSlot,
-  type MortarPalette,
   type MixRecipe,
   type Spout,
   type Summary,
@@ -49,8 +51,7 @@ import {
  */
 
 const AXIS = { fontSize: 10, fill: '#7b9097' };
-/** The colours of the card being drawn (its pencil settings), shared by everything inside it. */
-export const MortarColors = createContext<MortarPalette>(paletteOf(undefined));
+export { MortarColors };
 
 // ---------------------------------------------------------------------------------------------
 // Building blocks
@@ -226,10 +227,15 @@ type BagFigure = 'bags' | 'tons' | 'pace' | 'perBag' | 'use';
 
 export function Bagging({
   data,
+  deviceId,
+  boardDate,
   live,
   onLink,
 }: {
   data: Summary;
+  deviceId: string;
+  /** A single day is read as a shift board (target, S-curve); a longer period as totals. */
+  boardDate: string | null;
   /** The period includes today, so "what the spout is doing now" means something. */
   live: boolean;
   onLink?: () => void;
@@ -249,40 +255,44 @@ export function Bagging({
   const opened = spouts.find((spout) => spout.id === spoutOpen);
   return (
     <>
-      <div className="mortar-figures">
-        <Figure
-          label="Sacos ensacados"
-          value={integer(totals.bags)}
-          hint={`${spouts.length} bicos somados`}
-          onOpen={() => setFigure('bags')}
-        />
-        <Figure
-          label="Toneladas"
-          value={tons(totals.kg)}
-          unit="t"
-          hint="sacos × peso de cada produto"
-          onOpen={() => setFigure('tons')}
-        />
-        <Figure
-          label="Ritmo por bico"
-          value={totals.runningS ? integer(totals.bags / (totals.runningS / 3600)) : '—'}
-          unit="sacos/h"
-          hint="enquanto o bico ensaca"
-          onOpen={() => setFigure('pace')}
-        />
-        <Figure
-          label="Tempo por saco"
-          value={perBag(totals.bags ? totals.runningS / totals.bags : null)}
-          hint="média dos bicos, sem paradas"
-          onOpen={() => setFigure('perBag')}
-        />
-        <Figure
-          label="Aproveitamento"
-          value={percent(enabled ? totals.runningS / enabled : null)}
-          hint="tempo ensacando ÷ tempo habilitado"
-          onOpen={() => setFigure('use')}
-        />
-      </div>
+      {boardDate ? (
+        <MortarShiftBoard deviceId={deviceId} date={boardDate} />
+      ) : (
+        <div className="mortar-figures">
+          <Figure
+            label="Sacos ensacados"
+            value={integer(totals.bags)}
+            hint={`${spouts.length} bicos somados`}
+            onOpen={() => setFigure('bags')}
+          />
+          <Figure
+            label="Toneladas"
+            value={tons(totals.kg)}
+            unit="t"
+            hint="sacos × peso de cada produto"
+            onOpen={() => setFigure('tons')}
+          />
+          <Figure
+            label="Ritmo por bico"
+            value={totals.runningS ? integer(totals.bags / (totals.runningS / 3600)) : '—'}
+            unit="sacos/h"
+            hint="enquanto o bico ensaca"
+            onOpen={() => setFigure('pace')}
+          />
+          <Figure
+            label="Tempo por saco"
+            value={perBag(totals.bags ? totals.runningS / totals.bags : null)}
+            hint="média dos bicos, sem paradas"
+            onOpen={() => setFigure('perBag')}
+          />
+          <Figure
+            label="Aproveitamento"
+            value={percent(enabled ? totals.runningS / enabled : null)}
+            hint="tempo ensacando ÷ tempo habilitado"
+            onOpen={() => setFigure('use')}
+          />
+        </div>
+      )}
       <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
 
       <div className="stops-title">
@@ -300,7 +310,7 @@ export function Bagging({
         ))}
       </div>
 
-      <BaggingCharts data={data} />
+      <BaggingCharts data={data} general={!boardDate} />
 
       {figure && <BagFigureModal data={data} figure={figure} onClose={() => setFigure(null)} />}
       {opened && (
@@ -309,6 +319,8 @@ export function Bagging({
           spout={opened}
           color={palette.spout(spouts.indexOf(opened))}
           live={live}
+          deviceId={deviceId}
+          boardDate={boardDate}
           onClose={() => setSpoutOpen(null)}
         />
       )}
@@ -382,6 +394,12 @@ function SpoutCard({
         </div>
       </div>
       <TimeSplit running={spout.runningS} idle={spout.idleS} off={spout.offS} compact />
+      <span className="mortar-spout-stops">
+        {spout.stops
+          ? `${spout.stops} ${spout.stops === 1 ? 'parada' : 'paradas'} · ${duration(spout.stopSeconds)} parado · maior ${duration(spout.longestStop)}`
+          : 'Nenhuma parada no período'}
+        {spout.performance != null && <b> · desempenho {percent(spout.performance, 0)}</b>}
+      </span>
       <span className="mortar-more">Ver detalhes ›</span>
     </button>
   );
@@ -392,12 +410,16 @@ function SpoutModal({
   spout,
   color,
   live,
+  deviceId,
+  boardDate,
   onClose,
 }: {
   data: Summary;
   spout: Spout;
   color: string;
   live: boolean;
+  deviceId: string;
+  boardDate: string | null;
   onClose: () => void;
 }) {
   const enabled = spout.runningS + spout.idleS;
@@ -429,6 +451,15 @@ function SpoutModal({
       subtitle={`${periodText(data.from, data.to)}${live ? ` · agora: ${state.label.toLowerCase()}` : ''}${live && spout.product ? ` com ${spout.product}` : ''}`}
       onClose={onClose}
     >
+      {boardDate && (
+        <MortarShiftBoard
+          deviceId={deviceId}
+          date={boardDate}
+          spoutId={spout.id}
+          spoutName={spout.name}
+          showStops
+        />
+      )}
       <div className="mortar-figures">
         <Figure label="Sacos" value={integer(spout.bags)} />
         <Figure label="Toneladas" value={tons(spout.kg)} unit="t" />
@@ -739,7 +770,7 @@ function BagFigureModal({
  * whole under them, and how long each spout took per bag. One day is read by the quarter hour,
  * so a spout that slowed down after lunch shows it; a longer period is read by the day.
  */
-function BaggingCharts({ data }: { data: Summary }) {
+function BaggingCharts({ data, general = true }: { data: Summary; general?: boolean }) {
   const palette = useContext(MortarColors);
   const { spouts, series } = data.bagging;
   const quarter = series.some((slot) => slot.slot.length > 13);
@@ -807,54 +838,58 @@ function BaggingCharts({ data }: { data: Summary }) {
       </div>
       {legend}
 
-      <div className="stops-title">
-        Geral da linha<small> · sacos {grain} (barras) e o total acumulado (linha)</small>
-      </div>
-      <div className="mortar-chart">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={rows} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="#e6eef0" vertical={false} />
-            <XAxis dataKey="label" tick={AXIS} minTickGap={24} />
-            <YAxis
-              yAxisId="slot"
-              tick={AXIS}
-              width={44}
-              tickFormatter={(value: number) => integer(value)}
-            />
-            <YAxis
-              yAxisId="sum"
-              orientation="right"
-              tick={AXIS}
-              width={56}
-              tickFormatter={(value: number) => integer(value)}
-            />
-            <Tooltip
-              formatter={(value, name) => [
-                integer(Number(value)) + ' sacos',
-                name === 'total' ? 'acumulado' : 'no intervalo',
-              ]}
-            />
-            <Bar
-              yAxisId="slot"
-              dataKey="bags"
-              fill={palette.accent}
-              fillOpacity={0.3}
-              radius={[3, 3, 0, 0]}
-              isAnimationActive={drawing}
-              animationDuration={drawing ? 700 : 0}
-            />
-            <Line
-              yAxisId="sum"
-              dataKey="total"
-              stroke="#0b2028"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={drawing}
-              animationDuration={drawing ? 700 : 0}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
+      {general && (
+        <>
+          <div className="stops-title">
+            Geral da linha<small> · sacos {grain} (barras) e o total acumulado (linha)</small>
+          </div>
+          <div className="mortar-chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={rows} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
+                <CartesianGrid stroke="#e6eef0" vertical={false} />
+                <XAxis dataKey="label" tick={AXIS} minTickGap={24} />
+                <YAxis
+                  yAxisId="slot"
+                  tick={AXIS}
+                  width={44}
+                  tickFormatter={(value: number) => integer(value)}
+                />
+                <YAxis
+                  yAxisId="sum"
+                  orientation="right"
+                  tick={AXIS}
+                  width={56}
+                  tickFormatter={(value: number) => integer(value)}
+                />
+                <Tooltip
+                  formatter={(value, name) => [
+                    integer(Number(value)) + ' sacos',
+                    name === 'total' ? 'acumulado' : 'no intervalo',
+                  ]}
+                />
+                <Bar
+                  yAxisId="slot"
+                  dataKey="bags"
+                  fill={palette.accent}
+                  fillOpacity={0.3}
+                  radius={[3, 3, 0, 0]}
+                  isAnimationActive={drawing}
+                  animationDuration={drawing ? 700 : 0}
+                />
+                <Line
+                  yAxisId="sum"
+                  dataKey="total"
+                  stroke="#0b2028"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={drawing}
+                  animationDuration={drawing ? 700 : 0}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
 
       <div className="stops-title">
         Tempo por saco<small> · segundos para encher um saco, {grain}, em cada bico</small>
@@ -921,14 +956,17 @@ const DISPLAYS: Array<[OutputDisplay, string]> = [
 
 export function Output({
   data,
+  deviceId,
   displayKey,
   onLink,
 }: {
   data: Summary;
+  deviceId: string;
   /** Where this card remembers how the reader likes to see it. */
   displayKey: string;
   onLink?: () => void;
 }) {
+  const lots = useLots(deviceId, data.from, data.to);
   const palette = useContext(MortarColors);
   const { products, totals, spouts } = data.bagging;
   const [open, setOpen] = useState<string | null>(null);
@@ -1182,6 +1220,15 @@ export function Output({
               )}
             </tbody>
           </table>
+          <div className="stops-title">
+            Lotes de onde saiu
+            <small> · rastreabilidade: o lote da mistura de cada período de ensaque</small>
+          </div>
+          {lots.data ? (
+            <LotsTable lots={lots.data.lots} product={opened.name} />
+          ) : (
+            <div className="stops-empty">Carregando lotes…</div>
+          )}
           <div className="stops-title">Receitas que formam este produto</div>
           <table className="stops-table mortar-table">
             <tbody>
@@ -1205,7 +1252,8 @@ export function Output({
 type MaterialOpen =
   { kind: 'batches' } | { kind: 'material'; label: string } | { kind: 'recipe'; recipe: string };
 
-export function Materials({ data }: { data: Summary }) {
+export function Materials({ data, deviceId }: { data: Summary; deviceId: string }) {
+  const lots = useLots(deviceId, data.from, data.to);
   const palette = useContext(MortarColors);
   const { mix } = data;
   const [open, setOpen] = useState<MaterialOpen | null>(null);
@@ -1276,6 +1324,15 @@ export function Materials({ data }: { data: Summary }) {
             onOpen={() => setOpen({ kind: 'material', label: item.label })}
           />
         ))}
+        {mix.cost && (
+          <Figure
+            label="Custo da mistura"
+            value={money(mix.cost.perTon)}
+            unit="/t"
+            hint={`${money(mix.cost.total)} no período · ${money(mix.cost.perBatch)} por batelada`}
+            onOpen={() => setOpen({ kind: 'batches' })}
+          />
+        )}
       </div>
 
       {mix.kg > 0 && (
@@ -1331,6 +1388,7 @@ export function Materials({ data }: { data: Summary }) {
                 </th>
               ))}
               <th className="n">Total (t)</th>
+              {mix.cost && <th className="n">Custo/t</th>}
             </tr>
           </thead>
           <tbody>
@@ -1351,6 +1409,11 @@ export function Materials({ data }: { data: Summary }) {
                 <td className="n">
                   <b>{tons(row.kg)}</b>
                 </td>
+                {mix.cost && (
+                  <td className="n">
+                    {money(mix.cost.byRecipe.find((item) => item.recipe === row.recipe)?.perTon)}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1425,6 +1488,16 @@ export function Materials({ data }: { data: Summary }) {
             </span>
           </div>
         </>
+      )}
+
+      <div className="stops-title">
+        Lotes de produção
+        <small> · cada lote é uma corrida do misturador; clique para ver o que ele virou</small>
+      </div>
+      {lots.data ? (
+        <LotsTable lots={lots.data.lots} />
+      ) : (
+        <div className="stops-empty">Carregando lotes…</div>
       )}
 
       {open && (

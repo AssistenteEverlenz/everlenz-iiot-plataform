@@ -15,7 +15,7 @@ export function VariablesModal({
 }) {
   const [copied, setCopied] = useState('');
   // painel.* is what the production board works out; ihm.* the HMI's own readings.
-  const isPlatform = (name: string) => name.startsWith('painel.');
+  const isPlatform = (name: string) => name.startsWith('painel.') || name.startsWith('argamassa.');
   const plant = options.filter((option) => isPlatform(option.name));
   const hmi = options.filter((option) => !isPlatform(option.name));
 

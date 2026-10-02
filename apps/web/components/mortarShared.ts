@@ -1,3 +1,5 @@
+import { createContext } from 'react';
+
 /**
  * What the mortar cards share: the summary the API returns (apps/api/src/mortar.ts), the
  * colours that mean the same thing on every card, and the way numbers are written.
@@ -29,6 +31,10 @@ export type Spout = {
   bagsPerHour: number | null;
   secondsPerBag: number | null;
   products: SpoutProduct[];
+  stops: number;
+  stopSeconds: number;
+  longestStop: number;
+  performance: number | null;
 };
 export type BagSlot = {
   slot: string;
@@ -83,6 +89,15 @@ export type Summary = {
     scaleTheoreticalKg: number;
     lastBatchAt: string | null;
     cycleMinutes: number | null;
+    /** What the raw materials cost, when prices are set (Ações → Produtos e receitas). */
+    cost: null | {
+      total: number;
+      perTon: number | null;
+      perBatch: number | null;
+      missing: string[];
+      materials: Array<{ label: string; pricePerTon: number | null; cost: number | null }>;
+      byRecipe: Array<{ recipe: string; cost: number; perTon: number | null }>;
+    };
     materials: Array<{ label: string; kg: number }>;
     recipes: MixRecipe[];
     series: Array<{ slot: string; batches: number; materials: Record<string, number> }>;
@@ -155,6 +170,16 @@ export const perBag = (seconds: number | null | undefined) =>
   seconds == null || !Number.isFinite(seconds)
     ? '—'
     : `${seconds.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s`;
+/** Money as the plant reads it: "R$ 1.234". */
+export const money = (value: number | null | undefined, places = 0) =>
+  value == null || !Number.isFinite(value)
+    ? '—'
+    : value.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: places,
+        maximumFractionDigits: places,
+      });
 export const clock = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
 /** "01/10" or "01/10 a 07/10": the period the card is reading, said once in every modal. */
@@ -215,3 +240,6 @@ export function paletteOf(config: MortarCardConfig | undefined): MortarPalette {
       config?.materialColors?.[label] || MATERIAL_COLORS[index % MATERIAL_COLORS.length],
   };
 }
+
+/** The colours of the card being drawn (its pencil settings), shared by everything inside it. */
+export const MortarColors = createContext<MortarPalette>(paletteOf(undefined));

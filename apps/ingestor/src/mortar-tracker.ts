@@ -143,7 +143,7 @@ export class MortarTracker {
     at: number,
   ) {
     const previous = this.spoutRuntimes.get(spout.id) ?? (await this.loadSpout(spout.id));
-    const { runtime, deltas } = attributeSpout(
+    const { runtime, deltas, stops } = attributeSpout(
       previous,
       {
         at,
@@ -182,12 +182,28 @@ export class MortarTracker {
         values,
       );
     }
+    for (const stop of stops)
+      await this.db.query(
+        `INSERT INTO bagging_stops(tenant_id,device_id,spout_id,state,started_at,ended_at,seconds,recipe)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          device.tenant_id,
+          device.id,
+          spout.id,
+          stop.state,
+          new Date(stop.startedAt),
+          new Date(stop.endedAt),
+          stop.seconds,
+          stop.recipe,
+        ],
+      );
     await this.db.query(
-      `INSERT INTO bagging_runtime(spout_id,tenant_id,device_id,last_at,last_count,last_increment_at,enabled,running,recipe,updated_at)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
+      `INSERT INTO bagging_runtime(spout_id,tenant_id,device_id,last_at,last_count,last_increment_at,enabled,running,recipe,stop_started_at,stop_state,updated_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
        ON CONFLICT(spout_id) DO UPDATE SET last_at=EXCLUDED.last_at,last_count=EXCLUDED.last_count,
          last_increment_at=EXCLUDED.last_increment_at,enabled=EXCLUDED.enabled,
-         running=EXCLUDED.running,recipe=EXCLUDED.recipe,updated_at=now()`,
+         running=EXCLUDED.running,recipe=EXCLUDED.recipe,stop_started_at=EXCLUDED.stop_started_at,
+         stop_state=EXCLUDED.stop_state,updated_at=now()`,
       [
         spout.id,
         device.tenant_id,
@@ -198,6 +214,8 @@ export class MortarTracker {
         runtime.enabled,
         runtime.running,
         runtime.recipe,
+        runtime.stopStartedAt ? new Date(runtime.stopStartedAt) : null,
+        runtime.stopState ?? null,
       ],
     );
     // Only after both writes: a failed write re-attributes the same interval next time.
@@ -213,8 +231,10 @@ export class MortarTracker {
         enabled: boolean | null;
         running: boolean | null;
         recipe: string | null;
+        stop_started_at: Date | string | null;
+        stop_state: 'idle' | 'off' | null;
       }>(
-        'SELECT last_at,last_count,last_increment_at,enabled,running,recipe FROM bagging_runtime WHERE spout_id=$1',
+        'SELECT last_at,last_count,last_increment_at,enabled,running,recipe,stop_started_at,stop_state FROM bagging_runtime WHERE spout_id=$1',
         [spoutId],
       )
     ).rows[0];
@@ -226,6 +246,8 @@ export class MortarTracker {
           enabled: row.enabled,
           running: row.running,
           recipe: row.recipe,
+          stopStartedAt: row.stop_started_at ? new Date(row.stop_started_at).getTime() : null,
+          stopState: row.stop_state,
         }
       : null;
   }
@@ -243,13 +265,20 @@ export class MortarTracker {
           last_at: Date | string;
           last_count: number | null;
           scale_peak: number | null;
-        }>('SELECT last_at,last_count,scale_peak FROM mix_runtime WHERE device_id=$1', [device.id])
+          lot_number: string | null;
+          lot_recipe: string | null;
+        }>(
+          'SELECT last_at,last_count,scale_peak,lot_number,lot_recipe FROM mix_runtime WHERE device_id=$1',
+          [device.id],
+        )
       ).rows[0];
       previous = row
         ? {
             lastAt: new Date(row.last_at).getTime(),
             lastCount: row.last_count == null ? null : Number(row.last_count),
             scalePeak: row.scale_peak == null ? null : Number(row.scale_peak),
+            lotNumber: row.lot_number,
+            lotRecipe: row.lot_recipe,
           }
         : null;
     }
@@ -262,8 +291,8 @@ export class MortarTracker {
     });
     if (batch)
       await this.db.query(
-        `INSERT INTO mix_batches(tenant_id,device_id,finished_at,recipe,batches,materials,total_kg,scale_kg)
-         VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8)`,
+        `INSERT INTO mix_batches(tenant_id,device_id,finished_at,recipe,batches,materials,total_kg,scale_kg,lot_number)
+         VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)`,
         [
           device.tenant_id,
           device.id,
@@ -273,6 +302,7 @@ export class MortarTracker {
           JSON.stringify(batch.materials),
           batch.totalKg,
           batch.scaleKg,
+          batch.lotNumber,
         ],
       );
     // The scale peak changes with every dosing message; it is only worth a write when it moved.
@@ -283,16 +313,19 @@ export class MortarTracker {
       runtime.lastCount !== previous.lastCount
     )
       await this.db.query(
-        `INSERT INTO mix_runtime(device_id,tenant_id,last_at,last_count,scale_peak,updated_at)
-         VALUES($1,$2,$3,$4,$5,now())
+        `INSERT INTO mix_runtime(device_id,tenant_id,last_at,last_count,scale_peak,lot_number,lot_recipe,updated_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,now())
          ON CONFLICT(device_id) DO UPDATE SET last_at=EXCLUDED.last_at,last_count=EXCLUDED.last_count,
-           scale_peak=EXCLUDED.scale_peak,updated_at=now()`,
+           scale_peak=EXCLUDED.scale_peak,lot_number=EXCLUDED.lot_number,lot_recipe=EXCLUDED.lot_recipe,
+           updated_at=now()`,
         [
           device.id,
           device.tenant_id,
           new Date(runtime.lastAt),
           runtime.lastCount,
           runtime.scalePeak,
+          runtime.lotNumber ?? null,
+          runtime.lotRecipe ?? null,
         ],
       );
     this.mixRuntimes.set(device.id, runtime);
