@@ -33,7 +33,15 @@ export function MortarPanel({
   const [period, setPeriod] = useState<Period>(view === 'bagging' ? 'today' : 'month');
   const [custom, setCustom] = useState(() => windowOf('7d'));
   const [modal, setModal] = useState<null | 'products'>(null);
-  const range = period === 'custom' ? custom : windowOf(period);
+  // The bagging card reads one day, picked on its own board (like the ceramic production
+  // board); the other mortar cards read a period.
+  const [boardDay, setBoardDay] = useState(() => windowOf('today').to);
+  const range =
+    view === 'bagging'
+      ? { from: boardDay, to: boardDay }
+      : period === 'custom'
+        ? custom
+        : windowOf(period);
   const summary = usePoll<Summary>(
     `/devices/${deviceId}/mortar?from=${range.from}&to=${range.to}`,
     view === 'bagging' ? 30000 : 120000,
@@ -79,14 +87,15 @@ export function MortarPanel({
   return (
     <MortarColors.Provider value={paletteOf(config)}>
       <div className="stops-panel mortar-panel">
-        <div className="stops-head">{tools}</div>
+        {view !== 'bagging' && <div className="stops-head">{tools}</div>}
         {!data ? (
           <div className="stops-empty">{summary.error ?? 'Carregando…'}</div>
         ) : view === 'bagging' ? (
           <Bagging
             data={data}
             deviceId={deviceId}
-            boardDate={range.from === range.to ? range.to : null}
+            boardDate={boardDay}
+            onDate={setBoardDay}
             live={range.to >= windowOf('today').to}
             onLink={master ? () => setModal('products') : undefined}
           />

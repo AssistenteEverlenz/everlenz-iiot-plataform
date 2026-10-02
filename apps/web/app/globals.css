@@ -11178,3 +11178,286 @@ button.mortar-figure:hover > u {
 .mortar-board .shift-kpi {
   align-content: start;
 }
+
+/* Mortar board, top. Two lines that each do one thing: who and what (title, state, shift or day)
+   and which day against what (the day and the comparison); then the period in one block -- made
+   against the target with where it should be and where it closes -- and three figures beside. */
+.mortar-board-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+.mortar-board-title {
+  display: grid;
+  gap: 3px;
+  min-width: 180px;
+}
+.mortar-board-title strong {
+  color: #182e38;
+  font-size: 15px;
+  line-height: 1.25;
+}
+.mortar-board-title span {
+  color: #71868d;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.mortar-board-switches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.mortar-board-switches .shift-state {
+  color: #20353d;
+  font-size: 12px;
+}
+.mortar-board-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 18px;
+  padding: 8px 0 2px;
+  border-top: 1px solid #e6eef0;
+}
+.mortar-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.75fr);
+  gap: 10px;
+}
+.mortar-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.mortar-tiles .shift-kpi {
+  align-content: start;
+}
+.mortar-hero {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e3ebed;
+  border-left: 4px solid #c4d0d3;
+  border-radius: 11px;
+  background: #fbfcfc;
+}
+.mortar-hero.good {
+  border-left-color: #1fbf7a;
+}
+.mortar-hero.warn {
+  border-left-color: #f2a93b;
+}
+.mortar-hero.bad {
+  border-left-color: #e4572e;
+}
+.mortar-hero-top {
+  display: grid;
+  gap: 2px;
+}
+.mortar-hero-top > span {
+  color: #6c7f86;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mortar-hero-top > b {
+  color: #0b2028;
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.mortar-hero-top > b small {
+  color: #71868d;
+  font-size: 13px;
+  font-weight: 500;
+}
+.mortar-hero-top > em {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: #71868d;
+  font-size: 11px;
+  font-style: normal;
+}
+.mortar-progress {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: #e8eff1;
+}
+.mortar-progress > i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--brand-accent, #12b8a6);
+  transform-origin: left center;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.mortar-progress > u {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 16px;
+  border-radius: 1px;
+  transform: translateX(-1px);
+}
+.mortar-progress > u.expected {
+  background: #0b2028;
+}
+.mortar-progress > u.projected {
+  background: transparent;
+  border-left: 2px dashed var(--brand-accent, #12b8a6);
+}
+.mortar-hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  color: #71868d;
+  font-size: 12px;
+}
+.mortar-hero-facts b {
+  color: #20353d;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-hero-facts .kpi-edit {
+  margin-left: 4px;
+}
+.mortar-hero .clickable {
+  cursor: pointer;
+  border-radius: 6px;
+}
+.mortar-hero .clickable:hover {
+  color: var(--brand-accent, #12b8a6);
+}
+.mortar-verdict {
+  margin-left: auto;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+}
+.mortar-verdict.good {
+  background: #eaf8f1;
+  color: #146c43;
+}
+.mortar-verdict.warn {
+  background: #fdf5e6;
+  color: #8a5a0a;
+}
+.mortar-verdict.bad {
+  background: #fdeee9;
+  color: #9b3218;
+}
+.mortar-against {
+  color: #8f63a8;
+  font-size: 11px;
+  font-style: normal;
+}
+.mortar-curve-block {
+  display: grid;
+  gap: 8px;
+}
+.mortar-curve-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding-top: 10px;
+  border-top: 1px solid #e6eef0;
+}
+.mortar-curve-head strong {
+  color: #20353d;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mortar-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border-radius: 2px;
+}
+.mortar-curve-legend {
+  display: block;
+  margin-top: 4px;
+  color: #71868d;
+  font-size: 11px;
+}
+.mortar-compare-legend {
+  display: flex;
+  justify-content: flex-end;
+}
+@container (max-width: 900px) {
+  .mortar-summary {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .mortar-summary,
+  .mortar-tiles {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mortar-progress > i {
+    animation: none;
+  }
+}
+.mortar-spout-open {
+  margin-left: 6px;
+  color: #b3c3c7;
+  font-size: 18px;
+  line-height: 1;
+}
+.mortar-spout header em + .mortar-spout-open,
+.mortar-spout header b + .mortar-spout-open {
+  margin-left: auto;
+}
+.mortar-spout header em + .mortar-spout-open {
+  margin-left: 6px;
+}
+button.mortar-spout:hover .mortar-spout-open {
+  color: var(--brand-accent, #12b8a6);
+}
+.mortar-spout-products {
+  min-height: 0;
+}
+/* The pencil inside the period block is the board's pencil: a glyph, not a button. */
+.mortar-hero .kpi-edit {
+  min-width: 0;
+  height: auto;
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #71868d;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mortar-hero .kpi-edit:hover {
+  color: var(--brand-accent, #12b8a6);
+}
+/* The unit rides beside the number, so the block stays as low as the figures beside it. */
+.mortar-hero-top > b small {
+  display: inline;
+}
+.mortar-summary {
+  align-items: start;
+}
+.mortar-tiles {
+  height: 100%;
+}
+.mortar-tiles .shift-kpi {
+  align-content: center;
+}
+.mortar-tiles .shift-kpi b small {
+  display: inline;
+}

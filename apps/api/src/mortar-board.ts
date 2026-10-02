@@ -15,6 +15,10 @@ import {
 import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
 import { loadShifts } from './shift-production.js';
+import {
+  mortarUtilizationError,
+  mortarUtilizationFrom,
+} from '../../web/components/mortarUtilization.js';
 
 /**
  * The bagging board of a mortar plant (migrations 037 and 040), shaped like the ceramic
@@ -158,8 +162,10 @@ export function registerMortarBoardRoutes(
         target_metric: 'bags' | 'tons' | null;
         target_per_shift: number | null;
         idle_seconds: number | null;
+        utilization_formula: string | null;
       }>(
-        'SELECT target_metric,target_per_shift,idle_seconds FROM mortar_settings WHERE tenant_id=$1 AND device_id=$2',
+        `SELECT target_metric,target_per_shift,idle_seconds,to_jsonb(m)->>'utilization_formula' utilization_formula
+         FROM mortar_settings m WHERE tenant_id=$1 AND device_id=$2`,
         [tenantId, deviceId],
       )
     ).rows[0];
@@ -170,7 +176,14 @@ export function registerMortarBoardRoutes(
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
     const query = baseQuery
-      .extend({ compare: z.enum(['none', 'yesterday', 'week']).default('none') })
+      .extend({
+        compare: z.enum(['none', 'yesterday', 'week', 'day', 'median']).default('none'),
+        against: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        days: z.coerce.number().int().min(2).max(400).default(7),
+      })
       .parse(req.query);
     const tenantId = access.principal(req).tenantId;
     const { device, settings } = await context(tenantId, id);
@@ -296,7 +309,28 @@ export function registerMortarBoardRoutes(
       offline: Math.max(0, elapsedProductive - reported * scale),
       elapsedProductive,
     };
-    const efficiency = efficiencyOf(buckets, product);
+    const formula = settings?.utilization_formula?.trim() || null;
+    const availabilityOf = (times: {
+      producing: number;
+      idle: number;
+      disabled: number;
+      offline?: number;
+    }) =>
+      formula
+        ? mortarUtilizationFrom(formula, { ...times, elapsedProductive })
+        : times.producing + times.idle > 0
+          ? times.producing / (times.producing + times.idle)
+          : null;
+    const base = efficiencyOf(buckets, product);
+    const lineAvailability = availabilityOf(time);
+    const efficiency = {
+      availability: lineAvailability,
+      performance: base.performance,
+      effectiveness:
+        lineAvailability != null && base.performance != null
+          ? lineAvailability * base.performance
+          : null,
+    };
 
     const target = perShift == null || spoutFilter ? null : perShift * Math.max(1, chosen.length);
     const pace = elapsedProductive > 0 ? actual / elapsedProductive : 0;
@@ -380,42 +414,88 @@ export function registerMortarBoardRoutes(
       }
     }
 
-    // The same window of an earlier day, by position in the shift.
+    // Another day drawn behind this one, by position in the window, as the ceramic board does:
+    // one earlier day (yesterday, a week ago, a day chosen on the calendar), or the median of
+    // the last N days, where only the days that reached a point count at that point.
+    const cumulativeOf = (rows: Bucket[], offset: number) => {
+      const bySlot = new Map<number, { bags: number; kg: number }>();
+      for (const row of rows) {
+        const at = new Date(row.bucket).getTime() + offset;
+        const entry = bySlot.get(at) ?? { bags: 0, kg: 0 };
+        entry.bags += Number(row.bags);
+        entry.kg += kgOf(row.recipe, Number(row.bags));
+        bySlot.set(at, entry);
+      }
+      let b = 0;
+      let k = 0;
+      return curve.map((point) => {
+        const slot = bySlot.get(new Date(point.t).getTime() - STEP_MS);
+        if (slot) {
+          b += slot.bags;
+          k += slot.kg;
+        }
+        return inMetric(b, k);
+      });
+    };
+    const shifted = (days: number) => ({
+      start: new Date(span.start.getTime() - days * 86_400_000),
+      end: new Date(span.end.getTime() - days * 86_400_000),
+    });
     let compare: { label: string; actual: Array<number | null> } | null = null;
-    if (query.compare !== 'none') {
-      const offset = (query.compare === 'week' ? 7 : 1) * 86_400_000;
-      const past = await loadBuckets(
+    if (query.compare === 'median') {
+      const curves: Array<Array<number | null>> = [];
+      const all = await loadBuckets(
         db,
         tenantId,
         id,
-        {
-          start: new Date(span.start.getTime() - offset),
-          end: new Date(span.end.getTime() - offset),
-        },
+        { start: shifted(query.days).start, end: shifted(1).end },
         spoutFilter,
       );
-      if (past.length) {
-        const bySlot = new Map<number, { bags: number; kg: number }>();
-        for (const row of past) {
-          const at = new Date(row.bucket).getTime() + offset;
-          const entry = bySlot.get(at) ?? { bags: 0, kg: 0 };
-          entry.bags += Number(row.bags);
-          entry.kg += kgOf(row.recipe, Number(row.bags));
-          bySlot.set(at, entry);
-        }
-        let b = 0;
-        let k = 0;
+      for (let back = 1; back <= query.days; back += 1) {
+        const window = shifted(back);
+        const rows = all.filter((row) => {
+          const at = new Date(row.bucket).getTime();
+          return at >= window.start.getTime() && at < window.end.getTime();
+        });
+        if (rows.some((row) => Number(row.bags) > 0))
+          curves.push(cumulativeOf(rows, back * 86_400_000));
+      }
+      if (curves.length)
         compare = {
-          label: query.compare === 'week' ? 'semana passada' : 'ontem',
-          actual: curve.map((point) => {
-            const slot = bySlot.get(new Date(point.t).getTime() - STEP_MS);
-            if (slot) {
-              b += slot.bags;
-              k += slot.kg;
-            }
-            return inMetric(b, k);
+          label: `mediana de ${curves.length} dias`,
+          actual: curve.map((_, at) => {
+            const values = curves
+              .map((day) => day[at])
+              .filter((value): value is number => typeof value === 'number')
+              .sort((a, b) => a - b);
+            if (!values.length) return null;
+            const middle = Math.floor(values.length / 2);
+            return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
           }),
         };
+    } else if (query.compare !== 'none') {
+      const back =
+        query.compare === 'week'
+          ? 7
+          : query.compare === 'day' && query.against
+            ? Math.round(
+                (plantInstant(date, '00:00').getTime() -
+                  plantInstant(query.against, '00:00').getTime()) /
+                  86_400_000,
+              )
+            : 1;
+      if (back !== 0) {
+        const rows = await loadBuckets(db, tenantId, id, shifted(back), spoutFilter);
+        if (rows.length)
+          compare = {
+            label:
+              query.compare === 'week'
+                ? 'semana passada'
+                : query.compare === 'day' && query.against
+                  ? query.against.split('-').reverse().slice(0, 2).join('/')
+                  : 'ontem',
+            actual: cumulativeOf(rows, back * 86_400_000),
+          };
       }
     }
 
@@ -462,7 +542,22 @@ export function registerMortarBoardRoutes(
         offS: rows.reduce((total, row) => total + Number(row.off_s), 0),
         pacePerHour: running > 0 ? spoutBags / (running / 3600) : null,
         secondsPerBag: spoutBags > 0 ? running / spoutBags : null,
-        ...efficiencyOf(rows, product),
+        ...(() => {
+          const own = efficiencyOf(rows, product);
+          const availability = availabilityOf({
+            producing: running,
+            idle: rows.reduce((total, row) => total + Number(row.idle_s), 0),
+            disabled: rows.reduce((total, row) => total + Number(row.off_s), 0),
+          });
+          return {
+            availability,
+            performance: own.performance,
+            effectiveness:
+              availability != null && own.performance != null
+                ? availability * own.performance
+                : null,
+          };
+        })(),
         stops: own.length,
         stopSeconds: own.reduce((total, stop) => total + stop.seconds, 0),
         state: nowState(live),
@@ -492,6 +587,7 @@ export function registerMortarBoardRoutes(
         totals: { bags, kg, actual },
         time,
         utilization: efficiency.availability,
+        utilizationFormula: formula,
         performance: efficiency.performance,
         effectiveness: efficiency.effectiveness,
         target:
@@ -601,6 +697,45 @@ export function registerMortarBoardRoutes(
         ...period,
       })),
     };
+  });
+
+  // How the availability is counted: the default, or the plant's own formula.
+  app.patch('/api/devices/:id/mortar/utilization', async (req, reply) => {
+    if (!access.requireMaster(req, reply)) return;
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const body = z.object({ formula: z.string().max(500).nullable() }).parse(req.body);
+    const formula = body.formula?.trim() || null;
+    const problem = formula ? mortarUtilizationError(formula) : null;
+    if (problem) return reply.code(400).send({ error: problem });
+    const current = access.principal(req);
+    await db.query(
+      `INSERT INTO mortar_settings(device_id,tenant_id,utilization_formula,updated_at)
+       VALUES($1,$2,$3,now())
+       ON CONFLICT(device_id) DO UPDATE SET utilization_formula=EXCLUDED.utilization_formula,
+         updated_at=now()`,
+      [id, current.tenantId, formula],
+    );
+    await recordAudit(db, req, current, {
+      action: 'mortar.utilization',
+      targetType: 'device',
+      targetId: id,
+      summary: { formula },
+    });
+    return { ok: true };
+  });
+
+  /** The plant days with bags, for the calendar of the board. */
+  app.get('/api/devices/:id/mortar/days', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const rows = await db.query<{ day: string }>(
+      `SELECT DISTINCT to_char(bucket - interval '3 hours','YYYY-MM-DD') AS day FROM bagging_buckets
+       WHERE tenant_id=$1 AND device_id=$2 AND bags>0 AND bucket > now() - interval '400 days'
+       ORDER BY 1 DESC`,
+      [access.principal(req).tenantId, id],
+    );
+    return { days: rows.rows.map((row) => row.day) };
   });
 
   // The target, per shift, in bags or tons (masters only).

@@ -16,7 +16,17 @@ import { mutate, usePoll } from './data';
 import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
 import { usePlatform } from './PlatformShell';
+import { DayCalendar } from './DayCalendar';
+import { FormulaInput } from './FormulaInput';
 import { Gauge, ShiftCurve, stateInfo, type BoardData } from './ShiftBoard';
+import {
+  DEFAULT_MORTAR_UTILIZATION,
+  MORTAR_UTILIZATION_VARIABLES,
+  mortarUtilizationCaption,
+  mortarUtilizationError,
+  mortarUtilizationFrom,
+  mortarUtilizationValues,
+} from './mortarUtilization';
 import { MortarColors, clock, duration, integer, percent, perBag, tons } from './mortarShared';
 
 /**
@@ -68,6 +78,8 @@ type MortarBoard = {
     elapsedProductive: number;
   };
   utilization: number | null;
+  /** The plant's own availability formula (argamassa.horas_*); null is the default. */
+  utilizationFormula?: string | null;
   performance: number | null;
   effectiveness: number | null;
   target: null | {
@@ -113,9 +125,42 @@ const STATE_LIST = ['producing', 'idle', 'disabled', 'offline'] as const;
 const label = (state: string) =>
   state === 'producing' ? 'Ensacando' : (stateInfo[state]?.label ?? state);
 
+/**
+ * What the board can be compared with, in the words of the ceramic board and of every other card:
+ * the running day (when a past one is open), the median of a period, or one chosen day.
+ */
+type Comparison = '' | 'today' | '7d' | 'week' | 'month' | 'year' | 'custom';
+const COMPARISONS: Array<[Comparison, string]> = [
+  ['today', 'Hoje'],
+  ['7d', '7 dias'],
+  ['week', 'Semana'],
+  ['month', 'Mês'],
+  ['year', 'Ano'],
+  ['custom', 'Personalizado'],
+];
+/** How many days back the median reads; the calendar ones count the days so far. */
+function medianDays(against: Comparison) {
+  const now = new Date();
+  const days =
+    against === '7d'
+      ? 7
+      : against === 'week'
+        ? ((now.getDay() + 6) % 7) + 1
+        : against === 'month'
+          ? now.getDate()
+          : against === 'year'
+            ? Math.round((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 86400000) +
+              1
+            : 0;
+  return days ? Math.min(400, Math.max(2, days)) : 0;
+}
+const isoDay = (at: Date) =>
+  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+
 export function MortarShiftBoard({
   deviceId,
   date,
+  onDate,
   spoutId,
   spoutName,
   children,
@@ -123,6 +168,8 @@ export function MortarShiftBoard({
   deviceId: string;
   /** The plant day the board reads. */
   date: string;
+  /** Picks another day; absent where the day is fixed (a spout opened from the board). */
+  onDate?: (date: string) => void;
   /** One spout only, when the board opens from a spout. */
   spoutId?: string;
   spoutName?: string;
@@ -133,18 +180,33 @@ export function MortarShiftBoard({
   const palette = useContext(MortarColors);
   const [mode, setMode] = useState<'shift' | 'day'>('shift');
   const [shift, setShift] = useState('');
-  const [against, setAgainst] = useState<'' | 'yesterday' | 'week'>('');
+  const [against, setAgainst] = useState<Comparison>('');
+  const [againstDay, setAgainstDay] = useState('');
+  const [pickingDay, setPickingDay] = useState(false);
   // Which curve the board draws: the line, one spout, or the spouts side by side.
   const [focusSpout, setFocusSpout] = useState<string>('line');
   const [detail, setDetail] = useState<Focus | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingFormula, setEditingFormula] = useState(false);
+  // Both charts zoom together when a compared day is drawn under this one.
+  const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
   const spout = spoutId ?? (focusSpout !== 'line' && focusSpout !== 'compare' ? focusSpout : '');
+  const today = isoDay(new Date());
+  const yesterday = isoDay(new Date(Date.now() - 86400000));
+  const median = medianDays(against);
+  // The compared day: one picked on the calendar, or today while a past day is open.
+  const comparedDay =
+    against === 'custom' ? againstDay : against === 'today' && date !== today ? today : '';
+  const query = (day: string) =>
+    `/devices/${deviceId}/mortar/board?mode=${mode}&date=${day}` +
+    (shift && mode === 'shift' ? `&shift=${shift}` : '') +
+    (spout ? `&spout=${spout}` : '');
   const response = usePoll<MortarBoardResponse>(
-    `/devices/${deviceId}/mortar/board?mode=${mode}&date=${date}&compare=${against || 'none'}` +
-      (shift && mode === 'shift' ? `&shift=${shift}` : '') +
-      (spout ? `&spout=${spout}` : ''),
+    query(date) + (median ? `&compare=median&days=${median}` : ''),
     30000,
   );
+  const below = usePoll<MortarBoardResponse>(comparedDay ? query(comparedDay) : null, 60000);
+  const days = usePoll<{ days: string[] }>(`/devices/${deviceId}/mortar/days`, 600000);
   const data = response.data;
   if (!data)
     return <div className="shift-board-empty">{response.error ?? 'Carregando o turno…'}</div>;
@@ -157,6 +219,12 @@ export function MortarShiftBoard({
     );
 
   const board = data.board;
+  const other = comparedDay ? (below.data?.board ?? null) : null;
+  const otherLabel = comparedDay
+    ? comparedDay === today
+      ? 'hoje'
+      : comparedDay.split('-').reverse().slice(0, 2).join('/')
+    : '';
   const tonsMetric = board.metric === 'tons';
   const unit = tonsMetric ? 't' : 'sacos';
   const decimals = tonsMetric ? 1 : 0;
@@ -186,30 +254,6 @@ export function MortarShiftBoard({
           : 'turno encerrado'
         : `começa às ${clock(board.span.start)}`;
   const live = data.status === 'running';
-
-  // The health line, in the ceramic board's words.
-  const health = (() => {
-    if (!target?.health) return null;
-    const pct = target.value > 0 ? (target.actual / target.value) * 100 : 0;
-    switch (target.health) {
-      case 'achieved':
-        return `Meta atingida: ${fmt(target.actual)} de ${fmt(target.value)} ${unit}.`;
-      case 'missed':
-        return `Fechou em ${fmt(target.actual)} de ${fmt(target.value)} ${unit} (${pct.toFixed(0)}% da meta).`;
-      case 'on_track':
-        return `No ritmo atual fecha em ${fmt(target.projected)} ${unit} — ${((target.projected / target.value) * 100).toFixed(0)}% da meta.`;
-      default:
-        return `Para bater ${fmt(target.value)} ${unit} precisa de ${fmt(target.requiredPerHour ?? 0)} ${unit}/h até ${clock(board.span.end)}; o ritmo atual é ${fmt(target.ratePerHour)} ${unit}/h. Projeção: ${fmt(target.projected)} ${unit}.`;
-    }
-  })();
-  const tone =
-    target?.health === 'achieved' || target?.health === 'on_track'
-      ? 'good'
-      : target?.health === 'at_risk'
-        ? 'warn'
-        : target?.health
-          ? 'bad'
-          : 'none';
   const opens = (focus: Focus) => ({
     role: 'button' as const,
     tabIndex: 0,
@@ -219,19 +263,117 @@ export function MortarShiftBoard({
     },
     title: 'Ver como foi durante o turno',
   });
-  // The ceramic curve, fed the mortar board in its own shape.
-  const curveBoard = { ...board, metric: 'blocks' } as unknown as BoardData;
   const spoutsInView = spout ? 1 : Math.max(1, data.spouts.length);
   const stopShare = board.time.elapsedProductive
     ? board.stops.seconds / spoutsInView / board.time.elapsedProductive
     : null;
   const allBags = data.spouts.reduce((sum, item) => sum + item.bags, 0);
   const allRunning = data.spouts.reduce((sum, item) => sum + item.runningS, 0);
+  const secondsPerBag = shownSpout?.secondsPerBag ?? (allBags ? allRunning / allBags : null);
+
+  // Where the period stands against its target, in one sentence and one colour.
+  const ratio = target && target.value > 0 ? target.actual / target.value : null;
+  const projectedRatio = target && target.value > 0 ? target.projected / target.value : null;
+  const tone =
+    target?.health === 'achieved' || target?.health === 'on_track'
+      ? 'good'
+      : target?.health === 'at_risk'
+        ? 'warn'
+        : target?.health
+          ? 'bad'
+          : 'none';
+  const verdict = !target?.health
+    ? null
+    : target.health === 'achieved'
+      ? 'Meta atingida'
+      : target.health === 'missed'
+        ? `Fechou em ${percent(ratio, 0)} da meta`
+        : target.health === 'on_track'
+          ? `No ritmo, fecha em ${percent(projectedRatio, 0)} da meta`
+          : `Precisa de ${fmt(target.requiredPerHour ?? 0)} ${unit}/h para bater a meta`;
+
+  const dayField = onDate && (
+    <div className="shift-field">
+      <span>Dia</span>
+      <span className="shift-field-controls">
+        <span className="widget-period" role="group" aria-label="Dia">
+          <button
+            type="button"
+            className={date === today && !pickingDay ? 'active' : ''}
+            onClick={() => {
+              setPickingDay(false);
+              onDate(today);
+            }}
+          >
+            Hoje
+          </button>
+          <button
+            type="button"
+            className={date === yesterday && !pickingDay ? 'active' : ''}
+            onClick={() => {
+              setPickingDay(false);
+              onDate(yesterday);
+            }}
+          >
+            Ontem
+          </button>
+          <button
+            type="button"
+            className={pickingDay || (date !== today && date !== yesterday) ? 'active' : ''}
+            onClick={() => setPickingDay(true)}
+          >
+            Personalizado
+          </button>
+        </span>
+        {(pickingDay || (date !== today && date !== yesterday)) && (
+          <DayCalendar value={date} available={days.data?.days ?? []} onPick={onDate} />
+        )}
+      </span>
+    </div>
+  );
+  const compareField = (
+    <div className="shift-field">
+      <span>Comparar com</span>
+      <span className="shift-field-controls">
+        <span className="widget-period" role="group" aria-label="Comparar com">
+          {COMPARISONS.map(([value, text]) => (
+            <button
+              key={value}
+              type="button"
+              className={against === value ? 'active' : ''}
+              disabled={value === 'today' && date === today}
+              title={
+                value === 'today' && date === today ? 'O quadro já está mostrando hoje' : undefined
+              }
+              // The pill that is on turns the comparison off, as on the other cards.
+              onClick={() => {
+                setAgainst(against === value ? '' : value);
+                setAgainstDay('');
+                setZoom(null);
+              }}
+            >
+              {text}
+            </button>
+          ))}
+        </span>
+        {against === 'custom' && (
+          <DayCalendar
+            value={againstDay}
+            available={(days.data?.days ?? []).filter((day) => day !== date)}
+            onPick={(day) => {
+              setAgainstDay(day);
+              setZoom(null);
+            }}
+          />
+        )}
+      </span>
+    </div>
+  );
 
   return (
-    <div className="shift-board mortar-board">
-      <div className="shift-board-head">
-        <div>
+    <div className={`shift-board mortar-board${other ? ' comparing' : ''}`}>
+      <div className="mortar-board-head">
+        <div className="mortar-board-title">
           <strong>{title}</strong>
           <span>
             {statusText}
@@ -239,28 +381,7 @@ export function MortarShiftBoard({
             {data.defaultShifts ? ' · turno padrão (cadastre os turnos em Produção)' : ''}
           </span>
         </div>
-        <div className="shift-head-tools">
-          <div className="shift-field">
-            <span>Comparar com</span>
-            <span className="widget-period" role="group" aria-label="Comparar com">
-              {(
-                [
-                  ['yesterday', 'Ontem'],
-                  ['week', 'Semana passada'],
-                ] as const
-              ).map(([key, text]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={against === key ? 'active' : ''}
-                  // The pill that is on turns the comparison off, as on the ceramic board.
-                  onClick={() => setAgainst(against === key ? '' : key)}
-                >
-                  {text}
-                </button>
-              ))}
-            </span>
-          </div>
+        <div className="mortar-board-switches">
           {live && (
             <span
               className="shift-state"
@@ -293,171 +414,263 @@ export function MortarShiftBoard({
           </div>
         </div>
       </div>
+      <div className="mortar-board-filters">
+        {dayField}
+        {compareField}
+      </div>
 
-      <div className="shift-kpis">
-        <div className="shift-kpi hero clickable" {...opens('produced')}>
-          <span>Produzido</span>
-          <b>
-            {fmt(board.totals.actual)} <small>{unit}</small>
-          </b>
-          <em>
-            {integer(board.totals.bags)} sacos · {tons(board.totals.kg)} t
-          </em>
-        </div>
-        {!spout && (
-          <div className="shift-kpi clickable" {...opens('target')}>
-            <span className="shift-kpi-title">
-              Meta
-              {user.role === 'master' && (
-                <button
-                  type="button"
-                  className="kpi-edit"
-                  title="Editar a meta do turno"
-                  aria-label="Editar a meta do turno"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setEditing(true);
-                  }}
-                >
-                  ✎
-                </button>
+      {/* The period in one block: what was made against the target, where it should be by now
+          and where it closes; beside it, the three figures that explain it. */}
+      <div className="mortar-summary">
+        <div className={`mortar-hero ${tone}`}>
+          <div className="mortar-hero-top clickable" {...opens('produced')}>
+            <span>Produzido</span>
+            <b>
+              {fmt(board.totals.actual)} <small>{unit}</small>
+            </b>
+            <em>
+              {tonsMetric ? `${integer(board.totals.bags)} sacos` : `${tons(board.totals.kg)} t`}
+              {other && (
+                <i className="mortar-against">
+                  {otherLabel}: {fmt(other.totals.actual)}
+                </i>
               )}
-            </span>
-            {target ? (
-              <>
+            </em>
+          </div>
+          {target ? (
+            <>
+              <div
+                className="mortar-progress"
+                role="img"
+                aria-label={`Feito ${percent(ratio, 0)} da meta`}
+              >
+                <i style={{ width: `${Math.min(100, (ratio ?? 0) * 100)}%` }} />
+                {projectedRatio != null && live && (
+                  <u
+                    className="projected"
+                    style={{ left: `${Math.min(100, projectedRatio * 100)}%` }}
+                    title={`Projeção: ${fmt(target.projected)} ${unit}`}
+                  />
+                )}
+                {live && target.value > 0 && (
+                  <u
+                    className="expected"
+                    style={{
+                      left: `${Math.min(100, (target.plannedToNow / target.value) * 100)}%`,
+                    }}
+                    title={`Esperado agora: ${fmt(target.plannedToNow)} ${unit}`}
+                  />
+                )}
+              </div>
+              <div className="mortar-hero-facts">
+                <span className="clickable" {...opens('target')}>
+                  Meta <b>{fmt(target.value)}</b>
+                  {user.role === 'master' && (
+                    <button
+                      type="button"
+                      className="kpi-edit"
+                      title="Editar a meta do turno"
+                      aria-label="Editar a meta do turno"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setEditing(true);
+                      }}
+                    >
+                      ✎
+                    </button>
+                  )}
+                </span>
+                {live && (
+                  <span>
+                    Esperado agora <b>{fmt(target.plannedToNow)}</b>
+                  </span>
+                )}
+                <span className="clickable" {...opens('projection')}>
+                  {live ? 'Projeção' : 'Fechou'}{' '}
+                  <b>{fmt(live ? target.projected : target.actual)}</b>
+                </span>
+                {verdict && <em className={`mortar-verdict ${tone}`}>{verdict}</em>}
+              </div>
+            </>
+          ) : (
+            <div className="mortar-hero-facts">
+              {!spout && (
+                <span>
+                  Sem meta
+                  {user.role === 'master' && (
+                    <button
+                      type="button"
+                      className="kpi-edit"
+                      title="Definir a meta do turno"
+                      aria-label="Definir a meta do turno"
+                      onClick={() => setEditing(true)}
+                    >
+                      ✎
+                    </button>
+                  )}
+                </span>
+              )}
+              <span className="clickable" {...opens('projection')}>
+                {live ? 'Projeção' : 'Fechou'}{' '}
                 <b>
-                  {fmt(target.value)} <small>{unit}</small>
+                  {fmt(
+                    live ? board.pacePerHour * (board.plannedSeconds / 3600) : board.totals.actual,
+                  )}
                 </b>
-                <em>
-                  esperado agora {fmt(target.plannedToNow)} · feito {fmt(target.actual)}
-                </em>
-              </>
-            ) : (
-              <>
-                <b className="muted">Sem meta</b>
-                <em>{user.role === 'master' ? 'defina no lápis ✎' : 'sem meta definida'}</em>
-              </>
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="mortar-tiles">
+          <div className="shift-kpi clickable" {...opens('pace')}>
+            <span>Ritmo</span>
+            <b>
+              {fmt(board.pacePerHour)} <small>{unit}/h</small>
+            </b>
+            <em>{perBag(secondsPerBag)} por saco</em>
+            {other && (
+              <i className="mortar-against">
+                {otherLabel}: {fmt(other.pacePerHour)} {unit}/h
+              </i>
             )}
           </div>
-        )}
-        <div className="shift-kpi clickable" {...opens('projection')}>
-          <span>Projeção de fechamento</span>
-          <b>
-            {fmt(target ? target.projected : board.pacePerHour * (board.plannedSeconds / 3600))}{' '}
-            <small>{unit}</small>
-          </b>
-          <em>
-            {target
-              ? `${((target.projected / target.value) * 100).toFixed(0)}% da meta`
-              : 'no ritmo do período'}
-          </em>
-        </div>
-        <div className="shift-kpi clickable" {...opens('pace')}>
-          <span>Ritmo</span>
-          <b>
-            {fmt(board.pacePerHour)} <small>{unit}/h</small>
-          </b>
-          <em>
-            {target?.requiredPerHour != null && board.remainingSeconds > 0
-              ? `necessário ${fmt(target.requiredPerHour)} ${unit}/h`
-              : `por hora do turno · tempo por saco ${perBag(
-                  shownSpout?.secondsPerBag ?? (allBags ? allRunning / allBags : null),
-                )}`}
-          </em>
-        </div>
-        <div className="shift-kpi clickable" {...opens('efficiency')}>
-          <span>Eficiência</span>
-          <b>{percent(board.effectiveness ?? board.utilization, 1)}</b>
-          <em>
-            disponível {percent(board.utilization, 0)} × desempenho{' '}
-            {board.performance == null ? 'sem ritmo padrão' : percent(board.performance, 0)}
-          </em>
-        </div>
-        <div className="shift-kpi clickable" {...opens('stops')}>
-          <span>Paradas</span>
-          <b>{integer(board.stops.count)}</b>
-          <em>
-            {board.stops.count
-              ? `${duration(board.stops.seconds)} parados · ${percent(stopShare, 0)} do tempo`
-              : 'nenhuma no período'}
-          </em>
+          <div className="shift-kpi clickable" {...opens('efficiency')}>
+            <span>Eficiência</span>
+            <b>{percent(board.effectiveness ?? board.utilization, 1)}</b>
+            <em>
+              {percent(board.utilization, 0)} disp. ×{' '}
+              {board.performance == null
+                ? 'sem ritmo padrão'
+                : `${percent(board.performance, 0)} desemp.`}
+            </em>
+            {other && (
+              <i className="mortar-against">
+                {otherLabel}: {percent(other.effectiveness ?? other.utilization, 1)}
+              </i>
+            )}
+          </div>
+          <div className="shift-kpi clickable" {...opens('stops')}>
+            <span>Paradas</span>
+            <b>{integer(board.stops.count)}</b>
+            <em>
+              {board.stops.count
+                ? `${duration(board.stops.seconds)} · ${percent(stopShare, 0)} do tempo`
+                : 'nenhuma no período'}
+            </em>
+            {other && (
+              <i className="mortar-against">
+                {otherLabel}: {integer(other.stops.count)}
+              </i>
+            )}
+          </div>
         </div>
       </div>
 
-      {health && <div className={`shift-health ${tone}`}>{health}</div>}
-
       {children}
 
-      {!spoutId && data.spouts.length > 1 && (
-        <div className="mortar-curve-pick">
-          <span>Curva de</span>
-          <span className="widget-period" role="group" aria-label="Curva de">
-            <button
-              type="button"
-              className={focusSpout === 'line' ? 'active' : ''}
-              onClick={() => setFocusSpout('line')}
-            >
-              Linha toda
-            </button>
-            {data.spouts.map((item, index) => (
+      <div className="mortar-curve-block">
+        <div className="mortar-curve-head">
+          <strong>
+            {focusSpout === 'compare' && !spoutId
+              ? 'Bicos lado a lado · sacos acumulados de cada um'
+              : `Curva S · ${unit} acumulados`}
+          </strong>
+          {!spoutId && data.spouts.length > 1 && (
+            <span className="widget-period" role="group" aria-label="Curva de">
               <button
                 type="button"
-                key={item.id}
-                className={focusSpout === item.id ? 'active' : ''}
-                onClick={() => setFocusSpout(item.id)}
+                className={focusSpout === 'line' ? 'active' : ''}
+                onClick={() => setFocusSpout('line')}
               >
-                <i style={{ background: palette.spout(index) }} /> Bico {item.name}
+                Linha toda
               </button>
-            ))}
-            <button
-              type="button"
-              className={focusSpout === 'compare' ? 'active' : ''}
-              onClick={() => setFocusSpout('compare')}
-            >
-              Comparar bicos
-            </button>
-          </span>
+              {data.spouts.map((item, index) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={focusSpout === item.id ? 'active' : ''}
+                  onClick={() => setFocusSpout(item.id)}
+                >
+                  <i className="mortar-swatch" style={{ background: palette.spout(index) }} /> Bico{' '}
+                  {item.name}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={focusSpout === 'compare' ? 'active' : ''}
+                onClick={() => setFocusSpout('compare')}
+              >
+                Comparar bicos
+              </button>
+            </span>
+          )}
         </div>
-      )}
 
-      {focusSpout === 'compare' && !spoutId ? (
-        <SpoutComparison data={data} fmt={fmt} unit={unit} />
-      ) : (
-        <div className="shift-body">
-          <div className="shift-curve">
-            <div className="shift-section-title">
-              Curva S · {unit} acumulados
-              <span className="shift-legend">
-                {target && (
-                  <>
-                    <i className="planned" /> planejado{' '}
-                  </>
-                )}
-                <i className="actual" /> realizado (área = estado dos bicos){' '}
-                {live && (
-                  <>
-                    <i className="projected" /> projeção
-                  </>
-                )}
-                {data.compare && (
-                  <>
-                    {' '}
-                    <i className="compared" /> {data.compare.label}
-                  </>
-                )}
-              </span>
-            </div>
-            <div className="shift-chart">
-              <ShiftCurve
-                board={curveBoard}
-                unit={{ unit, name: unit, decimals }}
-                compare={data.compare}
+        {focusSpout === 'compare' && !spoutId ? (
+          <SpoutComparison data={data} fmt={fmt} unit={unit} />
+        ) : (
+          <>
+            <div className="shift-body">
+              <div className="shift-curve">
+                <div className="shift-chart">
+                  <ShiftCurve
+                    board={{ ...board, metric: 'blocks' } as unknown as BoardData}
+                    unit={{ unit, name: unit, decimals }}
+                    compare={data.compare}
+                    view={other ? zoom : undefined}
+                    onView={other ? setZoom : undefined}
+                    syncId={other ? `mortar-${deviceId}` : undefined}
+                  />
+                </div>
+                <div className="shift-legend mortar-curve-legend">
+                  {target && (
+                    <>
+                      <i className="planned" /> planejado{' '}
+                    </>
+                  )}
+                  <i className="actual" /> realizado (área = estado dos bicos){' '}
+                  {live && (
+                    <>
+                      <i className="projected" /> projeção{' '}
+                    </>
+                  )}
+                  {data.compare && (
+                    <>
+                      <i className="compared" /> {data.compare.label}
+                    </>
+                  )}
+                </div>
+              </div>
+              <MortarAvailability
+                board={board}
+                onEdit={user.role === 'master' ? () => setEditingFormula(true) : undefined}
               />
             </div>
-          </div>
-          <MortarAvailability board={board} />
-        </div>
-      )}
+            {other && (
+              <div className="shift-compare">
+                <div className="shift-section-title">
+                  {otherLabel}
+                  <small> · dia comparado</small>
+                </div>
+                <div className="shift-body">
+                  <div className="shift-curve">
+                    <div className="shift-chart shift-compare-chart">
+                      <ShiftCurve
+                        board={{ ...other, metric: 'blocks' } as unknown as BoardData}
+                        unit={{ unit, name: unit, decimals }}
+                        view={zoom}
+                        onView={setZoom}
+                        syncId={`mortar-${deviceId}`}
+                      />
+                    </div>
+                  </div>
+                  <MortarAvailability board={other} label={otherLabel} />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="shift-timeline" aria-label="Linha do tempo">
         {board.timeline.map((segment) => (
@@ -492,6 +705,19 @@ export function MortarShiftBoard({
           }}
         />
       )}
+      {editingFormula && (
+        <ModalPortal>
+          <MortarUtilizationModal
+            deviceId={deviceId}
+            formula={board.utilizationFormula ?? null}
+            time={board.time}
+            onClose={(saved) => {
+              setEditingFormula(false);
+              if (saved) void response.refresh();
+            }}
+          />
+        </ModalPortal>
+      )}
       {detail && (
         <ModalPortal>
           <MortarDetailModal
@@ -510,16 +736,45 @@ export function MortarShiftBoard({
   );
 }
 
-/** How the spouts spent the period, beside the curve, as the ceramic board shows the machine. */
-function MortarAvailability({ board }: { board: MortarBoard }) {
+/**
+ * How the spouts spent the period, beside the curve, as the ceramic board shows the machine:
+ * the gauge (by default or by the plant's own formula, set on the pencil) and the share of each
+ * state of the time elapsed.
+ */
+function MortarAvailability({
+  board,
+  label: caption,
+  onEdit,
+}: {
+  board: MortarBoard;
+  label?: string;
+  /** Opens the choice of formula; absent on a compared day and for those who cannot change it. */
+  onEdit?: () => void;
+}) {
   const elapsed = board.time.elapsedProductive;
   return (
     <div className="shift-availability">
       <div className="shift-section-title">
-        <span>Disponibilidade dos bicos</span>
+        <span>
+          Disponibilidade dos bicos
+          {caption && <small> · {caption}</small>}
+        </span>
+        {onEdit && (
+          <button
+            type="button"
+            className="kpi-edit"
+            title="Escolher como a disponibilidade é calculada"
+            aria-label="Escolher como a disponibilidade é calculada"
+            onClick={onEdit}
+          >
+            ✎
+          </button>
+        )}
       </div>
       <Gauge value={board.utilization} />
-      <small className="shift-gauge-caption">ensacando ÷ (ensacando + ociosa)</small>
+      <small className="shift-gauge-caption">
+        {mortarUtilizationCaption(board.utilizationFormula)}
+      </small>
       <ul className="shift-states">
         {STATE_LIST.filter((state) => state !== 'disabled' || board.time.disabled >= 60).map(
           (state) => {
@@ -535,6 +790,131 @@ function MortarAvailability({ board }: { board: MortarBoard }) {
           },
         )}
       </ul>
+    </div>
+  );
+}
+
+/** The availability formula, in the ceramic utilization modal's words and layout. */
+function MortarUtilizationModal({
+  deviceId,
+  formula,
+  time,
+  onClose,
+}: {
+  deviceId: string;
+  formula: string | null;
+  time: MortarBoard['time'];
+  onClose: (saved: boolean) => void;
+}) {
+  const [custom, setCustom] = useState(Boolean(formula));
+  const [text, setText] = useState(formula ?? DEFAULT_MORTAR_UTILIZATION);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const values = mortarUtilizationValues(time);
+  const options = Object.entries(MORTAR_UTILIZATION_VARIABLES).map(([name, description]) => ({
+    name,
+    description,
+    value: (values[name] ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 }),
+  }));
+  const problem = custom ? mortarUtilizationError(text) : null;
+  const preview = problem ? null : mortarUtilizationFrom(custom ? text : null, time);
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      await mutate(`/devices/${deviceId}/mortar/utilization`, 'PATCH', {
+        formula: custom ? text : null,
+      });
+      onClose(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop" onMouseDown={() => !saving && onClose(false)}>
+      <div
+        className="modal-card utilization-modal"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="modal-title">
+          <div>
+            <div className="eyebrow">DISPONIBILIDADE DOS BICOS</div>
+            <h2>Como calcular</h2>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            disabled={saving}
+            onClick={() => onClose(false)}
+          >
+            ×
+          </button>
+        </div>
+        <div className="utilization-options">
+          <label className={`utilization-option ${custom ? '' : 'active'}`}>
+            <input type="radio" checked={!custom} onChange={() => setCustom(false)} />
+            <span>
+              <b>Padrão</b>
+              <small>
+                Ensacando ÷ (ensacando + ociosa). Bico desabilitado na IHM não pesa contra a linha.
+              </small>
+            </span>
+          </label>
+          <label className={`utilization-option ${custom ? 'active' : ''}`}>
+            <input type="radio" checked={custom} onChange={() => setCustom(true)} />
+            <span>
+              <b>Fórmula própria</b>
+              <small>Uma conta sua sobre os tempos do período. O resultado é o próprio %.</small>
+            </span>
+          </label>
+        </div>
+        {custom && (
+          <div className="utilization-builder">
+            <FormulaInput
+              value={text}
+              options={options}
+              placeholder={DEFAULT_MORTAR_UTILIZATION}
+              onChange={setText}
+            />
+            <small>
+              Digite o nome de um tempo e escolha na lista. Ex.: argamassa.horas_ensacando /
+              (argamassa.horas_ensacando + argamassa.horas_paradas) * 100
+            </small>
+          </div>
+        )}
+        <div className="utilization-preview">
+          <span>
+            {problem ?? (custom ? 'resultado da sua fórmula' : 'ensacando ÷ (ensacando + ociosa)')}
+          </span>
+          <b>
+            {preview == null
+              ? '—'
+              : `${(preview * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}%`}
+          </b>
+          <small>no período aberto no quadro</small>
+        </div>
+        <div className="notice full-field">
+          <b>Vale para este equipamento</b>
+          Muda a disponibilidade e a eficiência no quadro, nos bicos e no comparativo.
+        </div>
+        {error && <div className="form-error">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" disabled={saving} onClick={() => onClose(false)}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={saving || Boolean(problem)}
+            onClick={() => void save()}
+          >
+            {saving && <span className="button-spinner" />}
+            {saving ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -585,8 +965,7 @@ function SpoutComparison({
   );
   return (
     <div className="mortar-compare">
-      <div className="shift-section-title">
-        Bicos lado a lado · sacos acumulados de cada um
+      <div className="mortar-compare-legend">
         <span className="shift-legend">
           {data.spouts.map((spout, index) => (
             <span key={spout.id} className="mortar-legend-item">

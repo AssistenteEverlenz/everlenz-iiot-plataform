@@ -229,6 +229,7 @@ export function Bagging({
   data,
   deviceId,
   boardDate,
+  onDate,
   live,
   onLink,
 }: {
@@ -236,6 +237,8 @@ export function Bagging({
   deviceId: string;
   /** A single day is read as a shift board (target, S-curve); a longer period as totals. */
   boardDate: string | null;
+  /** Picks the day the bagging board reads. */
+  onDate?: (date: string) => void;
   /** The period includes today, so "what the spout is doing now" means something. */
   live: boolean;
   onLink?: () => void;
@@ -285,7 +288,7 @@ export function Bagging({
   if (boardDate)
     return (
       <>
-        <MortarShiftBoard deviceId={deviceId} date={boardDate}>
+        <MortarShiftBoard deviceId={deviceId} date={boardDate} onDate={onDate}>
           {spoutCards}
         </MortarShiftBoard>
         {spoutModal}
@@ -363,15 +366,15 @@ function SpoutCard({
             {state.label}
           </em>
         )}
+        <span className="mortar-spout-open" aria-hidden="true">
+          ›
+        </span>
       </header>
       <div className="mortar-spout-products">
         {names.length === 0 ? (
           <span className="none">Nada ensacado no período</span>
         ) : (
           <>
-            <span className="caption">
-              {names.length === 1 ? 'Produto' : `${names.length} produtos no período`}
-            </span>
             <span className="chips">
               {names.slice(0, 3).map((item) => (
                 <span key={item.recipe} title={item.recipe}>
@@ -417,7 +420,6 @@ function SpoutCard({
           </b>
         )}
       </span>
-      <span className="mortar-more">Ver detalhes ›</span>
     </button>
   );
 }
