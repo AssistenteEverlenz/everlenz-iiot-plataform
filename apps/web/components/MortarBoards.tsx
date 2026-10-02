@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import {
   Bar,
   BarChart,
@@ -19,9 +19,7 @@ import {
 import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
 import {
-  MATERIAL_COLORS,
   PRODUCT_COLORS,
-  SPOUT_COLORS,
   STATES,
   clock,
   duration,
@@ -32,7 +30,9 @@ import {
   periodText,
   slotLabel,
   tons,
+  paletteOf,
   type BagSlot,
+  type MortarPalette,
   type MixRecipe,
   type Spout,
   type Summary,
@@ -49,7 +49,8 @@ import {
  */
 
 const AXIS = { fontSize: 10, fill: '#7b9097' };
-const spoutColor = (index: number) => SPOUT_COLORS[index % SPOUT_COLORS.length];
+/** The colours of the card being drawn (its pencil settings), shared by everything inside it. */
+export const MortarColors = createContext<MortarPalette>(paletteOf(undefined));
 
 // ---------------------------------------------------------------------------------------------
 // Building blocks
@@ -233,6 +234,7 @@ export function Bagging({
   live: boolean;
   onLink?: () => void;
 }) {
+  const palette = useContext(MortarColors);
   const { totals, spouts } = data.bagging;
   const [figure, setFigure] = useState<BagFigure | null>(null);
   const [spoutOpen, setSpoutOpen] = useState<string | null>(null);
@@ -291,7 +293,7 @@ export function Bagging({
           <SpoutCard
             key={spout.id}
             spout={spout}
-            color={spoutColor(index)}
+            color={palette.spout(index)}
             live={live}
             onOpen={() => setSpoutOpen(spout.id)}
           />
@@ -305,7 +307,7 @@ export function Bagging({
         <SpoutModal
           data={data}
           spout={opened}
-          color={spoutColor(spouts.indexOf(opened))}
+          color={palette.spout(spouts.indexOf(opened))}
           live={live}
           onClose={() => setSpoutOpen(null)}
         />
@@ -608,6 +610,7 @@ function BagFigureModal({
   figure: BagFigure;
   onClose: () => void;
 }) {
+  const palette = useContext(MortarColors);
   const { spouts, products, totals } = data.bagging;
   const info = BAG_FIGURES[figure];
   const valueOf = (spout: Spout): string => {
@@ -647,7 +650,7 @@ function BagFigureModal({
             return (
               <tr key={spout.id}>
                 <td>
-                  <span className="mortar-dot" style={{ background: spoutColor(index) }} />
+                  <span className="mortar-dot" style={{ background: palette.spout(index) }} />
                   Bico {spout.name}
                 </td>
                 <td className="n">
@@ -656,7 +659,7 @@ function BagFigureModal({
                 <td>
                   {share != null ? (
                     <div className="mortar-share">
-                      <i style={{ width: `${share * 100}%`, background: spoutColor(index) }} />
+                      <i style={{ width: `${share * 100}%`, background: palette.spout(index) }} />
                       <span>{percent(share)}</span>
                     </div>
                   ) : (
@@ -737,6 +740,7 @@ function BagFigureModal({
  * so a spout that slowed down after lunch shows it; a longer period is read by the day.
  */
 function BaggingCharts({ data }: { data: Summary }) {
+  const palette = useContext(MortarColors);
   const { spouts, series } = data.bagging;
   const quarter = series.some((slot) => slot.slot.length > 13);
   const rows = useMemo(() => {
@@ -769,7 +773,7 @@ function BaggingCharts({ data }: { data: Summary }) {
     <div className="stops-spent-legend">
       {spouts.map((spout, index) => (
         <span key={spout.id}>
-          <i style={{ background: spoutColor(index) }} /> Bico {spout.name}
+          <i style={{ background: palette.spout(index) }} /> Bico {spout.name}
         </span>
       ))}
     </div>
@@ -791,7 +795,7 @@ function BaggingCharts({ data }: { data: Summary }) {
                 key={spout.id}
                 dataKey={'sum_' + spout.id}
                 name={'Bico ' + spout.name}
-                stroke={spoutColor(index)}
+                stroke={palette.spout(index)}
                 strokeWidth={2}
                 dot={false}
                 isAnimationActive={drawing}
@@ -833,7 +837,8 @@ function BaggingCharts({ data }: { data: Summary }) {
             <Bar
               yAxisId="slot"
               dataKey="bags"
-              fill="#bfe9e3"
+              fill={palette.accent}
+              fillOpacity={0.3}
               radius={[3, 3, 0, 0]}
               isAnimationActive={drawing}
               animationDuration={drawing ? 700 : 0}
@@ -871,7 +876,7 @@ function BaggingCharts({ data }: { data: Summary }) {
                 key={spout.id}
                 dataKey={'sec_' + spout.id}
                 name={'Bico ' + spout.name}
-                stroke={spoutColor(index)}
+                stroke={palette.spout(index)}
                 strokeWidth={2}
                 dot={false}
                 connectNulls={false}
@@ -924,6 +929,7 @@ export function Output({
   displayKey: string;
   onLink?: () => void;
 }) {
+  const palette = useContext(MortarColors);
   const { products, totals, spouts } = data.bagging;
   const [open, setOpen] = useState<string | null>(null);
   const [display, setDisplayState] = useState<OutputDisplay>(() => {
@@ -1155,7 +1161,7 @@ export function Output({
                 opened.spouts[spout.id] ? (
                   <tr key={spout.id}>
                     <td>
-                      <span className="mortar-dot" style={{ background: spoutColor(index) }} />
+                      <span className="mortar-dot" style={{ background: palette.spout(index) }} />
                       Bico {spout.name}
                     </td>
                     <td className="n">{integer(opened.spouts[spout.id])} sacos</td>
@@ -1200,15 +1206,17 @@ type MaterialOpen =
   { kind: 'batches' } | { kind: 'material'; label: string } | { kind: 'recipe'; recipe: string };
 
 export function Materials({ data }: { data: Summary }) {
+  const palette = useContext(MortarColors);
   const { mix } = data;
   const [open, setOpen] = useState<MaterialOpen | null>(null);
   const colorOf = (label: string) =>
-    MATERIAL_COLORS[
+    palette.material(
+      label,
       Math.max(
         0,
         mix.materials.findIndex((item) => item.label === label),
-      ) % MATERIAL_COLORS.length
-    ];
+      ),
+    );
   const rows = useMemo(
     () =>
       mix.series.map((slot) => ({
@@ -1648,6 +1656,7 @@ function MaterialsModal({
 // Rendimento
 
 export function Yield({ data, onLink }: { data: Summary; onLink?: () => void }) {
+  const palette = useContext(MortarColors);
   const { yield: result } = data;
   const peak = Math.max(1, result.mixedKg, result.baggedKg);
   return (
@@ -1674,7 +1683,7 @@ export function Yield({ data, onLink }: { data: Summary; onLink?: () => void }) 
         </div>
         <div>
           <span>Ensacado</span>
-          <i style={{ width: `${(result.baggedKg / peak) * 100}%`, background: '#12b8a6' }} />
+          <i style={{ width: `${(result.baggedKg / peak) * 100}%`, background: palette.accent }} />
           <b>{tons(result.baggedKg)} t</b>
         </div>
       </div>

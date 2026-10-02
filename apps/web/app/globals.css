@@ -10877,3 +10877,48 @@ button.mortar-figure:hover > u {
 .mortar-add:hover {
   border-color: var(--brand-accent, #12b8a6);
 }
+.mortar-color {
+  flex: 0 0 auto;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid #cbdadd;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.mortar-spout-form legend .mortar-color {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+}
+/* Inside the card pencil the generic field sizes would stretch the switch and push the
+   selects out of their box (a generic min-width beats width). */
+.mortar-config input[type='checkbox'] {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+}
+.mortar-switch {
+  justify-content: flex-start;
+  font-size: 14px;
+}
+.mortar-config select,
+.mortar-config input:not([type='checkbox']):not([type='color']) {
+  width: 100%;
+  min-width: 0;
+}
+.mortar-spout-form,
+.mortar-spout-form label,
+.mortar-grid > label {
+  min-width: 0;
+}
+.mortar-spout-form legend input:not([type='color']) {
+  width: 110px;
+  flex: 0 0 110px;
+}
+.mortar-row input:not([type='color']),
+.mortar-row select {
+  flex: 1;
+}

@@ -188,3 +188,30 @@ export function windowOf(period: Period): { from: string; to: string } {
     return { from: isoDay(new Date(now.getFullYear(), now.getMonth(), 1)), to };
   return { from: isoDay(new Date(now.getFullYear(), 0, 1)), to };
 }
+
+/**
+ * The colours a mortar card draws with. They come from the card's own settings (the pencil):
+ * the card colour, which starts as the White label primary, leads; each spout and each
+ * material can be given its own, and what is not set falls back to the default palette.
+ */
+export type MortarCardConfig = {
+  color?: string;
+  spoutColors?: string[];
+  materialColors?: Record<string, string>;
+};
+export type MortarPalette = {
+  accent: string;
+  spout: (index: number) => string;
+  material: (label: string, index: number) => string;
+};
+export function paletteOf(config: MortarCardConfig | undefined): MortarPalette {
+  const accent = config?.color || SPOUT_COLORS[0];
+  return {
+    accent,
+    spout: (index) =>
+      config?.spoutColors?.[index] ||
+      (index === 0 ? accent : SPOUT_COLORS[index % SPOUT_COLORS.length]),
+    material: (label, index) =>
+      config?.materialColors?.[label] || MATERIAL_COLORS[index % MATERIAL_COLORS.length],
+  };
+}

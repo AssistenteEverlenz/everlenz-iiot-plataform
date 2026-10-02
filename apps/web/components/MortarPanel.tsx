@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MutableRefObject } from 'react';
 import { mutate, usePoll } from './data';
 import { ModalPortal } from './ModalPortal';
 import { usePlatform } from './PlatformShell';
-import { Bagging, Materials, Output, Yield } from './MortarBoards';
+import { Bagging, Materials, MortarColors, Output, Yield } from './MortarBoards';
 import {
   PERIODS,
   integer,
+  paletteOf,
   windowOf,
+  type MortarCardConfig,
   type MortarView,
   type Period,
   type Summary,
@@ -16,12 +18,21 @@ import {
 
 export type { MortarView } from './mortarShared';
 
-export function MortarPanel({ deviceId, view }: { deviceId: string; view: MortarView }) {
+export function MortarPanel({
+  deviceId,
+  view,
+  config,
+}: {
+  deviceId: string;
+  view: MortarView;
+  /** The card's own settings: its colour, and those of its spouts and materials. */
+  config?: MortarCardConfig;
+}) {
   const { user } = usePlatform();
   const master = user.role === 'master';
   const [period, setPeriod] = useState<Period>(view === 'bagging' ? 'today' : 'month');
   const [custom, setCustom] = useState(() => windowOf('7d'));
-  const [modal, setModal] = useState<null | 'products' | 'config'>(null);
+  const [modal, setModal] = useState<null | 'products'>(null);
   const range = period === 'custom' ? custom : windowOf(period);
   const summary = usePoll<Summary>(
     `/devices/${deviceId}/mortar?from=${range.from}&to=${range.to}`,
@@ -61,66 +72,45 @@ export function MortarPanel({ deviceId, view }: { deviceId: string; view: Mortar
           />
         </span>
       )}
-      {master && (
-        <span className="mortar-actions">
-          {view !== 'mortar_materials' && (
-            <button type="button" onClick={() => setModal('products')}>
-              Produtos e receitas
-            </button>
-          )}
-          <button type="button" onClick={() => setModal('config')}>
-            Configurar
-          </button>
-        </span>
-      )}
     </div>
   );
 
   const data = summary.data;
   return (
-    <div className="stops-panel mortar-panel">
-      <div className="stops-head">{tools}</div>
-      {!data ? (
-        <div className="stops-empty">{summary.error ?? 'Carregando…'}</div>
-      ) : view === 'bagging' ? (
-        <Bagging
-          data={data}
-          live={range.to >= windowOf('today').to}
-          onLink={master ? () => setModal('products') : undefined}
-        />
-      ) : view === 'mortar_output' ? (
-        <Output
-          data={data}
-          displayKey={'mortar-output-display:' + deviceId}
-          onLink={master ? () => setModal('products') : undefined}
-        />
-      ) : view === 'mortar_materials' ? (
-        <Materials data={data} />
-      ) : (
-        <Yield data={data} onLink={master ? () => setModal('products') : undefined} />
-      )}
-      {modal === 'products' && (
-        <ModalPortal>
-          <ProductsModal
-            onClose={() => {
-              setModal(null);
-              void summary.refresh();
-            }}
+    <MortarColors.Provider value={paletteOf(config)}>
+      <div className="stops-panel mortar-panel">
+        <div className="stops-head">{tools}</div>
+        {!data ? (
+          <div className="stops-empty">{summary.error ?? 'Carregando…'}</div>
+        ) : view === 'bagging' ? (
+          <Bagging
+            data={data}
+            live={range.to >= windowOf('today').to}
+            onLink={master ? () => setModal('products') : undefined}
           />
-        </ModalPortal>
-      )}
-      {modal === 'config' && (
-        <ModalPortal>
-          <MortarConfigModal
-            deviceId={deviceId}
-            onClose={() => {
-              setModal(null);
-              void summary.refresh();
-            }}
+        ) : view === 'mortar_output' ? (
+          <Output
+            data={data}
+            displayKey={'mortar-output-display:' + deviceId}
+            onLink={master ? () => setModal('products') : undefined}
           />
-        </ModalPortal>
-      )}
-    </div>
+        ) : view === 'mortar_materials' ? (
+          <Materials data={data} />
+        ) : (
+          <Yield data={data} onLink={master ? () => setModal('products') : undefined} />
+        )}
+        {modal === 'products' && (
+          <ModalPortal>
+            <ProductsModal
+              onClose={() => {
+                setModal(null);
+                void summary.refresh();
+              }}
+            />
+          </ModalPortal>
+        )}
+      </div>
+    </MortarColors.Provider>
   );
 }
 
@@ -129,7 +119,8 @@ type Catalog = {
   recipes: Array<{ recipe: string; productId: string | null; bags: number; lastAt: string | null }>;
 };
 
-function ProductsModal({ onClose }: { onClose: () => void }) {
+/** Ações → Produtos e receitas: the products a plant sells and the recipes that fill them. */
+export function ProductsModal({ onClose }: { onClose: () => void }) {
   const catalog = usePoll<Catalog>('/mortar/products', 600000);
   const [name, setName] = useState('');
   const [kg, setKg] = useState('');
@@ -395,7 +386,33 @@ function TagSelect({
   );
 }
 
-function MortarConfigModal({ deviceId, onClose }: { deviceId: string; onClose: () => void }) {
+/** What the card settings (the pencil) hand back to the dashboard when it saves. */
+export type MortarSettingsHandle = {
+  save: () => Promise<void>;
+  config: () => Pick<MortarCardConfig, 'spoutColors' | 'materialColors'>;
+};
+
+/**
+ * The settings of one mortar card, shown inside the card's pencil. Each card shows only what it
+ * reads: the bagging card its spouts, the raw-material card the mixer. Both are kept in the
+ * device's mortar settings, so the card that is not being edited keeps its half untouched.
+ */
+export function MortarCardSettings({
+  deviceId,
+  view,
+  config,
+  handle,
+}: {
+  deviceId: string;
+  view: MortarView;
+  config: MortarCardConfig;
+  handle: MutableRefObject<MortarSettingsHandle | null>;
+}) {
+  const palette = paletteOf(config);
+  const [spoutColors, setSpoutColors] = useState<string[]>(config.spoutColors ?? []);
+  const [materialColors, setMaterialColors] = useState<Record<string, string>>(
+    config.materialColors ?? {},
+  );
   const tags = usePoll<Tag[]>(`/devices/${deviceId}/tags`, 600000);
   const saved = usePoll<{
     settings: null | {
@@ -417,8 +434,6 @@ function MortarConfigModal({ deviceId, onClose }: { deviceId: string; onClose: (
     }>;
   }>(`/devices/${deviceId}/mortar/settings`, 600000);
   const [form, setForm] = useState<Form | null>(null);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (form || !saved.data) return;
@@ -468,242 +483,249 @@ function MortarConfigModal({ deviceId, onClose }: { deviceId: string; onClose: (
           }
         : was,
     );
-  const save = async () => {
-    if (!form) return;
-    setSaving(true);
-    setError('');
-    try {
-      await mutate(`/devices/${deviceId}/mortar/settings`, 'PUT', form);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha ao salvar');
-    } finally {
-      setSaving(false);
-    }
+  const edits = view === 'bagging' || view === 'mortar_materials';
+  handle.current = {
+    save: async () => {
+      if (form && edits) await mutate(`/devices/${deviceId}/mortar/settings`, 'PUT', form);
+    },
+    config: () => ({ spoutColors, materialColors }),
   };
+  const colorInput = (value: string, onChange: (value: string) => void, label: string) => (
+    <input
+      type="color"
+      className="mortar-color"
+      value={value}
+      aria-label={label}
+      title={label}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
 
+  if (!edits)
+    return (
+      <div className="notice full-field">
+        Este card lê o que os cards de Ensaque e Matéria-prima registram. A cor dele é a do campo{' '}
+        <b>Cor</b>; os produtos e o peso de cada saco ficam em <b>Ações → Produtos e receitas</b>.
+      </div>
+    );
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card mortar-modal" onClick={(event) => event.stopPropagation()}>
-        <header className="modal-title">
-          <div>
-            <h2>Mistura e ensaque</h2>
-            <small>
-              Quais variáveis da IHM alimentam os quadros de argamassa deste equipamento.
-            </small>
-          </div>
-          <button onClick={onClose} aria-label="Fechar">
-            Fechar
-          </button>
-        </header>
-        {!form ? (
-          <div className="stops-empty">Carregando…</div>
-        ) : (
-          <div className="mortar-config">
-            {error && <div className="form-error">{error}</div>}
-            <label className="mortar-switch">
-              <input
-                type="checkbox"
-                checked={form.mixEnabled}
-                onChange={(event) => set({ mixEnabled: event.target.checked })}
-              />
-              <b>Mistura</b> <small>bateladas e consumo de matéria-prima</small>
-            </label>
-            {form.mixEnabled && (
-              <div className="mortar-grid">
-                <label>
-                  Contador de bateladas
-                  <TagSelect
-                    tags={list}
-                    types={['number']}
-                    value={form.batchCountTagId}
-                    onChange={(v) => set({ batchCountTagId: v })}
-                  />
-                </label>
-                <label>
-                  Receita atual
-                  <TagSelect
-                    tags={list}
-                    types={['string']}
-                    value={form.recipeTagId}
-                    onChange={(v) => set({ recipeTagId: v })}
-                  />
-                </label>
-                <label>
-                  Balança (opcional)
-                  <TagSelect
-                    tags={list}
-                    types={['number']}
-                    value={form.scaleTagId}
-                    onChange={(v) => set({ scaleTagId: v })}
-                  />
-                </label>
-                <div className="mortar-sub">
-                  Peso de cada material numa batelada (peso desejado da receita)
-                </div>
-                {form.materials.map((item, index) => (
-                  <div className="mortar-row" key={index}>
-                    <input
-                      value={item.label}
-                      aria-label="Material"
-                      onChange={(e) => setMaterial(index, { label: e.target.value })}
-                    />
+    <div className="full-field">
+      {!form ? (
+        <div className="stops-empty">Carregando…</div>
+      ) : (
+        <div className="mortar-config">
+          {view === 'mortar_materials' && (
+            <>
+              <label className="mortar-switch">
+                <input
+                  type="checkbox"
+                  checked={form.mixEnabled}
+                  onChange={(event) => set({ mixEnabled: event.target.checked })}
+                />
+                <b>Mistura</b> <small>bateladas e consumo de matéria-prima</small>
+              </label>
+              {form.mixEnabled && (
+                <div className="mortar-grid">
+                  <label>
+                    Contador de bateladas
                     <TagSelect
                       tags={list}
                       types={['number']}
-                      value={item.tagId}
-                      onChange={(v) => setMaterial(index, { tagId: v })}
+                      value={form.batchCountTagId}
+                      onChange={(v) => set({ batchCountTagId: v })}
                     />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        set({ materials: form.materials.filter((_, at) => at !== index) })
-                      }
-                    >
-                      Remover
-                    </button>
+                  </label>
+                  <label>
+                    Receita atual
+                    <TagSelect
+                      tags={list}
+                      types={['string']}
+                      value={form.recipeTagId}
+                      onChange={(v) => set({ recipeTagId: v })}
+                    />
+                  </label>
+                  <label>
+                    Balança (opcional)
+                    <TagSelect
+                      tags={list}
+                      types={['number']}
+                      value={form.scaleTagId}
+                      onChange={(v) => set({ scaleTagId: v })}
+                    />
+                  </label>
+                  <div className="mortar-sub">
+                    Peso de cada material numa batelada (peso desejado da receita)
                   </div>
-                ))}
-                {form.materials.length < 8 && (
-                  <button
-                    type="button"
-                    className="mortar-add"
-                    onClick={() =>
-                      set({ materials: [...form.materials, { label: 'Material', tagId: null }] })
-                    }
-                  >
-                    + Material
-                  </button>
-                )}
-              </div>
-            )}
-
-            <label className="mortar-switch">
-              <input
-                type="checkbox"
-                checked={form.baggingEnabled}
-                onChange={(event) => set({ baggingEnabled: event.target.checked })}
-              />
-              <b>Ensaque</b> <small>sacos por bico e por receita</small>
-            </label>
-            {form.baggingEnabled && (
-              <div className="mortar-grid">
-                <label>
-                  Bico ocioso depois de (segundos sem saco)
-                  <input
-                    type="number"
-                    min={10}
-                    max={3600}
-                    value={form.idleSeconds}
-                    onChange={(e) => set({ idleSeconds: Number(e.target.value) || 120 })}
-                  />
-                </label>
-                {form.spouts.map((spout, index) => (
-                  <fieldset className="mortar-spout-form" key={spout.id ?? `new-${index}`}>
-                    <legend>
-                      Bico {index + 1}
+                  {form.materials.map((item, index) => (
+                    <div className="mortar-row" key={index}>
+                      {colorInput(
+                        materialColors[item.label] ?? palette.material(item.label, index),
+                        (value) => setMaterialColors((was) => ({ ...was, [item.label]: value })),
+                        `Cor de ${item.label}`,
+                      )}
                       <input
-                        value={spout.name}
-                        aria-label="Nome do bico"
-                        onChange={(e) => setSpout(index, { name: e.target.value })}
+                        value={item.label}
+                        aria-label="Material"
+                        onChange={(e) => setMaterial(index, { label: e.target.value })}
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (
-                            !spout.id ||
-                            window.confirm(
-                              `Remover o bico ${spout.name}? A contagem dele é apagada junto.`,
-                            )
-                          )
-                            set({ spouts: form.spouts.filter((_, at) => at !== index) });
-                        }}
-                      >
-                        Remover
-                      </button>
-                    </legend>
-                    <label>
-                      Pacotes (contador)
                       <TagSelect
                         tags={list}
                         types={['number']}
-                        value={spout.countTagId}
-                        onChange={(v) => setSpout(index, { countTagId: v })}
+                        value={item.tagId}
+                        onChange={(v) => setMaterial(index, { tagId: v })}
                       />
-                    </label>
-                    <label>
-                      Produto / receita
-                      <TagSelect
-                        tags={list}
-                        types={['string']}
-                        value={spout.recipeTagId}
-                        onChange={(v) => setSpout(index, { recipeTagId: v })}
-                      />
-                    </label>
-                    <label>
-                      Habilitado
-                      <TagSelect
-                        tags={list}
-                        types={['boolean', 'number']}
-                        value={spout.enabledTagId}
-                        onChange={(v) => setSpout(index, { enabledTagId: v })}
-                      />
-                    </label>
-                    <label>
-                      Ligado (opcional)
-                      <TagSelect
-                        tags={list}
-                        types={['boolean', 'number']}
-                        value={spout.runningTagId}
-                        onChange={(v) => setSpout(index, { runningTagId: v })}
-                      />
-                    </label>
-                  </fieldset>
-                ))}
-                {form.spouts.length < 24 && (
-                  <button
-                    type="button"
-                    className="mortar-add"
-                    onClick={() =>
-                      set({
-                        spouts: [
-                          ...form.spouts,
-                          {
-                            name: `B${form.spouts.length + 1}`,
-                            countTagId: null,
-                            recipeTagId: null,
-                            runningTagId: null,
-                            enabledTagId: null,
-                          },
-                        ],
-                      })
-                    }
-                  >
-                    + Bico
-                  </button>
-                )}
-              </div>
-            )}
-            <p className="stops-note">
-              Só aparecem variáveis já configuradas no equipamento. Se faltar alguma, adicione-a em
-              Variáveis antes.
-            </p>
-            <div className="modal-actions">
-              <button type="button" onClick={onClose}>
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="primary"
-                disabled={saving}
-                onClick={() => void save()}
-              >
-                {saving ? 'Salvando…' : 'Salvar'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          set({ materials: form.materials.filter((_, at) => at !== index) })
+                        }
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                  {form.materials.length < 8 && (
+                    <button
+                      type="button"
+                      className="mortar-add"
+                      onClick={() =>
+                        set({ materials: [...form.materials, { label: 'Material', tagId: null }] })
+                      }
+                    >
+                      + Material
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {view === 'bagging' && (
+            <>
+              <label className="mortar-switch">
+                <input
+                  type="checkbox"
+                  checked={form.baggingEnabled}
+                  onChange={(event) => set({ baggingEnabled: event.target.checked })}
+                />
+                <b>Ensaque</b> <small>sacos por bico e por receita</small>
+              </label>
+              {form.baggingEnabled && (
+                <div className="mortar-grid">
+                  <label>
+                    Bico ocioso depois de (segundos sem saco)
+                    <input
+                      type="number"
+                      min={10}
+                      max={3600}
+                      value={form.idleSeconds}
+                      onChange={(e) => set({ idleSeconds: Number(e.target.value) || 120 })}
+                    />
+                  </label>
+                  {form.spouts.map((spout, index) => (
+                    <fieldset className="mortar-spout-form" key={spout.id ?? `new-${index}`}>
+                      <legend>
+                        {colorInput(
+                          spoutColors[index] || palette.spout(index),
+                          (value) =>
+                            setSpoutColors((was) => {
+                              const next = [...was];
+                              next[index] = value;
+                              return next;
+                            }),
+                          `Cor do bico ${spout.name}`,
+                        )}
+                        Bico {index + 1}
+                        <input
+                          value={spout.name}
+                          aria-label="Nome do bico"
+                          onChange={(e) => setSpout(index, { name: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (
+                              !spout.id ||
+                              window.confirm(
+                                `Remover o bico ${spout.name}? A contagem dele é apagada junto.`,
+                              )
+                            )
+                              set({ spouts: form.spouts.filter((_, at) => at !== index) });
+                          }}
+                        >
+                          Remover
+                        </button>
+                      </legend>
+                      <label>
+                        Pacotes (contador)
+                        <TagSelect
+                          tags={list}
+                          types={['number']}
+                          value={spout.countTagId}
+                          onChange={(v) => setSpout(index, { countTagId: v })}
+                        />
+                      </label>
+                      <label>
+                        Produto / receita
+                        <TagSelect
+                          tags={list}
+                          types={['string']}
+                          value={spout.recipeTagId}
+                          onChange={(v) => setSpout(index, { recipeTagId: v })}
+                        />
+                      </label>
+                      <label>
+                        Habilitado
+                        <TagSelect
+                          tags={list}
+                          types={['boolean', 'number']}
+                          value={spout.enabledTagId}
+                          onChange={(v) => setSpout(index, { enabledTagId: v })}
+                        />
+                      </label>
+                      <label>
+                        Ligado (opcional)
+                        <TagSelect
+                          tags={list}
+                          types={['boolean', 'number']}
+                          value={spout.runningTagId}
+                          onChange={(v) => setSpout(index, { runningTagId: v })}
+                        />
+                      </label>
+                    </fieldset>
+                  ))}
+                  {form.spouts.length < 24 && (
+                    <button
+                      type="button"
+                      className="mortar-add"
+                      onClick={() =>
+                        set({
+                          spouts: [
+                            ...form.spouts,
+                            {
+                              name: `B${form.spouts.length + 1}`,
+                              countTagId: null,
+                              recipeTagId: null,
+                              runningTagId: null,
+                              enabledTagId: null,
+                            },
+                          ],
+                        })
+                      }
+                    >
+                      + Bico
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          <p className="stops-note">
+            Só aparecem variáveis já configuradas no equipamento. Se faltar alguma, adicione-a em
+            Variáveis antes. Tudo é salvo junto com o card.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

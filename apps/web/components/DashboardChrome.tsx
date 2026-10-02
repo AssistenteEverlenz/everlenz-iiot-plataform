@@ -26,6 +26,8 @@ interface DashboardChromeProps {
   tvHref: string;
   /** Opens the dashboard's snapshots (save or restore a version). */
   onSnapshot: () => void;
+  /** Mortar plants: the products and the recipes linked to them (masters only). */
+  onProducts?: () => void;
 }
 
 export function DashboardChrome(props: DashboardChromeProps) {
@@ -74,6 +76,7 @@ function ActionsButton({
   csvHref,
   tvHref,
   onSnapshot,
+  onProducts,
 }: DashboardChromeProps & { variant: 'menu' | 'fab' }) {
   const [open, setOpen] = useState(false);
   const { user } = usePlatform();
@@ -104,9 +107,12 @@ function ActionsButton({
       <button onClick={run(() => window.location.assign(tvHref))}>Modo TV</button>
       {/* The customer sees the TV; only the master lays it out. */}
       {user.role === 'master' && (
-        <button onClick={run(() => window.location.assign(`${tvHref}/editor`))}>Configurar TV</button>
+        <button onClick={run(() => window.location.assign(`${tvHref}/editor`))}>
+          Configurar TV
+        </button>
       )}
       <button onClick={run(onSnapshot)}>Snapshot</button>
+      {onProducts && <button onClick={run(onProducts)}>Produtos e receitas</button>}
       <label className="actions-refresh">
         <span>Atualização {savingRefresh && <span className="button-spinner dark" />}</span>
         <select value={refreshMs} onChange={(event) => onRefresh(Number(event.target.value))}>

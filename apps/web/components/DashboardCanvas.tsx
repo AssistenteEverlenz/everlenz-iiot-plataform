@@ -42,7 +42,16 @@ import type { DashboardTab } from './data';
 import { ShiftBoard } from './ShiftBoard';
 import { StopsPanel } from './StopsPanel';
 import { WearPanel } from './WearModal';
-import { MortarPanel, MORTAR_CARDS, isMortarView } from './MortarPanel';
+import { ModalPortal } from './ModalPortal';
+import type { MortarCardConfig } from './mortarShared';
+import {
+  MortarCardSettings,
+  MortarPanel,
+  MORTAR_CARDS,
+  ProductsModal,
+  isMortarView,
+  type MortarSettingsHandle,
+} from './MortarPanel';
 import { ProductionConfigModal } from './ProductionConfigModal';
 import { HmiCheckModal } from './HmiCheckModal';
 import { SnapshotModal } from './SnapshotModal';
@@ -947,7 +956,11 @@ function Widget({
       {widget.widget_type === 'stops' && <StopsPanel deviceId={widget.device_id} />}
       {widget.widget_type === 'wear' && <WearPanel deviceId={widget.device_id} />}
       {isMortarView(widget.widget_type) && (
-        <MortarPanel deviceId={widget.device_id} view={widget.widget_type} />
+        <MortarPanel
+          deviceId={widget.device_id}
+          view={widget.widget_type}
+          config={widget.config as MortarCardConfig}
+        />
       )}
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
@@ -1027,6 +1040,9 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [adding, setAdding] = useState(false);
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
   // Production parameters opened from the production board's settings.
+  // Mortar cards keep their spout and mixer settings in the pencil; they save with the card.
+  const mortarSettings = useRef<MortarSettingsHandle | null>(null);
+  const [productsOpen, setProductsOpen] = useState(false);
   const [productionConfigFor, setProductionConfigFor] = useState<{
     deviceId: string;
     name: string;
@@ -1493,6 +1509,7 @@ export function DashboardCanvas({ id }: { id: string }) {
           always: commaAlways,
           adjustHistory: true,
         });
+      if (isMortarView(editingWidget.widget_type)) await mortarSettings.current?.save();
       await mutate(`/dashboards/${id}/widgets/${editingWidget.id}`, 'PATCH', {
         ...(tagId !== undefined ? { tagId } : {}),
         title,
@@ -1515,6 +1532,9 @@ export function DashboardCanvas({ id }: { id: string }) {
           productionMinimumValue,
           productionMetricKind,
           productionDefaultPeriod,
+          ...(isMortarView(editingWidget.widget_type)
+            ? (mortarSettings.current?.config() ?? {})
+            : {}),
           chartDimension,
           chartPalette,
           maxProducts,
@@ -1675,7 +1695,17 @@ export function DashboardCanvas({ id }: { id: string }) {
         csvHref={`/api/export/telemetry.csv?deviceId=${deviceId}&limit=10000`}
         tvHref={`/dashboards/${id}/tv`}
         onSnapshot={() => setSnapshotOpen(true)}
+        onProducts={
+          device.data?.site_segment === 'argamassa' && user.role === 'master'
+            ? () => setProductsOpen(true)
+            : undefined
+        }
       />
+      {productsOpen && (
+        <ModalPortal>
+          <ProductsModal onClose={() => setProductsOpen(false)} />
+        </ModalPortal>
+      )}
       {snapshotOpen && (
         <SnapshotModal
           dashboardId={id}
@@ -2672,6 +2702,29 @@ export function DashboardCanvas({ id }: { id: string }) {
                         </small>
                       </>
                     )}
+                </div>
+              </Section>
+              <Section
+                title={
+                  editingWidget.widget_type === 'bagging'
+                    ? 'Bicos da ensacadeira'
+                    : editingWidget.widget_type === 'mortar_materials'
+                      ? 'Mistura e materiais'
+                      : 'Dados do card'
+                }
+                open
+                when={isMortarView(editingWidget.widget_type)}
+              >
+                <div className="form-grid">
+                  {isMortarView(editingWidget.widget_type) && (
+                    <MortarCardSettings
+                      key={editingWidget.id}
+                      deviceId={editingWidget.device_id}
+                      view={editingWidget.widget_type}
+                      config={editingWidget.config as MortarCardConfig}
+                      handle={mortarSettings}
+                    />
+                  )}
                 </div>
               </Section>
               <Section
