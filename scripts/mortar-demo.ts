@@ -182,19 +182,28 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
     if (weekday === 0) continue;
     const saturday = weekday === 6;
     // Each spout runs one or two products a day; the right spout often stays off on Saturdays.
+    // Each spout runs one to three products a day, changing at fixed hours; yesterday every
+    // spout ran three, to show a day with several products. The right spout often stays off
+    // on Saturdays. Each spout has its own pace (the left one is the best tuned).
+    const yesterday = day === 1;
     const plan = SPOUTS.map((_, index) => {
-      const first = PRODUCTS[Math.floor(rand() * 3)];
-      const second = rand() < 0.4 ? PRODUCTS[3 + Math.floor(rand() * 2)] : first;
+      const count = yesterday ? 3 : 1 + Math.floor(rand() * 3);
+      const start = Math.floor(rand() * PRODUCTS.length);
+      const products = Array.from(
+        { length: count },
+        (_, at) => PRODUCTS[(start + at * 2 + index) % PRODUCTS.length],
+      );
       return {
-        first,
-        second,
-        off: index === 2 && (saturday || rand() < 0.15),
-        pace: 3.6 + rand() * 1.2,
+        products,
+        // The hours the spout changes product: after 09:30, after lunch, at 15:00.
+        changes: count === 3 ? [9.5, 14] : count === 2 ? [12] : [],
+        off: !yesterday && index === 2 && (saturday || rand() < 0.15),
+        pace: [4.5, 4.1, 3.7][index] * (0.95 + rand() * 0.1),
       };
     });
     const end = saturday ? 12 : 17;
     let mixCarry = 0;
-    let mixRecipe = plan[0].first.mix;
+    let mixRecipe = plan[0].products[0].mix;
     for (let at = midnight + 7 * 3600_000; at < midnight + end * 3600_000; at += BUCKET_MS) {
       if (at > now - BUCKET_MS) break;
       const hour = (at - midnight) / 3600_000;
@@ -202,7 +211,8 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
       let bucketKg = 0;
       for (const [index, spout] of spouts.entries()) {
         const spoutPlan = plan[index];
-        const product = hour < 12 ? spoutPlan.first : spoutPlan.second;
+        const product =
+          spoutPlan.products[spoutPlan.changes.filter((change) => hour >= change).length];
         const recipe = `${product.name.toUpperCase()} ${spout.name}`;
         if (spoutPlan.off) {
           buckets.push([tenantId, deviceId, spout.id, new Date(at), recipe, 0, 0, 0, 300]);
@@ -211,7 +221,9 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
         // Mostly filling, with the odd stretch waiting for bags, pallets or the silo.
         const stopped = rand() < 0.12 ? 120 + rand() * 180 : rand() * 25;
         const running = 300 - stopped;
-        const bags = Math.round((running / 60) * spoutPlan.pace * (0.92 + rand() * 0.16));
+        // A heavier bag takes longer to fill: 40 kg runs at about 70 % of the pace of 20 kg.
+        const pace = spoutPlan.pace * Math.sqrt(20 / product.nominal);
+        const bags = Math.round((running / 60) * pace * (0.92 + rand() * 0.16));
         buckets.push([
           tenantId,
           deviceId,

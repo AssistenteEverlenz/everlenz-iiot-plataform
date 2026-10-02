@@ -10247,7 +10247,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .mortar-spout-figures {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 .mortar-spout-figures b {
@@ -10432,4 +10432,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .mortar-yield i {
     animation: none;
   }
+}
+.mortar-chart {
+  width: 100%;
+  height: 190px;
+  min-width: 0;
 }

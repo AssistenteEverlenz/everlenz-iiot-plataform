@@ -28,6 +28,9 @@ const range = z.object({
 
 /** Plant-local day of a timestamp column, on the plant's fixed offset (shifts.ts). */
 const PLANT_DAY = (column: string) => `to_char(${column} - interval '3 hours','YYYY-MM-DD')`;
+/** Quarter of an hour: one day of bagging is read at this grain, so the curves show the day moving. */
+const PLANT_QUARTER = (column: string) =>
+  `to_char(date_bin('15 minutes', ${column} - interval '3 hours', timestamptz '2000-01-01 00:00+00'),'YYYY-MM-DD"T"HH24:MI')`;
 const PLANT_HOUR = (column: string) =>
   `to_char(${column} - interval '3 hours','YYYY-MM-DD"T"HH24')`;
 
@@ -90,9 +93,11 @@ export function registerMortarRoutes(
          GROUP BY spout_id,recipe`,
         [tenantId, id, start, end],
       ),
-      db.query<{ slot: string; spout_id: string; recipe: string; bags: number }>(
-        `SELECT ${slot('bucket')} slot,spout_id,recipe,sum(bags)::float bags
-         FROM bagging_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4 AND bags>0
+      db.query<{ slot: string; spout_id: string; recipe: string; bags: number; running_s: number }>(
+        `SELECT ${hourly ? PLANT_QUARTER('bucket') : slot('bucket')} slot,spout_id,recipe,sum(bags)::float bags,
+                sum(running_s)::float running_s
+         FROM bagging_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4
+           AND (bags>0 OR running_s>0)
          GROUP BY 1,2,3 ORDER BY 1`,
         [tenantId, id, start, end],
       ),
@@ -176,6 +181,8 @@ export function registerMortarRoutes(
         idleS: sum('idle_s'),
         offS: sum('off_s'),
         bagsPerHour: runningS > 0 ? bags / (runningS / 3600) : null,
+        // Like the time per pallet: seconds filling divided by the bags, stops left out.
+        secondsPerBag: bags > 0 ? runningS / bags : null,
       };
     });
 
@@ -228,14 +235,28 @@ export function registerMortarRoutes(
 
     const bagSeries = new Map<
       string,
-      { slot: string; bags: number; kg: number; spouts: Record<string, number> }
+      {
+        slot: string;
+        bags: number;
+        kg: number;
+        spouts: Record<string, number>;
+        /** Seconds each spout spent filling in the slot: with its bags, the time per bag. */
+        running: Record<string, number>;
+      }
     >();
     for (const row of series.rows) {
-      const entry = bagSeries.get(row.slot) ?? { slot: row.slot, bags: 0, kg: 0, spouts: {} };
+      const entry = bagSeries.get(row.slot) ?? {
+        slot: row.slot,
+        bags: 0,
+        kg: 0,
+        spouts: {},
+        running: {},
+      };
       const bags = Number(row.bags);
       entry.bags += bags;
       entry.kg += kgOf(row.recipe, bags) ?? 0;
       entry.spouts[row.spout_id] = (entry.spouts[row.spout_id] ?? 0) + bags;
+      entry.running[row.spout_id] = (entry.running[row.spout_id] ?? 0) + Number(row.running_s);
       bagSeries.set(row.slot, entry);
     }
 

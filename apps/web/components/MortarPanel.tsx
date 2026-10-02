@@ -1,6 +1,18 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { useFirstDraw } from './firstDraw';
 import { mutate, usePoll } from './data';
 import { ModalPortal } from './ModalPortal';
 import { usePlatform } from './PlatformShell';
@@ -29,6 +41,7 @@ type Spout = {
   idleS: number;
   offS: number;
   bagsPerHour: number | null;
+  secondsPerBag: number | null;
 };
 type Summary = {
   from: string;
@@ -55,7 +68,13 @@ type Summary = {
       recipes: Array<{ recipe: string; bags: number }>;
       spouts: Record<string, number>;
     }>;
-    series: Array<{ slot: string; bags: number; kg: number; spouts: Record<string, number> }>;
+    series: Array<{
+      slot: string;
+      bags: number;
+      kg: number;
+      spouts: Record<string, number>;
+      running: Record<string, number>;
+    }>;
   };
   mix: {
     batches: number;
@@ -105,14 +124,24 @@ function duration(seconds: number) {
     ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}`
     : `${minutes} min`;
 }
-/** "2026-10-01" → "01/10"; "2026-10-01T14" → "14h". */
+/** "2026-10-01" → "01/10"; "2026-10-01T14" → "14h"; "2026-10-01T14:15" → "14:15". */
 const slotLabel = (slot: string) =>
-  slot.includes('T') ? `${slot.slice(11)}h` : slot.split('-').reverse().slice(0, 2).join('/');
+  slot.length > 13
+    ? slot.slice(11)
+    : slot.includes('T')
+      ? `${slot.slice(11)}h`
+      : slot.split('-').reverse().slice(0, 2).join('/');
+/** Seconds per bag as the plant reads it: "14,2 s". */
+const perBag = (seconds: number | null | undefined) =>
+  seconds == null || !Number.isFinite(seconds)
+    ? '—'
+    : `${seconds.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s`;
 
 /** The dashboard's own period words, the same the stops card offers. */
-type Period = 'today' | '7d' | 'week' | 'month' | 'year' | 'custom';
+type Period = 'today' | 'yesterday' | '7d' | 'week' | 'month' | 'year' | 'custom';
 const PERIODS: Array<[Period, string]> = [
   ['today', 'Hoje'],
+  ['yesterday', 'Ontem'],
   ['7d', '7 dias'],
   ['week', 'Semana'],
   ['month', 'Mês'],
@@ -126,6 +155,7 @@ function windowOf(period: Period): { from: string; to: string } {
   const to = isoDay(now);
   const back = (days: number) => isoDay(new Date(now.getTime() - days * 86400000));
   if (period === 'today') return { from: to, to };
+  if (period === 'yesterday') return { from: back(1), to: back(1) };
   if (period === '7d') return { from: back(6), to };
   if (period === 'week') return { from: back((now.getDay() + 6) % 7), to };
   if (period === 'month')
@@ -335,6 +365,11 @@ function Bagging({ data, onLink }: { data: Summary; onLink?: () => void }) {
           <small>sacos por hora de bico ensacando</small>
         </div>
         <div>
+          <span>Tempo por saco</span>
+          <b>{perBag(totals.bags ? totals.runningS / totals.bags : null)}</b>
+          <small>em cada bico, sem as paradas</small>
+        </div>
+        <div>
           <span>Aproveitamento</span>
           <b>{percent(worked ? totals.runningS / worked : null)}</b>
           <small>ensacando ÷ habilitado</small>
@@ -374,6 +409,10 @@ function Bagging({ data, onLink }: { data: Summary; onLink?: () => void }) {
                   <b>{spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}</b>
                   <small>sacos/h</small>
                 </div>
+                <div>
+                  <b>{perBag(spout.secondsPerBag)}</b>
+                  <small>por saco</small>
+                </div>
               </div>
               {time > 0 && (
                 <div
@@ -402,19 +441,164 @@ function Bagging({ data, onLink }: { data: Summary; onLink?: () => void }) {
         })}
       </div>
 
+      <BaggingCharts data={data} />
+    </>
+  );
+}
+
+/**
+ * How the bagging moved through the period: the bags of each spout piling up, the line as a
+ * whole under them, and how long each spout took per bag. One day is read by the quarter hour,
+ * so a spout that slowed down after lunch shows it; a longer period is read by the day.
+ */
+function BaggingCharts({ data }: { data: Summary }) {
+  const { spouts, series } = data.bagging;
+  const quarter = series.some((slot) => slot.slot.length > 13);
+  const rows = useMemo(() => {
+    const running: Record<string, number> = {};
+    let total = 0;
+    return series.map((slot) => {
+      const row: Record<string, number | string | null> = {
+        label: slotLabel(slot.slot),
+        bags: slot.bags,
+      };
+      total += slot.bags;
+      row.total = total;
+      for (const spout of spouts) {
+        const bags = slot.spouts[spout.id] ?? 0;
+        running[spout.id] = (running[spout.id] ?? 0) + bags;
+        row['sum_' + spout.id] = running[spout.id];
+        // A slot where the spout filled few bags says little about its pace: left as a gap.
+        const seconds = slot.running[spout.id] ?? 0;
+        row['sec_' + spout.id] =
+          bags >= 3 && seconds > 0 ? Math.round((seconds / bags) * 10) / 10 : null;
+      }
+      return row;
+    });
+  }, [series, spouts]);
+  const drawing = useFirstDraw(rows.length > 0);
+  if (!rows.length) return <div className="stops-empty">Nenhum saco registrado no período.</div>;
+  const colorOf = (index: number) => SPOUT_COLORS[index % SPOUT_COLORS.length];
+  const axis = { fontSize: 10, fill: '#7b9097' };
+  const grain = quarter ? 'a cada 15 minutos' : 'por dia';
+  const legend = (
+    <div className="stops-spent-legend">
+      {spouts.map((spout, index) => (
+        <span key={spout.id}>
+          <i style={{ background: colorOf(index) }} /> {spout.name}
+        </span>
+      ))}
+    </div>
+  );
+  return (
+    <>
       <div className="stops-title">
-        {data.granularity === 'hour' ? 'Hora a hora' : 'Dia a dia'}
-        <small> · sacos por bico</small>
+        Andamento por ensacadeira<small> · sacos acumulados de cada bico</small>
       </div>
-      <StackedBars
-        slots={series.map((slot) => ({ slot: slot.slot, values: slot.spouts }))}
-        series={spouts.map((spout, index) => ({
-          key: spout.id,
-          label: spout.name,
-          color: SPOUT_COLORS[index % SPOUT_COLORS.length],
-        }))}
-        unit={integer}
-      />
+      <div className="mortar-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke="#e6eef0" vertical={false} />
+            <XAxis dataKey="label" tick={axis} minTickGap={24} />
+            <YAxis tick={axis} width={52} tickFormatter={(value: number) => integer(value)} />
+            <Tooltip formatter={(value) => [integer(Number(value)), 'sacos']} />
+            {spouts.map((spout, index) => (
+              <Line
+                key={spout.id}
+                dataKey={'sum_' + spout.id}
+                name={spout.name}
+                stroke={colorOf(index)}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={drawing}
+                animationDuration={drawing ? 700 : 0}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      {legend}
+
+      <div className="stops-title">
+        Geral da linha<small> · sacos {grain} e o acumulado</small>
+      </div>
+      <div className="mortar-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={rows} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke="#e6eef0" vertical={false} />
+            <XAxis dataKey="label" tick={axis} minTickGap={24} />
+            <YAxis
+              yAxisId="slot"
+              tick={axis}
+              width={44}
+              tickFormatter={(value: number) => integer(value)}
+            />
+            <YAxis
+              yAxisId="sum"
+              orientation="right"
+              tick={axis}
+              width={56}
+              tickFormatter={(value: number) => integer(value)}
+            />
+            <Tooltip
+              formatter={(value, name) => [
+                integer(Number(value)),
+                name === 'total' ? 'acumulado' : 'sacos no intervalo',
+              ]}
+            />
+            <Bar
+              yAxisId="slot"
+              dataKey="bags"
+              fill="#bfe9e3"
+              radius={[3, 3, 0, 0]}
+              isAnimationActive={drawing}
+              animationDuration={drawing ? 700 : 0}
+            />
+            <Line
+              yAxisId="sum"
+              dataKey="total"
+              stroke="#0b2028"
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={drawing}
+              animationDuration={drawing ? 700 : 0}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="stops-title">
+        Tempo por saco<small> · segundos ensacando ÷ sacos, {grain}, em cada bico</small>
+      </div>
+      <div className="mortar-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke="#e6eef0" vertical={false} />
+            <XAxis dataKey="label" tick={axis} minTickGap={24} />
+            <YAxis
+              tick={axis}
+              width={52}
+              domain={['auto', 'auto']}
+              tickFormatter={(value: number) => value + ' s'}
+            />
+            <Tooltip formatter={(value) => [perBag(Number(value)), 'por saco']} />
+            {spouts.map((spout, index) => (
+              <Line
+                key={spout.id}
+                dataKey={'sec_' + spout.id}
+                name={spout.name}
+                stroke={colorOf(index)}
+                strokeWidth={2}
+                dot={false}
+                connectNulls={false}
+                isAnimationActive={drawing}
+                animationDuration={drawing ? 700 : 0}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      {legend}
     </>
   );
 }
