@@ -7595,7 +7595,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .shift-kpi.clickable:hover,
 .shift-kpi.clickable:focus-visible {
-  border-color: #12b8a6;
+  border-color: var(--brand-accent, #12b8a6);
   transform: translateY(-1px);
 }
 .detail-modal {
@@ -9574,15 +9574,17 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   font: inherit;
   color: inherit;
 }
+/* Hover the way the production board does it: the outline only, in the page colour. */
 .stops-totals > button {
   cursor: pointer;
   transition:
     border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    transform 0.15s ease;
 }
-.stops-totals > button:hover {
-  border-color: #0b2028;
-  box-shadow: 0 4px 14px #0b20281a;
+.stops-totals > button:hover,
+.stops-totals > button:focus-visible {
+  border-color: var(--brand-accent, #12b8a6);
+  transform: translateY(-1px);
 }
 .stops-totals span {
   display: block;
@@ -9671,8 +9673,9 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   color: inherit;
   cursor: pointer;
 }
-.stops-pareto > button:hover {
-  border-color: #0b2028;
+.stops-pareto > button:hover,
+.stops-pareto > button:focus-visible {
+  border-color: var(--brand-accent, #12b8a6);
 }
 /* Above the 80 % cut: the ones worth attacking first. */
 .stops-pareto > button.vital {
@@ -9791,7 +9794,7 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   font-size: 12px;
   cursor: pointer;
 }
-.stops-more:hover { border-color: #0b2028; }
+.stops-more:hover { border-color: var(--brand-accent, #12b8a6); }
 
 .modal-card.stops-detail-modal { width: min(880px, 100%); }
 .stops-detail-modal .modal-title small { display: block; margin-top: 3px; color: #7b9097; font-size: 11px; }
@@ -10849,4 +10852,28 @@ button.mortar-spout:hover {
 }
 .mortar-spout .mortar-spout-figures {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+/* Hover the way the production board does it: the outline only, in the page colour. */
+button.mortar-figure:hover,
+button.mortar-figure:focus-visible,
+button.mortar-spout:hover,
+button.mortar-spout:focus-visible {
+  border-color: var(--brand-accent, #12b8a6);
+  background: #fff;
+  box-shadow: none;
+  transform: translateY(-1px);
+}
+button.mortar-figure:hover > u {
+  color: var(--brand-accent, #12b8a6);
+}
+.mortar-explain {
+  border-left-color: var(--brand-accent, #12b8a6);
+}
+.mortar-more {
+  color: var(--brand-accent, #12a594);
+}
+.mortar-actions button:hover,
+.mortar-warning button:hover,
+.mortar-add:hover {
+  border-color: var(--brand-accent, #12b8a6);
 }

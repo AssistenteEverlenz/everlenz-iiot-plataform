@@ -2260,7 +2260,7 @@
   }
   :root[data-theme='dark'] .shift-kpi.clickable:hover,
   :root[data-theme='dark'] .shift-kpi.clickable:focus-visible {
-    border-color: #12b8a6;
+    border-color: var(--brand-accent, #12b8a6);
   }
   :root[data-theme='dark'] .detail-summary div {
     border: 1px solid #202d32;
@@ -2918,9 +2918,9 @@
     background: #12191c;
     color: inherit;
   }
-  :root[data-theme='dark'] .stops-totals > button:hover {
-    border-color: #0b2028;
-    box-shadow: 0 4px 14px #0b20281a;
+  :root[data-theme='dark'] .stops-totals > button:hover,
+  :root[data-theme='dark'] .stops-totals > button:focus-visible {
+    border-color: var(--brand-accent, #12b8a6);
   }
   :root[data-theme='dark'] .stops-totals span {
     color: #86999f;
@@ -2954,8 +2954,9 @@
     background: #12191c;
     color: inherit;
   }
-  :root[data-theme='dark'] .stops-pareto > button:hover {
-    border-color: #0b2028;
+  :root[data-theme='dark'] .stops-pareto > button:hover,
+  :root[data-theme='dark'] .stops-pareto > button:focus-visible {
+    border-color: var(--brand-accent, #12b8a6);
   }
   :root[data-theme='dark'] .stops-pareto > button.vital {
     border-color: #2a3c42;
@@ -3024,7 +3025,7 @@
     color: #ccd6d9;
   }
   :root[data-theme='dark'] .stops-more:hover {
-    border-color: #0b2028;
+    border-color: var(--brand-accent, #12b8a6);
   }
   :root[data-theme='dark'] .stops-detail-modal .modal-title small {
     color: #84979e;
@@ -3256,5 +3257,27 @@
   }
   :root[data-theme='dark'] .mortar-recipe-bar {
     background: #1a2529;
+  }
+  :root[data-theme='dark'] button.mortar-figure:hover,
+  :root[data-theme='dark'] button.mortar-figure:focus-visible,
+  :root[data-theme='dark'] button.mortar-spout:hover,
+  :root[data-theme='dark'] button.mortar-spout:focus-visible {
+    border-color: var(--brand-accent, #12b8a6);
+    background: #12191c;
+    box-shadow: none;
+  }
+  :root[data-theme='dark'] button.mortar-figure:hover > u {
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .mortar-explain {
+    border-left-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .mortar-more {
+    color: var(--brand-accent, #7ee7db);
+  }
+  :root[data-theme='dark'] .mortar-actions button:hover,
+  :root[data-theme='dark'] .mortar-warning button:hover,
+  :root[data-theme='dark'] .mortar-add:hover {
+    border-color: var(--brand-accent, #12b8a6);
   }
 }
