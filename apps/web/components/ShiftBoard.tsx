@@ -143,6 +143,8 @@ export const stateInfo: Record<string, { label: string; color: string }> = {
   closing: { label: 'Encerrado', color: '#5f7f96' },
   // Lilac, far from the grey of "sem comunicação": a lunch break read as an outage.
   pause: { label: 'Pausa', color: '#cdb9ea' },
+  // A bagging spout the operator switched off on the HMI (mortar plants).
+  disabled: { label: 'Desabilitada', color: '#7c93b0' },
   outside: { label: 'Fora de turno', color: '#e6ecee' },
   unknown: { label: 'Sem dados', color: '#98a6ab' },
 };
@@ -235,8 +237,11 @@ export function ShiftCurve({
   view: outerView,
   onView,
   syncId,
+  unit,
 }: {
   board: BoardData;
+  /** Another unit than the board metric's: a mortar board counts bags. */
+  unit?: { unit: string; name: string; decimals: number };
   fontSize?: number;
   /** With the device, a close zoom reads the counter minute by minute. */
   deviceId?: string;
@@ -251,7 +256,7 @@ export function ShiftCurve({
   syncId?: string;
 }) {
   const reactId = useId();
-  const info = metricInfo[board.metric];
+  const info = unit ?? metricInfo[board.metric];
   const chart = board.curve.map((point, index) => ({
     ...point,
     label: clock(point.t),

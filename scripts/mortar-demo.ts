@@ -165,6 +165,13 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
           standardRate: product.nominal >= 40 ? 190 : product.nominal >= 25 ? 240 : 270,
         })
       ).id;
+    // A product kept from an earlier run gets the standard pace too, or performance reads blank.
+    if (existing)
+      await call('PATCH', `/api/mortar/products/${id}`, {
+        name: product.name,
+        nominalKg: product.nominal,
+        standardRate: product.nominal >= 40 ? 190 : product.nominal >= 25 ? 240 : 270,
+      });
     for (const spout of SPOUTS)
       await call('PUT', '/api/mortar/recipes', {
         recipe: `${product.name.toUpperCase()} ${spout}`,
@@ -316,6 +323,19 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
     stops,
     8,
   );
+
+  // The plant's shift, with its lunch break, so the board reads lunch as a pause.
+  await call('PUT', `/api/sites/${site.id}/shifts`, {
+    shifts: [
+      {
+        name: 'Turno 1',
+        weekdays: [1, 2, 3, 4, 5, 6],
+        start: '07:00',
+        end: '17:00',
+        breaks: [{ start: '11:00', end: '12:00' }],
+      },
+    ],
+  });
 
   // A target of 6.000 bags per shift, and what a ton of each material costs.
   await call('PATCH', `/api/devices/${deviceId}/mortar/target`, { metric: 'bags', perShift: 6000 });

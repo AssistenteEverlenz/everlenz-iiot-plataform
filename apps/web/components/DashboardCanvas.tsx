@@ -193,7 +193,7 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   stops: 10,
   wear: 12,
   // Mortar plants (migration 037).
-  bagging: 26,
+  bagging: 17,
   mortar_output: 10,
   mortar_materials: 19,
   mortar_yield: 9,

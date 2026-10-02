@@ -11125,3 +11125,56 @@ button.mortar-figure:hover > u {
   font-size: 12px;
   letter-spacing: 0.02em;
 }
+
+/* Mortar board on the ceramic board's frame: the spout cards sit under the figures, and the
+   curve can be read for the line, one spout, or the spouts side by side. */
+.mortar-board .mortar-spouts {
+  margin-bottom: 2px;
+}
+.mortar-curve-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.mortar-curve-pick > span:first-child {
+  color: #5d747b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mortar-curve-pick button i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 2px;
+}
+.mortar-compare {
+  display: grid;
+  gap: 10px;
+}
+.mortar-compare .shift-chart {
+  height: 260px;
+}
+.mortar-legend-item {
+  margin-left: 10px;
+}
+.mortar-legend-item i {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.mortar-ranking td.mortar-leader {
+  color: #0f6e4a;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 9%, #fff);
+}
+/* A figure with a longer note grows the row; the others keep their lines at the top instead of
+   spreading them, so every label sits on the same line. */
+.mortar-board .shift-kpi {
+  align-content: start;
+}

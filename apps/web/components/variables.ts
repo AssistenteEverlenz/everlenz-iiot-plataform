@@ -153,22 +153,16 @@ export function panelVariables(board: PanelSource | null | undefined): Record<st
  * board for the running shift (apps/api/src/mortar-board.ts).
  */
 export interface MortarSource {
-  metric: 'bags' | 'tons';
-  target: { value: number; projected: number } | null;
-  totals: {
-    bags: number;
-    kg: number;
-    actual: number;
-    runningS: number;
-    idleS: number;
-    elapsedProductive: number;
+  board?: {
+    plannedSeconds: number;
+    target: { value: number; projected: number } | null;
+    totals: { bags: number; kg: number; actual: number };
+    time: { producing: number; idle: number; elapsedProductive: number };
     pacePerHour: number;
-    projected: number;
-    availability: number | null;
+    utilization: number | null;
     performance: number | null;
     effectiveness: number | null;
-    stops: number;
-    stopSeconds: number;
+    stops: { count: number; seconds: number };
   };
 }
 export const MORTAR_VARIABLES: Record<
@@ -254,23 +248,25 @@ export const MORTAR_VARIABLES: Record<
     decimals: 0,
   },
 };
-export function mortarVariables(board: MortarSource | null | undefined): Record<string, number> {
+export function mortarVariables(source: MortarSource | null | undefined): Record<string, number> {
+  const board = source?.board;
   if (!board) return {};
-  const { totals } = board;
+  const { totals, time } = board;
   return {
     'argamassa.sacos': totals.bags,
     'argamassa.toneladas': totals.kg / 1000,
     'argamassa.meta': board.target?.value ?? 0,
-    'argamassa.projecao': totals.projected,
-    'argamassa.ritmo': totals.pacePerHour,
-    'argamassa.horas_ensacando': totals.runningS / 3600,
-    'argamassa.horas_ociosas': totals.idleS / 3600,
-    'argamassa.horas_decorridas': totals.elapsedProductive / 3600,
-    'argamassa.disponibilidade': (totals.availability ?? 0) * 100,
-    'argamassa.desempenho': (totals.performance ?? 0) * 100,
-    'argamassa.eficiencia': (totals.effectiveness ?? 0) * 100,
-    'argamassa.paradas': totals.stops,
-    'argamassa.minutos_parados': totals.stopSeconds / 60,
+    'argamassa.projecao':
+      board.target?.projected ?? board.pacePerHour * (board.plannedSeconds / 3600),
+    'argamassa.ritmo': board.pacePerHour,
+    'argamassa.horas_ensacando': time.producing / 3600,
+    'argamassa.horas_ociosas': time.idle / 3600,
+    'argamassa.horas_decorridas': time.elapsedProductive / 3600,
+    'argamassa.disponibilidade': (board.utilization ?? 0) * 100,
+    'argamassa.desempenho': (board.performance ?? 0) * 100,
+    'argamassa.eficiencia': (board.effectiveness ?? 0) * 100,
+    'argamassa.paradas': board.stops.count,
+    'argamassa.minutos_parados': board.stops.seconds / 60,
   };
 }
 

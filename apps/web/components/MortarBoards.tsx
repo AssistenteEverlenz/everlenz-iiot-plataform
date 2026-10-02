@@ -253,11 +253,47 @@ export function Bagging({
       </div>
     );
   const opened = spouts.find((spout) => spout.id === spoutOpen);
+  const spoutCards = (
+    <>
+      <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
+      <div className="shift-section-title">Bicos · clique num bico para ver o turno dele</div>
+      <div className="mortar-spouts">
+        {spouts.map((spout, index) => (
+          <SpoutCard
+            key={spout.id}
+            spout={spout}
+            color={palette.spout(index)}
+            live={live}
+            onOpen={() => setSpoutOpen(spout.id)}
+          />
+        ))}
+      </div>
+    </>
+  );
+  const spoutModal = opened && (
+    <SpoutModal
+      data={data}
+      spout={opened}
+      color={palette.spout(spouts.indexOf(opened))}
+      live={live}
+      deviceId={deviceId}
+      boardDate={boardDate}
+      onClose={() => setSpoutOpen(null)}
+    />
+  );
+  // One day reads as the production board, the spouts right under its figures.
+  if (boardDate)
+    return (
+      <>
+        <MortarShiftBoard deviceId={deviceId} date={boardDate}>
+          {spoutCards}
+        </MortarShiftBoard>
+        {spoutModal}
+      </>
+    );
   return (
     <>
-      {boardDate ? (
-        <MortarShiftBoard deviceId={deviceId} date={boardDate} />
-      ) : (
+      {
         <div className="mortar-figures">
           <Figure
             label="Sacos ensacados"
@@ -292,38 +328,13 @@ export function Bagging({
             onOpen={() => setFigure('use')}
           />
         </div>
-      )}
-      <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
+      }
+      {spoutCards}
 
-      <div className="stops-title">
-        Bicos<small> · clique num bico para ver o que ele produziu</small>
-      </div>
-      <div className="mortar-spouts">
-        {spouts.map((spout, index) => (
-          <SpoutCard
-            key={spout.id}
-            spout={spout}
-            color={palette.spout(index)}
-            live={live}
-            onOpen={() => setSpoutOpen(spout.id)}
-          />
-        ))}
-      </div>
-
-      <BaggingCharts data={data} general={!boardDate} />
+      <BaggingCharts data={data} />
 
       {figure && <BagFigureModal data={data} figure={figure} onClose={() => setFigure(null)} />}
-      {opened && (
-        <SpoutModal
-          data={data}
-          spout={opened}
-          color={palette.spout(spouts.indexOf(opened))}
-          live={live}
-          deviceId={deviceId}
-          boardDate={boardDate}
-          onClose={() => setSpoutOpen(null)}
-        />
-      )}
+      {spoutModal}
     </>
   );
 }
@@ -398,7 +409,13 @@ function SpoutCard({
         {spout.stops
           ? `${spout.stops} ${spout.stops === 1 ? 'parada' : 'paradas'} · ${duration(spout.stopSeconds)} parado · maior ${duration(spout.longestStop)}`
           : 'Nenhuma parada no período'}
-        {spout.performance != null && <b> · desempenho {percent(spout.performance, 0)}</b>}
+        {spout.performance != null && spout.runningS + spout.idleS > 0 && (
+          <b>
+            {' '}
+            · eficiência{' '}
+            {percent((spout.runningS / (spout.runningS + spout.idleS)) * spout.performance, 0)}
+          </b>
+        )}
       </span>
       <span className="mortar-more">Ver detalhes ›</span>
     </button>
@@ -451,40 +468,46 @@ function SpoutModal({
       subtitle={`${periodText(data.from, data.to)}${live ? ` · agora: ${state.label.toLowerCase()}` : ''}${live && spout.product ? ` com ${spout.product}` : ''}`}
       onClose={onClose}
     >
-      {boardDate && (
+      {/* One day: the spout's own production board says it all; the period figures, the time
+          split and the strip below would only repeat it. */}
+      {boardDate ? (
         <MortarShiftBoard
           deviceId={deviceId}
           date={boardDate}
           spoutId={spout.id}
           spoutName={spout.name}
-          showStops
         />
-      )}
-      <div className="mortar-figures">
-        <Figure label="Sacos" value={integer(spout.bags)} />
-        <Figure label="Toneladas" value={tons(spout.kg)} unit="t" />
-        <Figure
-          label="Ritmo"
-          value={spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}
-          unit="sacos/h"
-        />
-        <Figure label="Tempo por saco" value={perBag(spout.secondsPerBag)} hint="sem paradas" />
-        <Figure
-          label="Aproveitamento"
-          value={percent(enabled ? spout.runningS / enabled : null)}
-          hint={spout.lastBagAt && live ? `último saco às ${clock(spout.lastBagAt)}` : undefined}
-        />
-      </div>
+      ) : (
+        <>
+          <div className="mortar-figures">
+            <Figure label="Sacos" value={integer(spout.bags)} />
+            <Figure label="Toneladas" value={tons(spout.kg)} unit="t" />
+            <Figure
+              label="Ritmo"
+              value={spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}
+              unit="sacos/h"
+            />
+            <Figure label="Tempo por saco" value={perBag(spout.secondsPerBag)} hint="sem paradas" />
+            <Figure
+              label="Aproveitamento"
+              value={percent(enabled ? spout.runningS / enabled : null)}
+              hint={
+                spout.lastBagAt && live ? `último saco às ${clock(spout.lastBagAt)}` : undefined
+              }
+            />
+          </div>
 
-      <div className="stops-title">Como o tempo do bico foi gasto</div>
-      <TimeSplit running={spout.runningS} idle={spout.idleS} off={spout.offS} />
-      <StateStrip series={data.bagging.series} spoutId={spout.id} />
-      <Explain>
-        <b>Ensacando</b>: os sacos estavam saindo. <b>Ociosa</b>: habilitado, mas sem saco há mais
-        de dois minutos (falta de saco, palete cheio, silo vazio). <b>Desabilitada</b>: o operador
-        desligou o bico na IHM. Cada faixa da linha acima é{' '}
-        {quarter ? 'um quarto de hora' : 'um dia'}, pintada pelo que o bico mais fez nela.
-      </Explain>
+          <div className="stops-title">Como o tempo do bico foi gasto</div>
+          <TimeSplit running={spout.runningS} idle={spout.idleS} off={spout.offS} />
+          <StateStrip series={data.bagging.series} spoutId={spout.id} />
+          <Explain>
+            <b>Ensacando</b>: os sacos estavam saindo. <b>Ociosa</b>: habilitado, mas sem saco há
+            mais de dois minutos (falta de saco, palete cheio, silo vazio). <b>Desabilitada</b>: o
+            operador desligou o bico na IHM. Cada faixa da linha acima é{' '}
+            {quarter ? 'um quarto de hora' : 'um dia'}, pintada pelo que o bico mais fez nela.
+          </Explain>
+        </>
+      )}
 
       <div className="stops-title">O que o bico ensacou</div>
       {spout.products.length ? (
@@ -518,7 +541,7 @@ function SpoutModal({
         <div className="stops-empty">Nada ensacado no período.</div>
       )}
 
-      {rows.length > 0 && (
+      {!boardDate && rows.length > 0 && (
         <>
           <div className="stops-title">
             Andamento do bico
@@ -770,7 +793,8 @@ function BagFigureModal({
  * whole under them, and how long each spout took per bag. One day is read by the quarter hour,
  * so a spout that slowed down after lunch shows it; a longer period is read by the day.
  */
-function BaggingCharts({ data, general = true }: { data: Summary; general?: boolean }) {
+function BaggingCharts({ data }: { data: Summary }) {
+  const general = true;
   const palette = useContext(MortarColors);
   const { spouts, series } = data.bagging;
   const quarter = series.some((slot) => slot.slot.length > 13);
@@ -811,33 +835,6 @@ function BaggingCharts({ data, general = true }: { data: Summary; general?: bool
   );
   return (
     <>
-      <div className="stops-title">
-        Andamento por ensacadeira<small> · sacos acumulados de cada bico</small>
-      </div>
-      <div className="mortar-chart">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="#e6eef0" vertical={false} />
-            <XAxis dataKey="label" tick={AXIS} minTickGap={24} />
-            <YAxis tick={AXIS} width={52} tickFormatter={(value: number) => integer(value)} />
-            <Tooltip formatter={(value, name) => [integer(Number(value)) + ' sacos', name]} />
-            {spouts.map((spout, index) => (
-              <Line
-                key={spout.id}
-                dataKey={'sum_' + spout.id}
-                name={'Bico ' + spout.name}
-                stroke={palette.spout(index)}
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={drawing}
-                animationDuration={drawing ? 700 : 0}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      {legend}
-
       {general && (
         <>
           <div className="stops-title">
