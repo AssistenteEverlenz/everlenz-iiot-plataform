@@ -337,7 +337,7 @@ function StackedBars({
 }
 
 function Bagging({ data, onLink }: { data: Summary; onLink?: () => void }) {
-  const { totals, spouts, series } = data.bagging;
+  const { totals, spouts } = data.bagging;
   const worked = totals.runningS + totals.idleS;
   if (!spouts.length)
     return (
