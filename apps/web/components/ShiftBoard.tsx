@@ -16,7 +16,7 @@ import { usePoll } from './data';
 import { DayCalendar, dayLabel } from './DayCalendar';
 import { ModalPortal } from './ModalPortal';
 import { TargetModal } from './TargetModal';
-import { UtilizationModal, utilizationCaption, type UtilizationFormula } from './UtilizationModal';
+import { UtilizationModal, utilizationCaption } from './UtilizationModal';
 import {
   ShiftDetailModal,
   type CalculatedSetting,
@@ -68,7 +68,7 @@ export interface BoardData {
   };
   utilization: number | null;
   /** The plant's own utilization formula; null is producing ÷ (producing + idle). */
-  utilizationFormula?: UtilizationFormula | null;
+  utilizationFormula?: string | null;
   target: {
     value: number;
     /** 'hmi': read from the HMI variable; 'fixed': the configured value. */
@@ -1383,7 +1383,7 @@ export function ShiftBoardView({
           <UtilizationModal
             deviceId={deviceId}
             formula={board?.utilizationFormula ?? null}
-            time={board?.time ?? {}}
+            time={board?.time ?? { producing: 0, idle: 0, manual: 0 }}
             onClose={(saved) => {
               setEditingUtilization(false);
               if (saved) onChanged?.();

@@ -22,6 +22,11 @@ import {
   type TimeWindow,
 } from '@iiot/shared';
 import type { createAccessControl } from './auth.js';
+import {
+  utilizationFormulaError,
+  utilizationFormulaText,
+  utilizationFrom,
+} from '../../web/components/utilizationFormula.js';
 import { recordAudit } from './audit.js';
 
 // Production by shift (migration 018): the plant's shift calendar, the device's production
@@ -53,23 +58,13 @@ interface ProductionConfig {
 
 /**
  * How the machine's utilization is counted, per equipment: the default producing ÷ (producing +
- * idle), or a formula the plant writes by choosing which state times go above and below the line
- * (migration 039). Migration 038's 'stopped' is the custom producing ÷ (producing + idle +
- * manual). Production applies migrations by hand, so a missing column reads as the default.
+ * idle), or a formula the plant writes over the period's state times (migration 039), read with
+ * the same engine as the cards' formulas. Migration 038's 'stopped' reads as producing ÷
+ * (producing + idle + manual). Production applies migrations by hand, so a missing column reads
+ * as the default.
  */
-const utilizationStates = ['producing', 'idle', 'manual', 'offline'] as const;
-type UtilizationState = (typeof utilizationStates)[number];
-interface UtilizationFormula {
-  numerator: UtilizationState[];
-  denominator: UtilizationState[];
-}
-const utilizationFormulaSchema = z.object({
-  numerator: z.array(z.enum(utilizationStates)).min(1).max(4),
-  denominator: z.array(z.enum(utilizationStates)).min(1).max(4),
-});
-
 async function utilizationFormulas(db: Database, tenantId: string, deviceIds: string[]) {
-  const formulas = new Map<string, UtilizationFormula>();
+  const formulas = new Map<string, string>();
   if (!deviceIds.length) return formulas;
   const read = async (column: string) =>
     (
@@ -90,25 +85,17 @@ async function utilizationFormulas(db: Database, tenantId: string, deviceIds: st
     }
   }
   for (const row of rows) {
-    const parsed = utilizationFormulaSchema.safeParse(row.formula);
-    if (parsed.success) formulas.set(row.device_id, parsed.data);
-    else if (row.basis === 'stopped')
-      formulas.set(row.device_id, {
-        numerator: ['producing'],
-        denominator: ['producing', 'idle', 'manual'],
-      });
+    const text =
+      utilizationFormulaText(row.formula) ??
+      (row.basis === 'stopped'
+        ? utilizationFormulaText({
+            numerator: ['producing'],
+            denominator: ['producing', 'idle', 'manual'],
+          })
+        : null);
+    if (text) formulas.set(row.device_id, text);
   }
   return formulas;
-}
-
-function utilizationOf(
-  formula: UtilizationFormula | undefined,
-  time: Record<UtilizationState, number>,
-) {
-  const sum = (states: UtilizationState[]) =>
-    [...new Set(states)].reduce((total, state) => total + (time[state] ?? 0), 0);
-  const below = sum(formula?.denominator ?? ['producing', 'idle']);
-  return below > 0 ? sum(formula?.numerator ?? ['producing']) / below : null;
 }
 
 /** Final minutes of a shift in which a stop that lasts to the end counts as "Encerrado". */
@@ -726,7 +713,7 @@ async function buildBoard(
       pause: pauseWorked,
       elapsedProductive: summary.elapsedProductive,
     },
-    utilization: utilizationOf(utilizationFormula ?? undefined, summary),
+    utilization: utilizationFrom(utilizationFormula, summary),
     utilizationFormula,
     target: targetValue
       ? {
@@ -1982,12 +1969,12 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         target: row.target_value == null ? null : Number(row.target_value) * today.length,
         projection: actual + (pacePerHour / 3600) * remaining,
         pacePerHour,
-        // The day's list carries no offline time: a formula that uses it reads it as zero here.
-        utilization: utilizationOf(formulas.get(row.device_id), {
+        // The day's list carries no offline time: a formula reads it as zero here, and the time
+        // elapsed as the time it has.
+        utilization: utilizationFrom(formulas.get(row.device_id), {
           producing: Number(row.producing),
           idle: Number(row.idle),
           manual: Number(row.manual),
-          offline: 0,
         }),
         readings: row.readings ?? {},
         texts: row.texts ?? {},
@@ -2284,21 +2271,24 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   app.patch('/api/devices/:id/production-utilization', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
-    const body = z.object({ formula: utilizationFormulaSchema.nullable() }).parse(req.body);
+    const body = z.object({ formula: z.string().max(500).nullable() }).parse(req.body);
+    const formula = body.formula?.trim() || null;
+    const problem = formula ? utilizationFormulaError(formula) : null;
+    if (problem) return reply.code(400).send({ error: problem });
     const current = access.principal(req);
     const updated = await db.transaction(async (sql) => {
       const result = await sql.query(
         `UPDATE production_settings SET utilization_formula=$3::jsonb,utilization_basis=NULL,
            updated_at=now()
          WHERE tenant_id=$1 AND device_id=$2`,
-        [current.tenantId, id, body.formula ? JSON.stringify(body.formula) : null],
+        [current.tenantId, id, formula ? JSON.stringify({ formula }) : null],
       );
       if (!result.rowCount) return false;
       await recordAudit(sql, req, current, {
         action: 'device.production_utilization.update',
         targetType: 'device',
         targetId: id,
-        summary: body,
+        summary: { formula },
       });
       return true;
     });
@@ -2306,7 +2296,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       return reply
         .code(400)
         .send({ error: 'Configure primeiro o contador de produção do equipamento.' });
-    return { formula: body.formula };
+    return { formula };
   });
 
   // The target alone, edited from the production board's "Meta" card: a fixed value or an HMI

@@ -10944,28 +10944,6 @@ button.mortar-figure:hover > u {
 .utilization-option b { font-size: 13px; font-weight: 600; }
 .utilization-option small { color: #71868d; font-size: 12px; }
 .utilization-builder { display: grid; gap: 10px; margin-top: 12px; }
-.utilization-builder fieldset {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid #e3ebed;
-  border-radius: 10px;
-}
-.utilization-builder legend { padding: 0 4px; color: #71868d; font-size: 11px; }
-.utilization-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: 1px solid #e3ebed;
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.utilization-chip:has(input:checked) { border-color: var(--brand-accent, #12b8a6); }
-.utilization-chip input { margin: 0; accent-color: var(--brand-accent, #12b8a6); }
 .utilization-preview {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -10980,3 +10958,6 @@ button.mortar-figure:hover > u {
 .utilization-preview span { font-size: 12px; color: #324d57; }
 .utilization-preview b { grid-row: span 2; font-size: 22px; font-weight: 550; }
 .utilization-preview small { color: #8a9ca2; font-size: 11px; }
+.utilization-builder > small { color: #71868d; font-size: 11px; }
+.utilization-preview span { overflow-wrap: anywhere; }
+.shift-gauge-caption { overflow-wrap: anywhere; }

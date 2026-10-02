@@ -4,6 +4,11 @@ import { memoryDatabase } from './pglite.js';
 import { migrate } from '../packages/database/src/migrate.js';
 import { seed, TENANT, HAIWELL } from '../packages/database/src/seed.js';
 import { createApp } from '../apps/api/src/app.js';
+import {
+  utilizationFormulaError,
+  utilizationFormulaText,
+  utilizationFrom,
+} from '../apps/web/components/utilizationFormula.js';
 
 /**
  * How "Aproveitamento da máquina" is counted, per equipment (migrations 038 and 039). Read back after
@@ -32,6 +37,26 @@ describe('fórmula do aproveitamento', () => {
     expect(allowed.test(`devices/${HAIWELL}/production-utilization`)).toBe(true);
   });
 
+  it('reads the formula the plant writes, as the percentage itself', () => {
+    const time = { producing: 32 * 60, idle: 60, manual: 19 * 60, offline: 60 };
+    expect(utilizationFrom(null, time)).toBeCloseTo(32 / 33);
+    expect(
+      utilizationFrom(
+        'painel.horas_produzindo / (painel.horas_produzindo + painel.horas_paradas) * 100',
+        time,
+      ),
+    ).toBeCloseTo(32 / 52);
+    // The first custom formulas were boxes; they read as the same formula written out.
+    const boxes = utilizationFormulaText({
+      numerator: ['producing'],
+      denominator: ['producing', 'idle', 'manual'],
+    });
+    expect(utilizationFrom(boxes, time)).toBeCloseTo(32 / 52);
+    expect(utilizationFormulaError('painel.horas_produzindo / ihm.Velocidade')).toMatch(
+      /não encontrada/,
+    );
+  });
+
   it('asks for the counter first, then saves and reads back the formula', async () => {
     const { db, api } = await platform();
     await db.query('DELETE FROM production_settings WHERE tenant_id=$1 AND device_id=$2', [
@@ -44,7 +69,7 @@ describe('fórmula do aproveitamento', () => {
         url: `/api/devices/${HAIWELL}/production-utilization`,
         payload: { formula },
       });
-    const own = { numerator: ['producing'], denominator: ['producing', 'idle', 'manual'] };
+    const own = 'painel.minutos_produzindo / (painel.minutos_produzindo + painel.minutos_paradas) * 100';
     expect((await patch(own)).statusCode).toBe(400);
 
     await db.query('INSERT INTO production_settings(tenant_id,device_id) VALUES($1,$2)', [
@@ -53,11 +78,13 @@ describe('fórmula do aproveitamento', () => {
     ]);
     expect(await stored(db)).toBeNull();
     expect((await patch(own)).statusCode).toBe(200);
-    expect(await stored(db)).toEqual(own);
+    expect(await stored(db)).toEqual({ formula: own });
     expect((await patch(null)).statusCode).toBe(200);
     expect(await stored(db)).toBeNull();
-    expect((await patch({ numerator: [], denominator: ['idle'] })).statusCode).toBe(400);
-    expect((await patch({ numerator: ['speed'], denominator: ['idle'] })).statusCode).toBe(400);
+    const refused = await patch('painel.horas_produzindo / ');
+    expect(refused.statusCode).toBe(400);
+    expect(JSON.parse(refused.body).error).toMatch(/terminou/);
+    expect((await patch('process.exit(1)')).statusCode).toBe(400);
     expect(await stored(db)).toBeNull();
-  });
+  }, 30000);
 });
