@@ -177,10 +177,10 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   stops: 10,
   wear: 12,
   // Mortar plants (migration 037).
-  bagging: 16,
-  mortar_output: 7,
-  mortar_materials: 10,
-  mortar_yield: 7,
+  bagging: 18,
+  mortar_output: 10,
+  mortar_materials: 12,
+  mortar_yield: 9,
 };
 /**
  * Where each card lands on the 12-column desktop grid, which packs densely: a later small

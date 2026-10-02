@@ -10438,3 +10438,412 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   height: 190px;
   min-width: 0;
 }
+
+/* Mortar boards, second pass: every figure says what it is above how much, opens on click,
+   and nothing needs the mouse to be read. */
+.mortar-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.mortar-figure {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #dce6e8;
+  border-radius: 12px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  animation: figure-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+button.mortar-figure {
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+button.mortar-figure:hover {
+  border-color: #12b8a6;
+  box-shadow: 0 6px 18px #0b20281a;
+  transform: translateY(-1px);
+}
+.mortar-figure > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #5d747b;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mortar-figure > span i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.mortar-figure > b {
+  color: #0f2a33;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.mortar-figure > b small {
+  color: #7b9097;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.mortar-figure > em {
+  color: #7b9097;
+  font-size: 11px;
+  font-style: normal;
+}
+.mortar-figure > u {
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  color: #b3c3c7;
+  font-size: 18px;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+button.mortar-figure:hover > u {
+  color: #12b8a6;
+}
+.mortar-figures > :nth-child(2) {
+  animation-delay: 50ms;
+}
+.mortar-figures > :nth-child(3) {
+  animation-delay: 100ms;
+}
+.mortar-figures > :nth-child(n + 4) {
+  animation-delay: 150ms;
+}
+
+/* A spout is a button: the whole card opens what it produced. */
+button.mortar-spout {
+  width: 100%;
+  border-radius: 12px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+button.mortar-spout:hover {
+  border-color: #12b8a6;
+  box-shadow: 0 6px 18px #0b20281a;
+  transform: translateY(-1px);
+}
+.mortar-spout-products {
+  display: grid;
+  gap: 4px;
+  min-height: 40px;
+}
+.mortar-spout-products .caption {
+  color: #7b9097;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mortar-spout-products .none {
+  color: #9fb2b7;
+  font-size: 12px;
+}
+.mortar-spout-products .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mortar-spout-products .chips span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef6f6;
+  color: #24505a;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mortar-spout-figures {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px 12px;
+}
+.mortar-spout-figures span {
+  display: block;
+  color: #7b9097;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mortar-spout-figures b {
+  font-size: 19px;
+}
+.mortar-spout-figures b small {
+  color: #7b9097;
+  font-size: 11px;
+  font-weight: 500;
+}
+.mortar-more {
+  justify-self: end;
+  color: #12a594;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Time split, written in words beside its bar. */
+.mortar-split {
+  display: grid;
+  gap: 6px;
+}
+.mortar-split-bar {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: #eef4f5;
+}
+.mortar-split.compact .mortar-split-bar {
+  height: 7px;
+}
+.mortar-split-bar i {
+  height: 100%;
+  transform-origin: left center;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.mortar-split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: #5d747b;
+  font-size: 11px;
+}
+.mortar-split-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mortar-split-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.mortar-split-legend b {
+  color: #12303a;
+}
+.mortar-split-legend small {
+  color: #8a9ca2;
+}
+.mortar-split-empty {
+  color: #9fb2b7;
+  font-size: 11px;
+}
+
+/* The day of one spout, one cell per quarter hour. */
+.mortar-strip {
+  display: grid;
+  gap: 3px;
+}
+.mortar-strip-cells {
+  display: flex;
+  gap: 1px;
+  height: 22px;
+}
+.mortar-strip-cells i {
+  flex: 1;
+  border-radius: 2px;
+  animation: figure-in 0.4s ease-out backwards;
+}
+.mortar-strip-marks {
+  display: flex;
+  justify-content: space-between;
+  color: #8a9ca2;
+  font-size: 10px;
+}
+
+.mortar-explain {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #12b8a6;
+  border-radius: 0 8px 8px 0;
+  background: #f4f9f9;
+  color: #3d5a62;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.mortar-table td,
+.mortar-table th {
+  padding: 8px 9px;
+}
+.mortar-table tbody tr:hover td {
+  background: #f8fbfb;
+}
+.mortar-recipes tbody tr {
+  cursor: pointer;
+}
+.muted {
+  color: #8a9ca2;
+}
+.mortar-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+.mortar-products td small {
+  margin-left: 16px;
+}
+.mortar-modal.wide {
+  width: min(980px, calc(100vw - 32px));
+}
+.mortar-modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.mortar-modal-title i {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+.mortar-switches {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mortar-donut {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  align-items: center;
+  gap: 18px;
+}
+.mortar-donut-chart {
+  position: relative;
+  height: 220px;
+}
+.mortar-donut-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+.mortar-donut-center b {
+  color: #0f2a33;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-donut-center span {
+  color: #7b9097;
+  font-size: 11px;
+}
+.mortar-donut-legend {
+  display: grid;
+  gap: 4px;
+}
+.mortar-donut-legend button {
+  display: grid;
+  grid-template-columns: 12px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.mortar-donut-legend button:hover {
+  background: #f4f9f9;
+}
+.mortar-donut-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.mortar-donut-legend small {
+  min-width: 90px;
+  color: #7b9097;
+  text-align: right;
+}
+
+.mortar-composition {
+  display: flex;
+  height: 26px;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.mortar-composition i {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  transform-origin: left center;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.mortar-composition span {
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  text-shadow: 0 1px 2px #0003;
+}
+.mortar-scale {
+  margin-left: auto;
+}
+.mortar-recipe-bar {
+  display: flex;
+  width: 120px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #eef4f5;
+}
+.mortar-modal > .mortar-recipe-bar {
+  width: 100%;
+  height: 14px;
+}
+.mortar-recipe-bar i {
+  height: 100%;
+}
+@media (max-width: 640px) {
+  .mortar-donut {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mortar-figure,
+  .mortar-split-bar i,
+  .mortar-strip-cells i,
+  .mortar-composition i {
+    animation: none;
+  }
+}
+.mortar-figure > b small,
+.mortar-spout-figures b small {
+  display: inline;
+}
+.mortar-spout .mortar-spout-figures {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
