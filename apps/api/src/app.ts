@@ -12,6 +12,7 @@ import { publishCommand, type CommandPublisher } from './commands.js';
 import { registerProductionRoutes } from './production.js';
 import { registerShiftProductionRoutes, scheduleProductionRebuild } from './shift-production.js';
 import { registerWearRoutes } from './wear.js';
+import { registerMortarRoutes } from './mortar.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 import { registerTvRoutes } from './tv-screens.js';
@@ -361,7 +362,11 @@ export async function createApp(
     if (!access.requireMaster(req, reply)) return;
     const current = access.principal(req);
     const body = z
-      .object({ name: z.string().min(2).max(120), reference: z.string().min(2).max(40) })
+      .object({
+        name: z.string().min(2).max(120),
+        reference: z.string().min(2).max(40),
+        segment: z.enum(['ceramica', 'argamassa']).optional(),
+      })
       .parse(req.body);
     const id = randomUUID();
     const suffix = id.replace(/-/g, '').slice(0, 5).toLowerCase();
@@ -383,6 +388,12 @@ export async function createApp(
         targetId: id,
         summary: { name: body.name.trim(), reference: body.reference.trim() },
       });
+      // Written apart, and only when it is not the default: a database still without migration
+      // 037 keeps creating ceramic clients as before.
+      if (body.segment === 'argamassa')
+        return (
+          await sql.query(`UPDATE sites SET segment='argamassa' WHERE id=$1 RETURNING *`, [id])
+        ).rows[0];
       return created.rows[0];
     });
     return reply.code(201).send(site);
@@ -458,8 +469,15 @@ export async function createApp(
       `UPDATE devices SET address=$3,city=$4,state=upper($5),latitude=$6,longitude=$7,
        location_updated_at=now(),updated_at=now()
        WHERE tenant_id=$1 AND id=$2 AND archived_at IS NULL RETURNING *`,
-      [current.tenantId, id, body.address || null, body.city, body.state,
-       coordinates.latitude, coordinates.longitude],
+      [
+        current.tenantId,
+        id,
+        body.address || null,
+        body.city,
+        body.state,
+        coordinates.latitude,
+        coordinates.longitude,
+      ],
     );
     if (!updated.rows[0]) return reply.code(404).send({ error: 'Device not found' });
     return { ...updated.rows[0], precision: coordinates.precision };
@@ -467,7 +485,8 @@ export async function createApp(
   // `d.*` reaches the browser. Never add a secret column to `devices`: the plaintext
   // mqtt_password used to be exposed exactly this way (SECURITY.md item 12). Any new
   // sensitive column must be returned by an explicit, separately authorised route.
-  const deviceSelect = `SELECT d.*,s.name site_name,s.reference site_reference,m.topic mqtt_topic,
+  const deviceSelect = `SELECT d.*,s.name site_name,s.reference site_reference,
+    COALESCE(to_jsonb(s)->>'segment','ceramica') site_segment,m.topic mqtt_topic,
     COALESCE(d.mqtt_username,lower(d.device_code)) mqtt_username,ds.last_message_at,
     COALESCE(d.enabled AND ds.last_message_at > now()-($2::int * interval '1 second'),false) online
     FROM devices d JOIN sites s ON s.id=d.site_id AND s.tenant_id=d.tenant_id
@@ -620,7 +639,11 @@ export async function createApp(
       .parse(req.body);
     if (!(await access.requireDevice(req, reply, id))) return;
     const current = access.principal(req);
-    const tag = await db.query<{ key: string; scale_multiplier: string | number; scale_always: boolean }>(
+    const tag = await db.query<{
+      key: string;
+      scale_multiplier: string | number;
+      scale_always: boolean;
+    }>(
       'SELECT key,scale_multiplier,scale_always FROM tags WHERE tenant_id=$1 AND device_id=$2 AND id=$3',
       [current.tenantId, id, tagId],
     );
@@ -744,6 +767,7 @@ export async function createApp(
   // Wear of the line: measured brick weight, part replacements, and the two indices built on
   // them (apps/api/src/wear.ts).
   registerWearRoutes(app, db, access);
+  registerMortarRoutes(app, db, access);
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
   registerTvRoutes(app, db, access);
@@ -1027,7 +1051,8 @@ export async function createApp(
     const mqttUsername = code.toLowerCase();
     const mqttPassword = deviceSecret();
     const dashboardId = randomUUID();
-    const coordinates = body.city && body.state ? await locate(body) : { latitude: null, longitude: null };
+    const coordinates =
+      body.city && body.state ? await locate(body) : { latitude: null, longitude: null };
     const row = await db.transaction(async (sql) => {
       // The generated password is never stored: it is returned once, here, and can only
       // be replaced afterwards through POST /api/devices/:id/mqtt-credential.
@@ -1541,8 +1566,7 @@ export async function createApp(
         )
           ? String(widgetConfig.productionBoardMetric)
           : 'pallets';
-        const boardColumn =
-          boardMetric === 'milheiros' ? 'b.pieces/1000.0' : `b.${boardMetric}`;
+        const boardColumn = boardMetric === 'milheiros' ? 'b.pieces/1000.0' : `b.${boardMetric}`;
         const rows = (
           await db.query<{
             date: string;
@@ -1822,6 +1846,11 @@ export async function createApp(
           // brick weight says about the die and the auger.
           'stops',
           'wear',
+          // Mortar plants (migration 037): bagging, products, raw materials and yield.
+          'bagging',
+          'mortar_output',
+          'mortar_materials',
+          'mortar_yield',
         ]),
         title: z.string().min(1).max(120),
         width: z.enum(['small', 'medium', 'large', 'full']).default('medium'),
@@ -2170,9 +2199,7 @@ export async function createApp(
 
   app.patch('/api/dashboards/:dashboardId/tabs/:tabId', async (req, reply) => {
     const current = access.principal(req);
-    const { dashboardId, tabId } = z
-      .object({ dashboardId: uuid, tabId: uuid })
-      .parse(req.params);
+    const { dashboardId, tabId } = z.object({ dashboardId: uuid, tabId: uuid }).parse(req.params);
     const body = z
       .object({
         name: z.string().trim().min(1).max(40).optional(),
@@ -2198,9 +2225,7 @@ export async function createApp(
 
   app.delete('/api/dashboards/:dashboardId/tabs/:tabId', async (req, reply) => {
     const current = access.principal(req);
-    const { dashboardId, tabId } = z
-      .object({ dashboardId: uuid, tabId: uuid })
-      .parse(req.params);
+    const { dashboardId, tabId } = z.object({ dashboardId: uuid, tabId: uuid }).parse(req.params);
     // Where its cards go. Without it they lose the tab and come back on the first one, which
     // is the safe end: a tab is a division of the panel, never a way to throw cards away.
     const body = z.object({ moveTo: uuid.nullable().optional() }).parse(req.body ?? {});
@@ -2279,7 +2304,13 @@ export async function createApp(
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     const { minutes } = z
-      .object({ minutes: z.number().int().min(0).max(7 * 24 * 60) })
+      .object({
+        minutes: z
+          .number()
+          .int()
+          .min(0)
+          .max(7 * 24 * 60),
+      })
       .parse(req.body);
     const updated = await db.query<{ raw_capture_until: Date | null }>(
       `UPDATE devices SET raw_capture_until=CASE WHEN $3::int=0 THEN NULL
@@ -2403,7 +2434,11 @@ interface DashboardWidgetRecord {
     | 'bar_horizontal'
     | 'shift_board'
     | 'stops'
-    | 'wear';
+    | 'wear'
+    | 'bagging'
+    | 'mortar_output'
+    | 'mortar_materials'
+    | 'mortar_yield';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';

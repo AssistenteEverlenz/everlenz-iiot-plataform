@@ -144,7 +144,35 @@ const models = {
   ],
 } as const;
 type Manufacturer = keyof typeof models;
-const states = [['AC','Acre'],['AL','Alagoas'],['AP','Amapá'],['AM','Amazonas'],['BA','Bahia'],['CE','Ceará'],['DF','Distrito Federal'],['ES','Espírito Santo'],['GO','Goiás'],['MA','Maranhão'],['MT','Mato Grosso'],['MS','Mato Grosso do Sul'],['MG','Minas Gerais'],['PA','Pará'],['PB','Paraíba'],['PR','Paraná'],['PE','Pernambuco'],['PI','Piauí'],['RJ','Rio de Janeiro'],['RN','Rio Grande do Norte'],['RS','Rio Grande do Sul'],['RO','Rondônia'],['RR','Roraima'],['SC','Santa Catarina'],['SP','São Paulo'],['SE','Sergipe'],['TO','Tocantins']] as const;
+const states = [
+  ['AC', 'Acre'],
+  ['AL', 'Alagoas'],
+  ['AP', 'Amapá'],
+  ['AM', 'Amazonas'],
+  ['BA', 'Bahia'],
+  ['CE', 'Ceará'],
+  ['DF', 'Distrito Federal'],
+  ['ES', 'Espírito Santo'],
+  ['GO', 'Goiás'],
+  ['MA', 'Maranhão'],
+  ['MT', 'Mato Grosso'],
+  ['MS', 'Mato Grosso do Sul'],
+  ['MG', 'Minas Gerais'],
+  ['PA', 'Pará'],
+  ['PB', 'Paraíba'],
+  ['PR', 'Paraná'],
+  ['PE', 'Pernambuco'],
+  ['PI', 'Piauí'],
+  ['RJ', 'Rio de Janeiro'],
+  ['RN', 'Rio Grande do Norte'],
+  ['RS', 'Rio Grande do Sul'],
+  ['RO', 'Rondônia'],
+  ['RR', 'Roraima'],
+  ['SC', 'Santa Catarina'],
+  ['SP', 'São Paulo'],
+  ['SE', 'Sergipe'],
+  ['TO', 'Tocantins'],
+] as const;
 
 export default function Devices() {
   const { user } = usePlatform();
@@ -156,7 +184,11 @@ export default function Devices() {
   const [selected, setSelected] = useState<Device | null>(null);
   const [siteSearch, setSiteSearch] = useState('');
   const [addingSite, setAddingSite] = useState(false);
-  const [siteForm, setSiteForm] = useState({ name: '', reference: '' });
+  const [siteForm, setSiteForm] = useState<{
+    name: string;
+    reference: string;
+    segment: 'ceramica' | 'argamassa';
+  }>({ name: '', reference: '', segment: 'ceramica' });
   const [error, setError] = useState('');
   const [rotating, setRotating] = useState(false);
   const [rotated, setRotated] = useState<Connection | null>(null);
@@ -177,10 +209,16 @@ export default function Devices() {
   });
   const [cities, setCities] = useState<string[]>([]);
   useEffect(() => {
-    if (!form.state) { setCities([]); return; }
+    if (!form.state) {
+      setCities([]);
+      return;
+    }
     const controller = new AbortController();
-    void fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${form.state}/municipios?orderBy=nome`, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : [])
+    void fetch(
+      `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${form.state}/municipios?orderBy=nome`,
+      { signal: controller.signal },
+    )
+      .then((response) => (response.ok ? response.json() : []))
       .then((items: Array<{ nome: string }>) => setCities(items.map((item) => item.nome)))
       .catch(() => undefined);
     return () => controller.abort();
@@ -216,7 +254,7 @@ export default function Devices() {
       setForm({ ...form, siteId: site.id });
       setSiteSearch(site.name);
       setAddingSite(false);
-      setSiteForm({ name: '', reference: '' });
+      setSiteForm({ name: '', reference: '', segment: 'ceramica' });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao cadastrar cliente.');
     } finally {
@@ -509,6 +547,21 @@ export default function Devices() {
                           placeholder="Ex.: CER-ABC"
                         />
                       </label>
+                      <label className="field">
+                        Segmento
+                        <select
+                          value={siteForm.segment}
+                          onChange={(event) =>
+                            setSiteForm({
+                              ...siteForm,
+                              segment: event.target.value as 'ceramica' | 'argamassa',
+                            })
+                          }
+                        >
+                          <option value="ceramica">Cerâmica vermelha</option>
+                          <option value="argamassa">Argamassa</option>
+                        </select>
+                      </label>
                       <button
                         type="button"
                         disabled={siteSaving}
@@ -552,19 +605,42 @@ export default function Devices() {
                   </label>
                   <label className="field full-field">
                     Endereço da cerâmica
-                    <input value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Rodovia, número e bairro" />
+                    <input
+                      value={form.address}
+                      onChange={(event) => setForm({ ...form, address: event.target.value })}
+                      placeholder="Rodovia, número e bairro"
+                    />
                   </label>
                   <label className="field">
                     Estado
-                    <select value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value, city: '' })}>
+                    <select
+                      value={form.state}
+                      onChange={(event) =>
+                        setForm({ ...form, state: event.target.value, city: '' })
+                      }
+                    >
                       <option value="">Selecione</option>
-                      {states.map(([code, name]) => <option key={code} value={code}>{name} ({code})</option>)}
+                      {states.map(([code, name]) => (
+                        <option key={code} value={code}>
+                          {name} ({code})
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label className="field">
                     Cidade
-                    <input list="device-cities" value={form.city} disabled={!form.state} onChange={(event) => setForm({ ...form, city: event.target.value })} placeholder="Digite para buscar" />
-                    <datalist id="device-cities">{cities.map((city) => <option key={city} value={city} />)}</datalist>
+                    <input
+                      list="device-cities"
+                      value={form.city}
+                      disabled={!form.state}
+                      onChange={(event) => setForm({ ...form, city: event.target.value })}
+                      placeholder="Digite para buscar"
+                    />
+                    <datalist id="device-cities">
+                      {cities.map((city) => (
+                        <option key={city} value={city} />
+                      ))}
+                    </datalist>
                   </label>
                 </div>
                 <div className="legacy-section">

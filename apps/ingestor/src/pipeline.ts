@@ -1,5 +1,6 @@
 import { adapters, DeviceResolver } from '@iiot/adapters';
 import { ProductionTracker } from './production-tracker.js';
+import { MortarTracker } from './mortar-tracker.js';
 import {
   convertTag,
   decodePayload,
@@ -198,6 +199,7 @@ export class IngestionPipeline {
     private log = logger('ingestor'),
     private catalog = new SignalCatalogRepository(),
     private tracker = new ProductionTracker(db, env.DEVICE_OFFLINE_SECONDS),
+    private mortar = new MortarTracker(db, env.DEVICE_OFFLINE_SECONDS),
   ) {}
   private async resolutionConfiguration(force = false) {
     if (!force && this.resolutionCache && this.resolutionCache.expiresAt > Date.now())
@@ -460,6 +462,16 @@ export class IngestionPipeline {
       } catch (error) {
         this.log.warn({
           event: 'production_tracking_failed',
+          deviceId: device.id,
+          error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+        });
+      }
+      // Mortar plants: bags per spout and mixing batches (migration 037).
+      try {
+        await this.mortar.observe(device, tags, samples, message.receivedAt);
+      } catch (error) {
+        this.log.warn({
+          event: 'mortar_tracking_failed',
           deviceId: device.id,
           error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
         });

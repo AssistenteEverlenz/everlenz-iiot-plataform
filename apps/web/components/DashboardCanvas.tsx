@@ -42,6 +42,7 @@ import type { DashboardTab } from './data';
 import { ShiftBoard } from './ShiftBoard';
 import { StopsPanel } from './StopsPanel';
 import { WearPanel } from './WearModal';
+import { MortarPanel, MORTAR_CARDS, isMortarView } from './MortarPanel';
 import { ProductionConfigModal } from './ProductionConfigModal';
 import { HmiCheckModal } from './HmiCheckModal';
 import { SnapshotModal } from './SnapshotModal';
@@ -72,10 +73,7 @@ function RemoveTabModal({
   if (!tab) return null;
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div
-        className="modal-card compact-modal"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+      <div className="modal-card compact-modal" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-title">
           <div>
             <div className="eyebrow">ABA DO PAINEL</div>
@@ -106,11 +104,7 @@ function RemoveTabModal({
           <button type="button" onClick={onClose}>
             Cancelar
           </button>
-          <button
-            type="button"
-            className="danger-button"
-            onClick={() => onConfirm(moveTo || null)}
-          >
+          <button type="button" className="danger-button" onClick={() => onConfirm(moveTo || null)}>
             Excluir aba
           </button>
         </div>
@@ -182,6 +176,11 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   // Both read a whole device and carry several sections, so they start tall.
   stops: 10,
   wear: 12,
+  // Mortar plants (migration 037).
+  bagging: 9,
+  mortar_output: 7,
+  mortar_materials: 10,
+  mortar_yield: 7,
 };
 /**
  * Where each card lands on the 12-column desktop grid, which packs densely: a later small
@@ -352,8 +351,11 @@ const visualizationHelp: Record<PickerType, string> = {
   pareto: 'Precisa de eventos de parada com motivo e duração para ordenar as maiores perdas.',
   stops:
     'Quantas vezes a linha parou, por quanto tempo e por qual motivo. Não usa uma variável: lê as paradas que a plataforma grava enquanto acontecem.',
-  wear:
-    'Desgaste da boquilha e do caracol, a partir da capacidade da linha e do peso do tijolo que alguém pesa e lança. Não usa uma variável.',
+  ...(Object.fromEntries(MORTAR_CARDS.map(([type, , , help]) => [type, help])) as Record<
+    (typeof MORTAR_CARDS)[number][0],
+    string
+  >),
+  wear: 'Desgaste da boquilha e do caracol, a partir da capacidade da linha e do peso do tijolo que alguém pesa e lança. Não usa uma variável.',
   donut: 'Pizza com a participação (%) de cada produto no período. Use um contador, como paletes.',
   bar_vertical: 'Barras verticais da produção no período, uma por produto ou uma por dia.',
   bar_horizontal: 'Barras horizontais ordenadas, ideais para ranking de produtos com nomes longos.',
@@ -416,7 +418,26 @@ function calculatedFields(config: DashboardWidget['config']): CalculatedSetting[
 }
 
 // Cards that read no single variable; every other card needs one to show anything.
-const variableFreeTypes = new Set<string>(['shift_board', 'oee', 'pareto', 'stops', 'wear']);
+const variableFreeTypes = new Set<string>([
+  'shift_board',
+  'oee',
+  'pareto',
+  'stops',
+  'wear',
+  ...MORTAR_CARDS.map(([type]) => type),
+]);
+/** Boards built on the ceramic production tracking; a mortar client is offered its own. */
+const ceramicOnlyTypes = new Set<string>([
+  'production',
+  'donut',
+  'bar_vertical',
+  'bar_horizontal',
+  'oee',
+  'pareto',
+  'shift_board',
+  'stops',
+  'wear',
+]);
 /** A card is complete without a variable when it is one of those, or when it is a formula. */
 function needsVariable(widget: { widget_type: string; config: DashboardWidget['config'] }) {
   return !variableFreeTypes.has(widget.widget_type) && !widget.config.mainFormula?.trim();
@@ -684,11 +705,18 @@ function Widget({
           <SixDots />
         </button>
         <div>
-          <span className="widget-kicker">{widget.widget_type.toUpperCase()}</span>
+          <span className="widget-kicker">
+            {(isMortarView(widget.widget_type)
+              ? (MORTAR_CARDS.find(([type]) => type === widget.widget_type)?.[2] ?? '')
+              : widget.widget_type
+            ).toUpperCase()}
+          </span>
           <h2>{widget.title}</h2>
         </div>
         {/* The period chips sit beside the title; a narrow card puts them under it. */}
-        {analyticTypes.has(widget.widget_type) && <div className="widget-head-period">{periodChips}</div>}
+        {analyticTypes.has(widget.widget_type) && (
+          <div className="widget-head-period">{periodChips}</div>
+        )}
         <div className="widget-actions">
           <button className="icon-button" title="Editar indicador" onClick={edit}>
             ✎
@@ -785,7 +813,7 @@ function Widget({
                   strokeWidth={2.5}
                   fill={`url(#fill-${widget.id})`}
                   isAnimationActive={drawing}
-                animationDuration={700}
+                  animationDuration={700}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -863,16 +891,16 @@ function Widget({
                   return result == null ? '—' : number(result, widget.config.decimals ?? 1);
                 })()
               : numeric != null
-              ? number(numeric, widget.config.decimals ?? 1)
-              : latest?.value_boolean != null
-                ? latest.value_boolean
-                  ? (widget.config.onLabel as string)?.trim() || 'Ligado'
-                  : (widget.config.offLabel as string)?.trim() || 'Desligado'
-                : (latest?.value_text ?? '—')}
+                ? number(numeric, widget.config.decimals ?? 1)
+                : latest?.value_boolean != null
+                  ? latest.value_boolean
+                    ? (widget.config.onLabel as string)?.trim() || 'Ligado'
+                    : (widget.config.offLabel as string)?.trim() || 'Desligado'
+                  : (latest?.value_text ?? '—')}
             <span>
               {widget.config.mainFormula
                 ? widget.config.mainFormulaUnit
-                : (widget.config.unitLabel?.trim() || widget.unit)}
+                : widget.config.unitLabel?.trim() || widget.unit}
             </span>
           </div>
           {calculatedLine}
@@ -890,7 +918,9 @@ function Widget({
           period={period}
           periodChips={null}
           onHideProduct={user.role === 'master' ? (code) => setHidingProduct(code) : undefined}
-          onRestoreProduct={user.role === 'master' ? (code) => void toggleProduct(code, false) : undefined}
+          onRestoreProduct={
+            user.role === 'master' ? (code) => void toggleProduct(code, false) : undefined
+          }
         />
       )}
       {(widget.widget_type === 'donut' ||
@@ -916,6 +946,9 @@ function Widget({
       )}
       {widget.widget_type === 'stops' && <StopsPanel deviceId={widget.device_id} />}
       {widget.widget_type === 'wear' && <WearPanel deviceId={widget.device_id} />}
+      {isMortarView(widget.widget_type) && (
+        <MortarPanel deviceId={widget.device_id} view={widget.widget_type} />
+      )}
       {widget.widget_type === 'oee' && (
         <div className="model-placeholder">
           <strong>OEE pronto para configurar</strong>
@@ -1001,9 +1034,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   // Snapshots of this dashboard (Ações → Snapshot).
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   // "Conferir com a IHM" for the variable of the card being edited.
-  const [checkingHmi, setCheckingHmi] = useState<{ deviceId: string; tagId: string } | null>(
-    null,
-  );
+  const [checkingHmi, setCheckingHmi] = useState<{ deviceId: string; tagId: string } | null>(null);
   // Products of the widget being edited, so each one can get its own colour.
   const editingProducts = usePoll<Statistic[]>(
     editingWidget && quickTypes.has(editingWidget.widget_type)
@@ -1210,8 +1241,7 @@ export function DashboardCanvas({ id }: { id: string }) {
    */
   const printList = useMemo(() => {
     type Item =
-      | { kind: 'head'; id: string; name: string }
-      | { kind: 'card'; widget: DashboardWidget };
+      { kind: 'head'; id: string; name: string } | { kind: 'card'; widget: DashboardWidget };
     if (!printing || !tabs.length)
       return shownWidgets.map((widget) => ({ kind: 'card', widget }) as Item);
     const items: Item[] = [];
@@ -1268,10 +1298,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   }, [latest.data, shift.data]);
 
   // What the suggestion list under the formula box offers.
-  const variableOptions = useMemo<VariableOption[]>(
-    () => variableOptionsFor(readings),
-    [readings],
-  );
+  const variableOptions = useMemo<VariableOption[]>(() => variableOptionsFor(readings), [readings]);
   const byTag = useMemo(
     () => new Map((latest.data ?? []).map((sample) => [sample.tag_id, sample])),
     [latest.data],
@@ -1311,13 +1338,20 @@ export function DashboardCanvas({ id }: { id: string }) {
         title:
           title ||
           (isFormula ? 'Cálculo' : (selectedSignal?.name ?? selectedSignal?.key ?? '')) ||
-          (widgetType === 'oee'
-            ? 'OEE'
-            : widgetType === 'shift_board'
-              ? 'Quadro de produção'
-              : 'Pareto de perdas'),
+          (isMortarView(widgetType)
+            ? (MORTAR_CARDS.find(([type]) => type === widgetType)?.[2] ?? 'Argamassa')
+            : widgetType === 'oee'
+              ? 'OEE'
+              : widgetType === 'shift_board'
+                ? 'Quadro de produção'
+                : 'Pareto de perdas'),
         // The production board needs the whole row to be readable.
-        width: widgetType === 'shift_board' || widgetType === 'wear' ? 'full' : width,
+        width:
+          widgetType === 'shift_board' || widgetType === 'wear' || widgetType === 'bagging'
+            ? 'full'
+            : isMortarView(widgetType)
+              ? 'large'
+              : width,
         config: {
           // A formula card starts showing zero until its own formula is written in the pencil.
           ...(isFormula ? { mainFormula: '0', mainFormulaUnit: '' } : {}),
@@ -1378,7 +1412,10 @@ export function DashboardCanvas({ id }: { id: string }) {
     setCommaAlways(widget.scale_always === true);
     // Formulas open with the standard names (ihm.*, painel.*), so saving brings them up to date.
     setCalculatedList(
-      calculatedFields(widget.config).map((field) => ({ ...field, formula: modernizeFormula(field.formula) })),
+      calculatedFields(widget.config).map((field) => ({
+        ...field,
+        formula: modernizeFormula(field.formula),
+      })),
     );
     setMainFormula(modernizeFormula(widget.config.mainFormula ?? ''));
     setUsingFormula(Boolean((widget.config.mainFormula ?? '').trim()));
@@ -1520,11 +1557,15 @@ export function DashboardCanvas({ id }: { id: string }) {
     setSavingModal(true);
     setError('');
     try {
-      await mutate(`/devices/${editingWidget.device_id}/tags/${editingWidget.tag_id}/decimals`, 'PATCH', {
-        places: commaPlaces,
-        always: commaAlways,
-        adjustHistory: true,
-      });
+      await mutate(
+        `/devices/${editingWidget.device_id}/tags/${editingWidget.tag_id}/decimals`,
+        'PATCH',
+        {
+          places: commaPlaces,
+          always: commaAlways,
+          adjustHistory: true,
+        },
+      );
       setDataVersion((version) => version + 1);
       setEditingWidget(null);
       await Promise.all([dashboard.refresh(), history.refresh(), latest.refresh()]);
@@ -1688,49 +1729,51 @@ export function DashboardCanvas({ id }: { id: string }) {
       />
       {/* With tabs, the cards live on the surface the open tab opens into. */}
       <div className={tabs.length ? 'dashboard-sheet' : undefined}>
-      <section className="widget-grid">
-        {printList.map((item, position) =>
-          item.kind === 'head' ? (
-            <h2 className="print-tab-title" key={`t-${item.id}`}>
-              {item.name}
-            </h2>
-          ) : (
-          <Widget
-            key={item.widget.id}
-            widget={item.widget}
-            latest={item.widget.tag_id ? byTag.get(item.widget.tag_id) : undefined}
-            missing={Boolean(item.widget.tag_id && signals.data && !publishedTagIds.has(item.widget.tag_id))}
-            order={stackOrder.get(item.widget.id)}
-            enter={position}
-            history={history.data ?? []}
-            values={readings}
-            dashboardId={id}
-            counter={counters.data?.find((row) => row.widget_id === item.widget.id)}
-            dataVersion={dataVersion}
-            edit={() => startEdit(item.widget)}
-            remove={() => setRemovingWidget(item.widget)}
-            reset={() => setResettingWidget(item.widget)}
-            resize={(cols, rows) => void resizeWidget(item.widget, cols, rows)}
-            dragStart={() => setDraggedId(item.widget.id)}
-            drop={() => void dropWidget(item.widget.id)}
-            dropTarget={dragOverId === item.widget.id && draggedId !== item.widget.id}
-            dragEnter={() => {
-              if (draggedId) setDragOverId(item.widget.id);
-            }}
-            dragEnd={() => {
-              setDraggedId(null);
-              setDragOverId(null);
-            }}
-          />
-          ),
-        )}
-        {!widgets.length && (
-          <button className="empty-dashboard" onClick={() => setAdding(true)}>
-            +<strong>Monte a primeira visão da operação</strong>
-            <span>Escolha uma variável que já chegou pelo MQTT.</span>
-          </button>
-        )}
-      </section>
+        <section className="widget-grid">
+          {printList.map((item, position) =>
+            item.kind === 'head' ? (
+              <h2 className="print-tab-title" key={`t-${item.id}`}>
+                {item.name}
+              </h2>
+            ) : (
+              <Widget
+                key={item.widget.id}
+                widget={item.widget}
+                latest={item.widget.tag_id ? byTag.get(item.widget.tag_id) : undefined}
+                missing={Boolean(
+                  item.widget.tag_id && signals.data && !publishedTagIds.has(item.widget.tag_id),
+                )}
+                order={stackOrder.get(item.widget.id)}
+                enter={position}
+                history={history.data ?? []}
+                values={readings}
+                dashboardId={id}
+                counter={counters.data?.find((row) => row.widget_id === item.widget.id)}
+                dataVersion={dataVersion}
+                edit={() => startEdit(item.widget)}
+                remove={() => setRemovingWidget(item.widget)}
+                reset={() => setResettingWidget(item.widget)}
+                resize={(cols, rows) => void resizeWidget(item.widget, cols, rows)}
+                dragStart={() => setDraggedId(item.widget.id)}
+                drop={() => void dropWidget(item.widget.id)}
+                dropTarget={dragOverId === item.widget.id && draggedId !== item.widget.id}
+                dragEnter={() => {
+                  if (draggedId) setDragOverId(item.widget.id);
+                }}
+                dragEnd={() => {
+                  setDraggedId(null);
+                  setDragOverId(null);
+                }}
+              />
+            ),
+          )}
+          {!widgets.length && (
+            <button className="empty-dashboard" onClick={() => setAdding(true)}>
+              +<strong>Monte a primeira visão da operação</strong>
+              <span>Escolha uma variável que já chegou pelo MQTT.</span>
+            </button>
+          )}
+        </section>
       </div>
       <footer className="dashboard-footer">
         <span>EVERLENZ INDUSTRIAL INTELLIGENCE</span>
@@ -1808,21 +1851,29 @@ export function DashboardCanvas({ id }: { id: string }) {
                       ['shift_board', '◷', 'Quadro de produção'],
                       ['stops', '⏸', 'Paradas'],
                       ['wear', '◠', 'Desgaste da linha'],
+                      ...MORTAR_CARDS.map(([type, icon, label]) => [type, icon, label] as const),
                     ] as const
-                  ).map(([type, icon, label]) => (
-                    <button
-                      type="button"
-                      key={type}
-                      className={widgetType === type ? 'selected' : ''}
-                      onClick={() => setWidgetType(type)}
-                    >
-                      <span className="visualization-symbol">{icon}</span>
-                      <b>{label}</b>
-                      <span className="visualization-info" title={visualizationHelp[type]}>
-                        i
-                      </span>
-                    </button>
-                  ))}
+                  )
+                    // Each industry gets its own boards; the generic cards serve both.
+                    .filter(([type]) =>
+                      device.data?.site_segment === 'argamassa'
+                        ? !ceramicOnlyTypes.has(type)
+                        : !isMortarView(type),
+                    )
+                    .map(([type, icon, label]) => (
+                      <button
+                        type="button"
+                        key={type}
+                        className={widgetType === type ? 'selected' : ''}
+                        onClick={() => setWidgetType(type)}
+                      >
+                        <span className="visualization-symbol">{icon}</span>
+                        <b>{label}</b>
+                        <span className="visualization-info" title={visualizationHelp[type]}>
+                          i
+                        </span>
+                      </button>
+                    ))}
                 </div>
               </div>
               <label className="field">
@@ -1886,882 +1937,924 @@ export function DashboardCanvas({ id }: { id: string }) {
             </div>
             <div className="form-sections">
               <Section title="Identificação e tamanho" open>
-              <div className="form-grid">
-              <label className="field full-field">
-                Título
-                <input required value={title} onChange={(event) => setTitle(event.target.value)} />
-              </label>
-              {needsVariable({ widget_type: editingWidget.widget_type, config: { mainFormula } }) && (
-                <label className="field full-field">
-                  Variável
-                  <select value={signalId} onChange={(event) => setSignalId(event.target.value)}>
-                    <option value="">Sem variável vinculada</option>
-                    {(signals.data ?? []).map((signal) => (
-                      <option key={signal.id} value={signal.tag_id ?? signal.id}>
-                        {signal.key} · {signal.data_type}
-                        {signal.present ? '' : ' · não publicada'}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {/* Which tab shows it, for whoever would rather choose than drag. */}
-              {Boolean(tabs.length) && (
-                <label className="field full-field">
-                  Aba do painel
-                  <select
-                    value={editingWidget.tab_id ?? ''}
-                    onChange={(event) =>
-                      void moveWidgetToTab(editingWidget.id, event.target.value || null)
-                    }
-                  >
-                    {tabs.map((tab) => (
-                      <option key={tab.id} value={tab.id}>
-                        {tab.name}
-                      </option>
-                    ))}
-                    <option value="">Sem aba (aparece na primeira)</option>
-                  </select>
-                </label>
-              )}
-              <label className="field">
-                Largura
-                <select
-                  value={width}
-                  onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}
-                >
-                  <option value="small">Pequena</option>
-                  <option value="medium">Média</option>
-                  <option value="large">Grande</option>
-                  <option value="full">Linha inteira</option>
-                </select>
-              </label>
-              <label className="field">
-                Largura (colunas de 12)
-                <input
-                  type="number"
-                  min="2"
-                  max="12"
-                  value={colSpanInput}
-                  onChange={(event) =>
-                    setColSpanInput(Math.max(2, Math.min(12, Number(event.target.value) || 2)))
-                  }
-                />
-              </label>
-              <label className="field">
-                Altura (linhas)
-                <input
-                  type="number"
-                  min="2"
-                  max="20"
-                  value={rowSpanInput}
-                  onChange={(event) =>
-                    setRowSpanInput(Math.max(2, Math.min(20, Number(event.target.value) || 2)))
-                  }
-                />
-              </label>
-              </div>
+                <div className="form-grid">
+                  <label className="field full-field">
+                    Título
+                    <input
+                      required
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                    />
+                  </label>
+                  {needsVariable({
+                    widget_type: editingWidget.widget_type,
+                    config: { mainFormula },
+                  }) && (
+                    <label className="field full-field">
+                      Variável
+                      <select
+                        value={signalId}
+                        onChange={(event) => setSignalId(event.target.value)}
+                      >
+                        <option value="">Sem variável vinculada</option>
+                        {(signals.data ?? []).map((signal) => (
+                          <option key={signal.id} value={signal.tag_id ?? signal.id}>
+                            {signal.key} · {signal.data_type}
+                            {signal.present ? '' : ' · não publicada'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {/* Which tab shows it, for whoever would rather choose than drag. */}
+                  {Boolean(tabs.length) && (
+                    <label className="field full-field">
+                      Aba do painel
+                      <select
+                        value={editingWidget.tab_id ?? ''}
+                        onChange={(event) =>
+                          void moveWidgetToTab(editingWidget.id, event.target.value || null)
+                        }
+                      >
+                        {tabs.map((tab) => (
+                          <option key={tab.id} value={tab.id}>
+                            {tab.name}
+                          </option>
+                        ))}
+                        <option value="">Sem aba (aparece na primeira)</option>
+                      </select>
+                    </label>
+                  )}
+                  <label className="field">
+                    Largura
+                    <select
+                      value={width}
+                      onChange={(event) => setWidth(event.target.value as DashboardWidget['width'])}
+                    >
+                      <option value="small">Pequena</option>
+                      <option value="medium">Média</option>
+                      <option value="large">Grande</option>
+                      <option value="full">Linha inteira</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Largura (colunas de 12)
+                    <input
+                      type="number"
+                      min="2"
+                      max="12"
+                      value={colSpanInput}
+                      onChange={(event) =>
+                        setColSpanInput(Math.max(2, Math.min(12, Number(event.target.value) || 2)))
+                      }
+                    />
+                  </label>
+                  <label className="field">
+                    Altura (linhas)
+                    <input
+                      type="number"
+                      min="2"
+                      max="20"
+                      value={rowSpanInput}
+                      onChange={(event) =>
+                        setRowSpanInput(Math.max(2, Math.min(20, Number(event.target.value) || 2)))
+                      }
+                    />
+                  </label>
+                </div>
               </Section>
               <Section
                 title="Fórmulas"
                 note="contas suas sobre as variáveis"
                 open={Boolean(mainFormula.trim() || calculatedList.length)}
               >
-              <div className="form-grid">
-              {editingWidget.widget_type === 'value' &&
-                (usingFormula ? (
-                <div className="field full-field">
-                  <span className="field-label">
-                    Fórmula do valor
-                    <Hint
-                      align="left"
-                      text="Quando preenchida, o número do card é o resultado desta conta e o card não precisa de variável própria. Exemplo: painel.pecas / painel.horas_produzindo."
-                    />
-                  </span>
-                  <div className="formula-row formula-row-main">
-                    <FormulaInput
-                      value={mainFormula}
-                      options={variableOptions}
-                      placeholder="painel.pecas / painel.horas_produzindo"
-                      onChange={setMainFormula}
-                    />
-                    <input
-                      value={mainFormulaUnit}
-                      placeholder="Unidade"
-                      maxLength={12}
-                      onChange={(event) => setMainFormulaUnit(event.target.value)}
-                    />
-                  </div>
-                  {mainFormula.trim() &&
-                    (formulaError(mainFormula, knownVariables(readings)) ? (
-                      <small className="formula-error">
-                        {formulaError(mainFormula, knownVariables(readings))}
-                      </small>
-                    ) : (
-                      <small className="formula-preview">
-                        Agora daria{' '}
-                        <b>
-                          {evaluateFormula(mainFormula, readings) == null
-                            ? '—'
-                            : number(evaluateFormula(mainFormula, readings) ?? 0, decimals)}
-                        </b>{' '}
-                        {mainFormulaUnit}
-                      </small>
-                    ))}
-                  <button
-                    type="button"
-                    className="field-drop"
-                    onClick={() => {
-                      setUsingFormula(false);
-                      setMainFormula('');
-                      setMainFormulaUnit('');
-                    }}
-                  >
-                    Voltar a usar a variável
-                  </button>
-                </div>
-              ) : (
-                <div className="field full-field">
-                  <button
-                    type="button"
-                    className="field-offer"
-                    onClick={() => setUsingFormula(true)}
-                  >
-                    + Calcular o valor por uma fórmula
-                  </button>
-                  <small className="field-offer-note">
-                    No lugar de ler uma variável, o card mostra o resultado de uma conta sua.
-                  </small>
-                </div>
-              ))}
-              <div className="field full-field">
-                <span className="field-label">
-                  Informações calculadas
-                  <Hint
-                    align="left"
-                    text="Contas suas sobre as variáveis da IHM, mostradas abaixo do valor e no quadro de produção. Exemplo: PecasPorHora / 60 / (4 * 6) dá os cortes por minuto. Use + - * / ( ), números com vírgula e as funções min, max, round, abs, floor, ceil, com ; entre os argumentos."
-                  />
-                </span>
-                {calculatedList.map((field, index) => {
-                  const problem = field.formula.trim()
-                    ? formulaError(field.formula, knownVariables(readings))
-                    : null;
-                  const now = field.formula.trim()
-                    ? evaluateFormula(field.formula, readings)
-                    : null;
-                  const change = (patch: Partial<CalculatedSetting>) =>
-                    setCalculatedList((list) =>
-                      list.map((item, position) =>
-                        position === index ? { ...item, ...patch } : item,
-                      ),
-                    );
-                  const moveCalculated = (from: string, to: string) =>
-                    setCalculatedList((list) => {
-                      const source = list.findIndex((item) => item.id === from);
-                      const target = list.findIndex((item) => item.id === to);
-                      if (source < 0 || target < 0 || source === target) return list;
-                      const next = [...list];
-                      const [carried] = next.splice(source, 1);
-                      next.splice(target, 0, carried);
-                      return next;
-                    });
-                  return (
-                    <div
-                      className={`formula-item${draggingCalc === field.id ? ' dragging' : ''}${
-                        overCalc === field.id && draggingCalc && draggingCalc !== field.id
-                          ? ' drop-here'
-                          : ''
-                      }`}
-                      key={field.id}
-                      onDragOver={(event) => {
-                        if (!draggingCalc) return;
-                        event.preventDefault();
-                        setOverCalc(field.id);
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        if (draggingCalc) moveCalculated(draggingCalc, field.id);
-                        setDraggingCalc(null);
-                        setOverCalc(null);
-                      }}
-                    >
-                      <div className="formula-row">
-                        <span
-                          className="formula-grip"
-                          title="Arraste para mudar a ordem"
-                          aria-label="Arraste para mudar a ordem"
-                          draggable
-                          onDragStart={(event) => {
-                            event.dataTransfer.effectAllowed = 'move';
-                            setDraggingCalc(field.id);
+                <div className="form-grid">
+                  {editingWidget.widget_type === 'value' &&
+                    (usingFormula ? (
+                      <div className="field full-field">
+                        <span className="field-label">
+                          Fórmula do valor
+                          <Hint
+                            align="left"
+                            text="Quando preenchida, o número do card é o resultado desta conta e o card não precisa de variável própria. Exemplo: painel.pecas / painel.horas_produzindo."
+                          />
+                        </span>
+                        <div className="formula-row formula-row-main">
+                          <FormulaInput
+                            value={mainFormula}
+                            options={variableOptions}
+                            placeholder="painel.pecas / painel.horas_produzindo"
+                            onChange={setMainFormula}
+                          />
+                          <input
+                            value={mainFormulaUnit}
+                            placeholder="Unidade"
+                            maxLength={12}
+                            onChange={(event) => setMainFormulaUnit(event.target.value)}
+                          />
+                        </div>
+                        {mainFormula.trim() &&
+                          (formulaError(mainFormula, knownVariables(readings)) ? (
+                            <small className="formula-error">
+                              {formulaError(mainFormula, knownVariables(readings))}
+                            </small>
+                          ) : (
+                            <small className="formula-preview">
+                              Agora daria{' '}
+                              <b>
+                                {evaluateFormula(mainFormula, readings) == null
+                                  ? '—'
+                                  : number(evaluateFormula(mainFormula, readings) ?? 0, decimals)}
+                              </b>{' '}
+                              {mainFormulaUnit}
+                            </small>
+                          ))}
+                        <button
+                          type="button"
+                          className="field-drop"
+                          onClick={() => {
+                            setUsingFormula(false);
+                            setMainFormula('');
+                            setMainFormulaUnit('');
                           }}
-                          onDragEnd={() => {
+                        >
+                          Voltar a usar a variável
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="field full-field">
+                        <button
+                          type="button"
+                          className="field-offer"
+                          onClick={() => setUsingFormula(true)}
+                        >
+                          + Calcular o valor por uma fórmula
+                        </button>
+                        <small className="field-offer-note">
+                          No lugar de ler uma variável, o card mostra o resultado de uma conta sua.
+                        </small>
+                      </div>
+                    ))}
+                  <div className="field full-field">
+                    <span className="field-label">
+                      Informações calculadas
+                      <Hint
+                        align="left"
+                        text="Contas suas sobre as variáveis da IHM, mostradas abaixo do valor e no quadro de produção. Exemplo: PecasPorHora / 60 / (4 * 6) dá os cortes por minuto. Use + - * / ( ), números com vírgula e as funções min, max, round, abs, floor, ceil, com ; entre os argumentos."
+                      />
+                    </span>
+                    {calculatedList.map((field, index) => {
+                      const problem = field.formula.trim()
+                        ? formulaError(field.formula, knownVariables(readings))
+                        : null;
+                      const now = field.formula.trim()
+                        ? evaluateFormula(field.formula, readings)
+                        : null;
+                      const change = (patch: Partial<CalculatedSetting>) =>
+                        setCalculatedList((list) =>
+                          list.map((item, position) =>
+                            position === index ? { ...item, ...patch } : item,
+                          ),
+                        );
+                      const moveCalculated = (from: string, to: string) =>
+                        setCalculatedList((list) => {
+                          const source = list.findIndex((item) => item.id === from);
+                          const target = list.findIndex((item) => item.id === to);
+                          if (source < 0 || target < 0 || source === target) return list;
+                          const next = [...list];
+                          const [carried] = next.splice(source, 1);
+                          next.splice(target, 0, carried);
+                          return next;
+                        });
+                      return (
+                        <div
+                          className={`formula-item${draggingCalc === field.id ? ' dragging' : ''}${
+                            overCalc === field.id && draggingCalc && draggingCalc !== field.id
+                              ? ' drop-here'
+                              : ''
+                          }`}
+                          key={field.id}
+                          onDragOver={(event) => {
+                            if (!draggingCalc) return;
+                            event.preventDefault();
+                            setOverCalc(field.id);
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            if (draggingCalc) moveCalculated(draggingCalc, field.id);
                             setDraggingCalc(null);
                             setOverCalc(null);
                           }}
                         >
-                          ⠿
-                        </span>
-                        <input
-                          value={field.label}
-                          placeholder="Nome, ex.: Cortes por minuto"
-                          maxLength={40}
-                          onChange={(event) => change({ label: event.target.value })}
-                        />
-                        <FormulaInput
-                          value={field.formula}
-                          options={variableOptions}
-                          placeholder="painel.pecas / painel.horas_produzindo"
-                          onChange={(formula) => change({ formula })}
-                        />
-                        <input
-                          value={field.unit ?? ''}
-                          placeholder="Unidade"
-                          maxLength={12}
-                          onChange={(event) => change({ unit: event.target.value })}
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          max="6"
-                          title="Casas decimais do valor calculado"
-                          value={field.decimals ?? 1}
-                          onChange={(event) => change({ decimals: Number(event.target.value) })}
-                        />
-                        <button
-                          type="button"
-                          className="icon-button"
-                          title="Remover esta informação"
-                          aria-label="Remover esta informação"
-                          onClick={() =>
-                            setCalculatedList((list) =>
-                              list.filter((_, position) => position !== index),
-                            )
-                          }
-                        >
-                          ×
-                        </button>
-                      </div>
-                      {problem ? (
-                        <small className="formula-error">{problem}</small>
-                      ) : field.formula.trim() ? (
-                        <small className="formula-preview">
-                          Agora daria <b>{now == null ? '—' : number(now, field.decimals ?? 1)}</b>{' '}
-                          {field.unit}
-                        </small>
-                      ) : null}
+                          <div className="formula-row">
+                            <span
+                              className="formula-grip"
+                              title="Arraste para mudar a ordem"
+                              aria-label="Arraste para mudar a ordem"
+                              draggable
+                              onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed = 'move';
+                                setDraggingCalc(field.id);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingCalc(null);
+                                setOverCalc(null);
+                              }}
+                            >
+                              ⠿
+                            </span>
+                            <input
+                              value={field.label}
+                              placeholder="Nome, ex.: Cortes por minuto"
+                              maxLength={40}
+                              onChange={(event) => change({ label: event.target.value })}
+                            />
+                            <FormulaInput
+                              value={field.formula}
+                              options={variableOptions}
+                              placeholder="painel.pecas / painel.horas_produzindo"
+                              onChange={(formula) => change({ formula })}
+                            />
+                            <input
+                              value={field.unit ?? ''}
+                              placeholder="Unidade"
+                              maxLength={12}
+                              onChange={(event) => change({ unit: event.target.value })}
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="6"
+                              title="Casas decimais do valor calculado"
+                              value={field.decimals ?? 1}
+                              onChange={(event) => change({ decimals: Number(event.target.value) })}
+                            />
+                            <button
+                              type="button"
+                              className="icon-button"
+                              title="Remover esta informação"
+                              aria-label="Remover esta informação"
+                              onClick={() =>
+                                setCalculatedList((list) =>
+                                  list.filter((_, position) => position !== index),
+                                )
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                          {problem ? (
+                            <small className="formula-error">{problem}</small>
+                          ) : field.formula.trim() ? (
+                            <small className="formula-preview">
+                              Agora daria{' '}
+                              <b>{now == null ? '—' : number(now, field.decimals ?? 1)}</b>{' '}
+                              {field.unit}
+                            </small>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                    <div className="formula-add">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCalculatedList((list) => [
+                            ...list,
+                            {
+                              id: `calc-${Date.now()}-${list.length}`,
+                              label: '',
+                              formula: '',
+                              unit: '',
+                              decimals: 1,
+                            },
+                          ])
+                        }
+                      >
+                        + Adicionar informação calculada
+                      </button>
+                      <button type="button" onClick={() => setShowingVariables(true)}>
+                        Ver variáveis disponíveis
+                      </button>
+                      <small className="shifts-help">
+                        Digite o nome de uma variável e escolha na lista que aparece.
+                      </small>
                     </div>
-                  );
-                })}
-                <div className="formula-add">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCalculatedList((list) => [
-                        ...list,
-                        {
-                          id: `calc-${Date.now()}-${list.length}`,
-                          label: '',
-                          formula: '',
-                          unit: '',
-                          decimals: 1,
-                        },
-                      ])
-                    }
-                  >
-                    + Adicionar informação calculada
-                  </button>
-                  <button type="button" onClick={() => setShowingVariables(true)}>
-                    Ver variáveis disponíveis
-                  </button>
-                  <small className="shifts-help">
-                    Digite o nome de uma variável e escolha na lista que aparece.
-                  </small>
+                  </div>
                 </div>
-              </div>
-              </div>
               </Section>
               <Section
                 title="O número no card"
                 open
                 when={
                   editingWidget.widget_type === 'status' ||
-                  (editingWidget.widget_type === 'value' && editingWidget.data_type === 'boolean') ||
+                  (editingWidget.widget_type === 'value' &&
+                    editingWidget.data_type === 'boolean') ||
                   numericTypes.has(editingWidget.widget_type) ||
                   Boolean(editingWidget.tag_id && editingWidget.data_type === 'number')
                 }
               >
-              <div className="form-grid">
-              {(editingWidget.widget_type === 'status' ||
-                (editingWidget.widget_type === 'value' && editingWidget.data_type === 'boolean')) && (
-                <>
-                  <label className="field">
-                    <span className="field-label">
-                      Quando for verdadeiro
-                      <Hint text="A palavra escrita quando a variável está em 1. Em branco, fica o padrão." />
-                    </span>
-                    <input
-                      value={onLabel}
-                      maxLength={24}
-                      placeholder={editingWidget.widget_type === 'status' ? 'Em operação' : 'Ligado'}
-                      onChange={(event) => setOnLabel(event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">
-                      Quando for falso
-                      <Hint text="A palavra escrita quando a variável está em 0." />
-                    </span>
-                    <input
-                      value={offLabel}
-                      maxLength={24}
-                      placeholder={editingWidget.widget_type === 'status' ? 'Parada' : 'Desligado'}
-                      onChange={(event) => setOffLabel(event.target.value)}
-                    />
-                  </label>
-                </>
-              )}
-              {numericTypes.has(editingWidget.widget_type) &&
-                !quickTypes.has(editingWidget.widget_type) && (
-                <label className="field">
-                  <span className="field-label">
-                    Unidade
-                    <Hint text="Escrita ao lado do número deste card: t/h, paletes, %. Vale só aqui, e vence a unidade cadastrada na variável." />
-                  </span>
-                  <input
-                    value={unitLabel}
-                    maxLength={10}
-                    placeholder={editingWidget.unit || 'ex.: t/h'}
-                    onChange={(event) => setUnitLabel(event.target.value)}
-                  />
-                </label>
-              )}
-              {numericTypes.has(editingWidget.widget_type) && (
-                <label className="field">
-                  <span className="field-label">
-                    Casas decimais
-                    <Hint text="Só muda como o número aparece neste card: 73 ou 73,0." />
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="6"
-                    value={decimals}
-                    onChange={(event) => setDecimals(Number(event.target.value))}
-                  />
-                </label>
-              )}
-              {editingWidget.tag_id && editingWidget.data_type === 'number' && (
-              <>
-              <label className="field">
-                <span className="field-label">
-                  Vírgula na IHM
-                  <Hint text="Quanto vale o número que a IHM manda: com 0,0 o 139 vira 13,9. Vale para a variável em todos os cards, e as leituras já gravadas são ajustadas." />
-                </span>
-                <select
-                  value={commaPlaces}
-                  onChange={(event) => setCommaPlaces(Number(event.target.value))}
-                >
-                  {COMMA_OPTIONS.map((option, places) => (
-                    <option key={option} value={places}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {/* Its own row, right under the comma it qualifies: a label inside a label is not
-                  valid, and made the field beside it stretch to match. */}
-              <label className="comma-always">
-                <input
-                  type="checkbox"
-                  checked={commaAlways}
-                  disabled={commaPlaces === 0}
-                  onChange={(event) => setCommaAlways(event.target.checked)}
-                />
-                <span>
-                  Dividir mesmo quando o número já vem com vírgula
-                  <small>
-                    Marque quando a IHM manda algo como 23855,67 para dizer 23,855 — por exemplo
-                    um registrador em kg/h. Sem isto, um número com vírgula é tomado como já
-                    estando na unidade certa.
-                  </small>
-                </span>
-              </label>
-              </>
-              )}
-              </div>
-              </Section>
-              <Section
-                title="Aparência"
-                when={colouredTypes.has(editingWidget.widget_type) || editingWidget.widget_type === 'gauge'}
-              >
-              <div className="form-grid">
-              {colouredTypes.has(editingWidget.widget_type) && (
-              <label className="field">
-                Cor
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(event) => setColor(event.target.value)}
-                />
-              </label>
-              )}
-              {editingWidget.widget_type === 'gauge' && (
-                <>
-                  <label className="field">
-                    Mínimo
-                    <input
-                      type="number"
-                      value={minimum}
-                      onChange={(event) => setMinimum(Number(event.target.value))}
-                    />
-                  </label>
-                  <label className="field">
-                    Máximo
-                    <input
-                      type="number"
-                      value={maximum}
-                      onChange={(event) => setMaximum(Number(event.target.value))}
-                    />
-                  </label>
-                  <div className="field full-field">
-                    Posição do medidor
-                    <div className="gauge-style-picker">
-                      {(['top', 'bottom', 'left', 'right'] as const).map((style) => (
-                        <button
-                          type="button"
-                          key={style}
-                          className={gaugeStyle === style ? 'selected' : ''}
-                          onClick={() => setGaugeStyle(style)}
-                        >
-                          <span className={`mini-gauge mini-${style}`} />
-                          {
-                            {
-                              top: 'Superior',
-                              bottom: 'Inferior',
-                              left: 'Esquerda',
-                              right: 'Direita',
-                            }[style]
-                          }
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <label className="check-field full-field">
-                    <input
-                      type="checkbox"
-                      checked={gaugeNeedle}
-                      onChange={(event) => setGaugeNeedle(event.target.checked)}
-                    />
-                    Exibir ponteiro no medidor
-                  </label>
-                </>
-              )}
-              </div>
-              </Section>
-              <Section title="Análise de produção" when={analyticTypes.has(editingWidget.widget_type)}>
-              <div className="form-grid">
-              {analyticTypes.has(editingWidget.widget_type) && (
-                <>
-                  <label className="field">
-                    Tipo de medição
-                    <select
-                      value={productionMetricKind}
-                      onChange={(event) =>
-                        setProductionMetricKind(
-                          event.target.value as 'rate_average' | 'counter_delta' | 'board',
-                        )
-                      }
-                    >
-                      <option value="board">Quadro de produção (consolidado)</option>
-                      <option value="rate_average">Taxa instantânea da IHM (ex.: ton/h)</option>
-                      <option value="counter_delta">Contador acumulativo da IHM (ex.: paletes)</option>
-                    </select>
-                  </label>
-                  {productionMetricKind === 'board' && (
-                    <label className="field">
-                      <span className="field-label">
-                        Número do quadro
-                        <Hint text="O quadro conta o que a planta fez de verdade. Um contador que ninguém zerou, ou uma leitura que escorregou uma casa decimal por um instante, não entram nele." />
-                      </span>
-                      <select
-                        value={productionBoardMetric}
-                        onChange={(event) => setProductionBoardMetric(event.target.value)}
-                      >
-                        <option value="pallets">Paletes</option>
-                        <option value="milheiros">Milheiros</option>
-                        <option value="pieces">Peças</option>
-                        <option value="tons">Toneladas</option>
-                      </select>
-                    </label>
-                  )}
-                  {(editingWidget.widget_type === 'bar_vertical' ||
-                    editingWidget.widget_type === 'bar_horizontal') && (
-                    <label className="field">
-                      Uma barra por
-                      <select
-                        value={chartDimension}
-                        onChange={(event) =>
-                          setChartDimension(event.target.value as 'product' | 'day')
-                        }
-                      >
-                        <option value="product">Produto</option>
-                        <option value="day">Dia</option>
-                      </select>
-                    </label>
-                  )}
-                  {quickTypes.has(editingWidget.widget_type) && (
+                <div className="form-grid">
+                  {(editingWidget.widget_type === 'status' ||
+                    (editingWidget.widget_type === 'value' &&
+                      editingWidget.data_type === 'boolean')) && (
                     <>
                       <label className="field">
-                        Unidade exibida
+                        <span className="field-label">
+                          Quando for verdadeiro
+                          <Hint text="A palavra escrita quando a variável está em 1. Em branco, fica o padrão." />
+                        </span>
                         <input
-                          value={unitLabel}
-                          maxLength={10}
-                          placeholder={editingWidget.unit || 'uni'}
-                          onChange={(event) => setUnitLabel(event.target.value)}
+                          value={onLabel}
+                          maxLength={24}
+                          placeholder={
+                            editingWidget.widget_type === 'status' ? 'Em operação' : 'Ligado'
+                          }
+                          onChange={(event) => setOnLabel(event.target.value)}
                         />
                       </label>
                       <label className="field">
-                        Cores
-                        <select
-                          value={chartPalette}
-                          onChange={(event) =>
-                            setChartPalette(event.target.value as 'shades' | 'colorful')
+                        <span className="field-label">
+                          Quando for falso
+                          <Hint text="A palavra escrita quando a variável está em 0." />
+                        </span>
+                        <input
+                          value={offLabel}
+                          maxLength={24}
+                          placeholder={
+                            editingWidget.widget_type === 'status' ? 'Parada' : 'Desligado'
                           }
-                        >
-                          <option value="shades">Tons da cor do item</option>
-                          <option value="colorful">Colorido</option>
-                        </select>
+                          onChange={(event) => setOffLabel(event.target.value)}
+                        />
                       </label>
+                    </>
+                  )}
+                  {numericTypes.has(editingWidget.widget_type) &&
+                    !quickTypes.has(editingWidget.widget_type) && (
                       <label className="field">
-                        Mostrar
+                        <span className="field-label">
+                          Unidade
+                          <Hint text="Escrita ao lado do número deste card: t/h, paletes, %. Vale só aqui, e vence a unidade cadastrada na variável." />
+                        </span>
+                        <input
+                          value={unitLabel}
+                          maxLength={10}
+                          placeholder={editingWidget.unit || 'ex.: t/h'}
+                          onChange={(event) => setUnitLabel(event.target.value)}
+                        />
+                      </label>
+                    )}
+                  {numericTypes.has(editingWidget.widget_type) && (
+                    <label className="field">
+                      <span className="field-label">
+                        Casas decimais
+                        <Hint text="Só muda como o número aparece neste card: 73 ou 73,0." />
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="6"
+                        value={decimals}
+                        onChange={(event) => setDecimals(Number(event.target.value))}
+                      />
+                    </label>
+                  )}
+                  {editingWidget.tag_id && editingWidget.data_type === 'number' && (
+                    <>
+                      <label className="field">
+                        <span className="field-label">
+                          Vírgula na IHM
+                          <Hint text="Quanto vale o número que a IHM manda: com 0,0 o 139 vira 13,9. Vale para a variável em todos os cards, e as leituras já gravadas são ajustadas." />
+                        </span>
                         <select
-                          value={maxProducts}
-                          onChange={(event) => setMaxProducts(Number(event.target.value))}
+                          value={commaPlaces}
+                          onChange={(event) => setCommaPlaces(Number(event.target.value))}
                         >
-                          <option value={0}>Todos os produtos</option>
-                          {[3, 4, 5, 6, 8, 10].map((count) => (
-                            <option key={count} value={count}>
-                              {count} maiores + Outros
+                          {COMMA_OPTIONS.map((option, places) => (
+                            <option key={option} value={places}>
+                              {option}
                             </option>
                           ))}
                         </select>
                       </label>
-                      {editingBreakdown.length > 0 && (
-                        <div className="field full-field">
-                          Cor de cada produto
-                          <div className="product-color-list">
-                            {editingBreakdown.map((product, index) => (
-                              <label key={product.product_code} className="product-color-item">
-                                <input
-                                  type="color"
-                                  value={seriesColor(
-                                    { ...editingWidget.config, color, chartPalette, productColors },
-                                    index,
-                                    editingBreakdown.length,
-                                    product.product_code,
-                                  )}
-                                  onChange={(event) =>
-                                    setProductColors({
-                                      ...productColors,
-                                      [product.product_code]: event.target.value,
-                                    })
-                                  }
-                                />
-                                <span title={product.product_code}>{product.product_code}</span>
-                                {productColors[product.product_code] && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const next = { ...productColors };
-                                      delete next[product.product_code];
-                                      setProductColors(next);
-                                    }}
-                                  >
-                                    padrão
-                                  </button>
-                                )}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      {/* Its own row, right under the comma it qualifies: a label inside a label is not
+                  valid, and made the field beside it stretch to match. */}
+                      <label className="comma-always">
+                        <input
+                          type="checkbox"
+                          checked={commaAlways}
+                          disabled={commaPlaces === 0}
+                          onChange={(event) => setCommaAlways(event.target.checked)}
+                        />
+                        <span>
+                          Dividir mesmo quando o número já vem com vírgula
+                          <small>
+                            Marque quando a IHM manda algo como 23855,67 para dizer 23,855 — por
+                            exemplo um registrador em kg/h. Sem isto, um número com vírgula é tomado
+                            como já estando na unidade certa.
+                          </small>
+                        </span>
+                      </label>
                     </>
                   )}
-                  <label className="field">
-                    Período ao abrir o painel
-                    <select
-                      value={productionDefaultPeriod}
-                      onChange={(event) =>
-                        setProductionDefaultPeriod(event.target.value as ProductionPeriod)
-                      }
-                    >
-                      {periodOptions.map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    Variável de produto/receita
-                    <select
-                      value={productKey}
-                      onChange={(event) => setProductKey(event.target.value)}
-                    >
-                      <option value="">A IHM não envia (usar produto padrão)</option>
-                      {/* Only keys the HMI still publishes; the saved one stays visible, marked,
-                          so a stale choice is not silently dropped from the form. */}
-                      {signals.data
-                        ?.filter((signal) => signal.present || signal.key === productKey)
-                        .map((signal) => (
-                          <option value={signal.key} key={signal.id}>
-                            {signal.key}
-                            {signal.present ? '' : ' · não publicada'}
+                </div>
+              </Section>
+              <Section
+                title="Aparência"
+                when={
+                  colouredTypes.has(editingWidget.widget_type) ||
+                  editingWidget.widget_type === 'gauge'
+                }
+              >
+                <div className="form-grid">
+                  {colouredTypes.has(editingWidget.widget_type) && (
+                    <label className="field">
+                      Cor
+                      <input
+                        type="color"
+                        value={color}
+                        onChange={(event) => setColor(event.target.value)}
+                      />
+                    </label>
+                  )}
+                  {editingWidget.widget_type === 'gauge' && (
+                    <>
+                      <label className="field">
+                        Mínimo
+                        <input
+                          type="number"
+                          value={minimum}
+                          onChange={(event) => setMinimum(Number(event.target.value))}
+                        />
+                      </label>
+                      <label className="field">
+                        Máximo
+                        <input
+                          type="number"
+                          value={maximum}
+                          onChange={(event) => setMaximum(Number(event.target.value))}
+                        />
+                      </label>
+                      <div className="field full-field">
+                        Posição do medidor
+                        <div className="gauge-style-picker">
+                          {(['top', 'bottom', 'left', 'right'] as const).map((style) => (
+                            <button
+                              type="button"
+                              key={style}
+                              className={gaugeStyle === style ? 'selected' : ''}
+                              onClick={() => setGaugeStyle(style)}
+                            >
+                              <span className={`mini-gauge mini-${style}`} />
+                              {
+                                {
+                                  top: 'Superior',
+                                  bottom: 'Inferior',
+                                  left: 'Esquerda',
+                                  right: 'Direita',
+                                }[style]
+                              }
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <label className="check-field full-field">
+                        <input
+                          type="checkbox"
+                          checked={gaugeNeedle}
+                          onChange={(event) => setGaugeNeedle(event.target.checked)}
+                        />
+                        Exibir ponteiro no medidor
+                      </label>
+                    </>
+                  )}
+                </div>
+              </Section>
+              <Section
+                title="Análise de produção"
+                when={analyticTypes.has(editingWidget.widget_type)}
+              >
+                <div className="form-grid">
+                  {analyticTypes.has(editingWidget.widget_type) && (
+                    <>
+                      <label className="field">
+                        Tipo de medição
+                        <select
+                          value={productionMetricKind}
+                          onChange={(event) =>
+                            setProductionMetricKind(
+                              event.target.value as 'rate_average' | 'counter_delta' | 'board',
+                            )
+                          }
+                        >
+                          <option value="board">Quadro de produção (consolidado)</option>
+                          <option value="rate_average">Taxa instantânea da IHM (ex.: ton/h)</option>
+                          <option value="counter_delta">
+                            Contador acumulativo da IHM (ex.: paletes)
                           </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    Produto padrão
-                    <input
-                      required
-                      maxLength={120}
-                      value={fallbackProductCode}
-                      onChange={(event) => setFallbackProductCode(event.target.value)}
-                      placeholder="Ex.: BLOCO GERAL"
-                    />
-                  </label>
-                  <small className="full-field alarm-range-help">
-                    Quando a variável de receita vier no payload, ela identifica cada incremento.
-                    Quando não vier, a plataforma usa o produto padrão. Sem configuração, registra
-                    como ITEM GERAL.
-                  </small>
-                  <label className="field">
-                    Desconsiderar valores abaixo de
-                    <input
-                      type="number"
-                      step="any"
-                      value={productionMinimumValue}
-                      onChange={(event) => setProductionMinimumValue(Number(event.target.value))}
-                    />
-                  </label>
-                  <small className="full-field alarm-range-help">
-                    A média operacional ignora períodos parados abaixo desse valor. Mínimo, pico e
-                    quantidade de amostras usam o mesmo filtro.
-                  </small>
-                </>
-              )}
-              </div>
+                        </select>
+                      </label>
+                      {productionMetricKind === 'board' && (
+                        <label className="field">
+                          <span className="field-label">
+                            Número do quadro
+                            <Hint text="O quadro conta o que a planta fez de verdade. Um contador que ninguém zerou, ou uma leitura que escorregou uma casa decimal por um instante, não entram nele." />
+                          </span>
+                          <select
+                            value={productionBoardMetric}
+                            onChange={(event) => setProductionBoardMetric(event.target.value)}
+                          >
+                            <option value="pallets">Paletes</option>
+                            <option value="milheiros">Milheiros</option>
+                            <option value="pieces">Peças</option>
+                            <option value="tons">Toneladas</option>
+                          </select>
+                        </label>
+                      )}
+                      {(editingWidget.widget_type === 'bar_vertical' ||
+                        editingWidget.widget_type === 'bar_horizontal') && (
+                        <label className="field">
+                          Uma barra por
+                          <select
+                            value={chartDimension}
+                            onChange={(event) =>
+                              setChartDimension(event.target.value as 'product' | 'day')
+                            }
+                          >
+                            <option value="product">Produto</option>
+                            <option value="day">Dia</option>
+                          </select>
+                        </label>
+                      )}
+                      {quickTypes.has(editingWidget.widget_type) && (
+                        <>
+                          <label className="field">
+                            Unidade exibida
+                            <input
+                              value={unitLabel}
+                              maxLength={10}
+                              placeholder={editingWidget.unit || 'uni'}
+                              onChange={(event) => setUnitLabel(event.target.value)}
+                            />
+                          </label>
+                          <label className="field">
+                            Cores
+                            <select
+                              value={chartPalette}
+                              onChange={(event) =>
+                                setChartPalette(event.target.value as 'shades' | 'colorful')
+                              }
+                            >
+                              <option value="shades">Tons da cor do item</option>
+                              <option value="colorful">Colorido</option>
+                            </select>
+                          </label>
+                          <label className="field">
+                            Mostrar
+                            <select
+                              value={maxProducts}
+                              onChange={(event) => setMaxProducts(Number(event.target.value))}
+                            >
+                              <option value={0}>Todos os produtos</option>
+                              {[3, 4, 5, 6, 8, 10].map((count) => (
+                                <option key={count} value={count}>
+                                  {count} maiores + Outros
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {editingBreakdown.length > 0 && (
+                            <div className="field full-field">
+                              Cor de cada produto
+                              <div className="product-color-list">
+                                {editingBreakdown.map((product, index) => (
+                                  <label key={product.product_code} className="product-color-item">
+                                    <input
+                                      type="color"
+                                      value={seriesColor(
+                                        {
+                                          ...editingWidget.config,
+                                          color,
+                                          chartPalette,
+                                          productColors,
+                                        },
+                                        index,
+                                        editingBreakdown.length,
+                                        product.product_code,
+                                      )}
+                                      onChange={(event) =>
+                                        setProductColors({
+                                          ...productColors,
+                                          [product.product_code]: event.target.value,
+                                        })
+                                      }
+                                    />
+                                    <span title={product.product_code}>{product.product_code}</span>
+                                    {productColors[product.product_code] && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const next = { ...productColors };
+                                          delete next[product.product_code];
+                                          setProductColors(next);
+                                        }}
+                                      >
+                                        padrão
+                                      </button>
+                                    )}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <label className="field">
+                        Período ao abrir o painel
+                        <select
+                          value={productionDefaultPeriod}
+                          onChange={(event) =>
+                            setProductionDefaultPeriod(event.target.value as ProductionPeriod)
+                          }
+                        >
+                          {periodOptions.map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        Variável de produto/receita
+                        <select
+                          value={productKey}
+                          onChange={(event) => setProductKey(event.target.value)}
+                        >
+                          <option value="">A IHM não envia (usar produto padrão)</option>
+                          {/* Only keys the HMI still publishes; the saved one stays visible, marked,
+                          so a stale choice is not silently dropped from the form. */}
+                          {signals.data
+                            ?.filter((signal) => signal.present || signal.key === productKey)
+                            .map((signal) => (
+                              <option value={signal.key} key={signal.id}>
+                                {signal.key}
+                                {signal.present ? '' : ' · não publicada'}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        Produto padrão
+                        <input
+                          required
+                          maxLength={120}
+                          value={fallbackProductCode}
+                          onChange={(event) => setFallbackProductCode(event.target.value)}
+                          placeholder="Ex.: BLOCO GERAL"
+                        />
+                      </label>
+                      <small className="full-field alarm-range-help">
+                        Quando a variável de receita vier no payload, ela identifica cada
+                        incremento. Quando não vier, a plataforma usa o produto padrão. Sem
+                        configuração, registra como ITEM GERAL.
+                      </small>
+                      <label className="field">
+                        Desconsiderar valores abaixo de
+                        <input
+                          type="number"
+                          step="any"
+                          value={productionMinimumValue}
+                          onChange={(event) =>
+                            setProductionMinimumValue(Number(event.target.value))
+                          }
+                        />
+                      </label>
+                      <small className="full-field alarm-range-help">
+                        A média operacional ignora períodos parados abaixo desse valor. Mínimo, pico
+                        e quantidade de amostras usam o mesmo filtro.
+                      </small>
+                    </>
+                  )}
+                </div>
               </Section>
               <Section
                 title="Contador acumulativo"
                 open={counterMode}
                 when={editingWidget.widget_type === 'value' && editingWidget.data_type === 'number'}
               >
-              <div className="form-grid">
-              {editingWidget.widget_type === 'value' && editingWidget.data_type === 'number' && (
-                <>
-                  <label className="check-field full-field">
-                    <input
-                      type="checkbox"
-                      checked={counterMode}
-                      onChange={(event) => setCounterMode(event.target.checked)}
-                    />
-                    Tratar esta variável como contador acumulativo
-                  </label>
-                  {counterMode && (
-                    <label className="field full-field">
-                      Variável de reset no CLP (opcional)
-                      <input
-                        value={resetVariable}
-                        placeholder="Ex.: ResetPaletes"
-                        maxLength={64}
-                        onChange={(event) => setResetVariable(event.target.value)}
-                      />
-                    </label>
-                  )}
-                  <small className="full-field alarm-range-help">
-                    Sem variável, o botão “Zerar contador” zera apenas a contagem do painel e mantém
-                    o CLP intacto. Com a variável, o botão envia o comando à IHM para zerar também a
-                    contagem no CLP.
-                  </small>
-                </>
-              )}
-              </div>
-              </Section>
-              <Section title="Parâmetros de produção" open when={editingWidget.widget_type === 'shift_board'}>
-              <div className="form-grid">
-              {editingWidget.widget_type === 'shift_board' && (
-                <div className="notice full-field">
-                  <b>Parâmetros de produção</b>
-                  O quadro usa o contador de peças ou paletes, a variável de automático, a meta e
-                  os tempos de ociosa e encerramento do equipamento. Os mesmos parâmetros valem
-                  para o histórico de produção.
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setProductionConfigFor({
-                          deviceId: editingWidget.device_id,
-                          name: editingWidget.title,
-                        })
-                      }
-                    >
-                      Configurar parâmetros de produção
-                    </button>
-                  </div>
+                <div className="form-grid">
+                  {editingWidget.widget_type === 'value' &&
+                    editingWidget.data_type === 'number' && (
+                      <>
+                        <label className="check-field full-field">
+                          <input
+                            type="checkbox"
+                            checked={counterMode}
+                            onChange={(event) => setCounterMode(event.target.checked)}
+                          />
+                          Tratar esta variável como contador acumulativo
+                        </label>
+                        {counterMode && (
+                          <label className="field full-field">
+                            Variável de reset no CLP (opcional)
+                            <input
+                              value={resetVariable}
+                              placeholder="Ex.: ResetPaletes"
+                              maxLength={64}
+                              onChange={(event) => setResetVariable(event.target.value)}
+                            />
+                          </label>
+                        )}
+                        <small className="full-field alarm-range-help">
+                          Sem variável, o botão “Zerar contador” zera apenas a contagem do painel e
+                          mantém o CLP intacto. Com a variável, o botão envia o comando à IHM para
+                          zerar também a contagem no CLP.
+                        </small>
+                      </>
+                    )}
                 </div>
-              )}
-              </div>
+              </Section>
+              <Section
+                title="Parâmetros de produção"
+                open
+                when={editingWidget.widget_type === 'shift_board'}
+              >
+                <div className="form-grid">
+                  {editingWidget.widget_type === 'shift_board' && (
+                    <div className="notice full-field">
+                      <b>Parâmetros de produção</b>O quadro usa o contador de peças ou paletes, a
+                      variável de automático, a meta e os tempos de ociosa e encerramento do
+                      equipamento. Os mesmos parâmetros valem para o histórico de produção.
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProductionConfigFor({
+                              deviceId: editingWidget.device_id,
+                              name: editingWidget.title,
+                            })
+                          }
+                        >
+                          Configurar parâmetros de produção
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </Section>
               <Section
                 title="Alarme por limite"
                 open={alarmEnabled}
-                when={!quickTypes.has(editingWidget.widget_type) && editingWidget.widget_type !== 'shift_board'}
+                when={
+                  !quickTypes.has(editingWidget.widget_type) &&
+                  editingWidget.widget_type !== 'shift_board'
+                }
               >
-              <div className="form-grid">
-              {!quickTypes.has(editingWidget.widget_type) &&
-                editingWidget.widget_type !== 'shift_board' && (
-                <label className="check-field full-field">
-                  <input
-                    type="checkbox"
-                    checked={alarmEnabled}
-                    onChange={(event) => setAlarmEnabled(event.target.checked)}
-                  />
-                  Ativar alarme visual por limite
-                </label>
-              )}
-              {alarmEnabled && (
-                <div className="full-field alarm-ranges-editor">
-                  <div className="alarm-ranges-title">
-                    <div>
-                      <strong>Faixas de operação</strong>
-                      <small>
-                        Em uma sobreposição, a faixa com maior prioridade define a cor e o alerta.
-                      </small>
+                <div className="form-grid">
+                  {!quickTypes.has(editingWidget.widget_type) &&
+                    editingWidget.widget_type !== 'shift_board' && (
+                      <label className="check-field full-field">
+                        <input
+                          type="checkbox"
+                          checked={alarmEnabled}
+                          onChange={(event) => setAlarmEnabled(event.target.checked)}
+                        />
+                        Ativar alarme visual por limite
+                      </label>
+                    )}
+                  {alarmEnabled && (
+                    <div className="full-field alarm-ranges-editor">
+                      <div className="alarm-ranges-title">
+                        <div>
+                          <strong>Faixas de operação</strong>
+                          <small>
+                            Em uma sobreposição, a faixa com maior prioridade define a cor e o
+                            alerta.
+                          </small>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAlarmRanges((current) => [
+                              ...current,
+                              {
+                                id: crypto.randomUUID(),
+                                label: `Faixa ${current.length + 1}`,
+                                start: minimum,
+                                end: maximum,
+                                color: '#12b8a6',
+                                priority: current.length,
+                              },
+                            ])
+                          }
+                        >
+                          + Adicionar faixa
+                        </button>
+                      </div>
+                      {alarmRanges.map((range) => (
+                        <div className="alarm-range-row" key={range.id}>
+                          <label>
+                            Nome
+                            <input
+                              value={range.label}
+                              onChange={(event) =>
+                                setAlarmRanges((current) =>
+                                  current.map((item) =>
+                                    item.id === range.id
+                                      ? { ...item, label: event.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Início
+                            <input
+                              type="number"
+                              step="any"
+                              value={range.start}
+                              onChange={(event) =>
+                                setAlarmRanges((current) =>
+                                  current.map((item) =>
+                                    item.id === range.id
+                                      ? { ...item, start: Number(event.target.value) }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Final
+                            <input
+                              type="number"
+                              step="any"
+                              value={range.end}
+                              onChange={(event) =>
+                                setAlarmRanges((current) =>
+                                  current.map((item) =>
+                                    item.id === range.id
+                                      ? { ...item, end: Number(event.target.value) }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Cor
+                            <input
+                              type="color"
+                              value={range.color}
+                              onChange={(event) =>
+                                setAlarmRanges((current) =>
+                                  current.map((item) =>
+                                    item.id === range.id
+                                      ? { ...item, color: event.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Prioridade
+                            <input
+                              type="number"
+                              min="0"
+                              value={range.priority}
+                              onChange={(event) =>
+                                setAlarmRanges((current) =>
+                                  current.map((item) =>
+                                    item.id === range.id
+                                      ? { ...item, priority: Number(event.target.value) }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="alarm-range-remove"
+                            aria-label={`Remover ${range.label}`}
+                            onClick={() =>
+                              setAlarmRanges((current) =>
+                                current.filter((item) => item.id !== range.id),
+                              )
+                            }
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {!alarmRanges.length && (
+                        <small>Adicione ao menos uma faixa de operação.</small>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAlarmRanges((current) => [
-                          ...current,
-                          {
-                            id: crypto.randomUUID(),
-                            label: `Faixa ${current.length + 1}`,
-                            start: minimum,
-                            end: maximum,
-                            color: '#12b8a6',
-                            priority: current.length,
-                          },
-                        ])
-                      }
-                    >
-                      + Adicionar faixa
-                    </button>
-                  </div>
-                  {alarmRanges.map((range) => (
-                    <div className="alarm-range-row" key={range.id}>
-                      <label>
-                        Nome
-                        <input
-                          value={range.label}
-                          onChange={(event) =>
-                            setAlarmRanges((current) =>
-                              current.map((item) =>
-                                item.id === range.id
-                                  ? { ...item, label: event.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Início
-                        <input
-                          type="number"
-                          step="any"
-                          value={range.start}
-                          onChange={(event) =>
-                            setAlarmRanges((current) =>
-                              current.map((item) =>
-                                item.id === range.id
-                                  ? { ...item, start: Number(event.target.value) }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Final
-                        <input
-                          type="number"
-                          step="any"
-                          value={range.end}
-                          onChange={(event) =>
-                            setAlarmRanges((current) =>
-                              current.map((item) =>
-                                item.id === range.id
-                                  ? { ...item, end: Number(event.target.value) }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Cor
-                        <input
-                          type="color"
-                          value={range.color}
-                          onChange={(event) =>
-                            setAlarmRanges((current) =>
-                              current.map((item) =>
-                                item.id === range.id
-                                  ? { ...item, color: event.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        Prioridade
-                        <input
-                          type="number"
-                          min="0"
-                          value={range.priority}
-                          onChange={(event) =>
-                            setAlarmRanges((current) =>
-                              current.map((item) =>
-                                item.id === range.id
-                                  ? { ...item, priority: Number(event.target.value) }
-                                  : item,
-                              ),
-                            )
-                          }
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="alarm-range-remove"
-                        aria-label={`Remover ${range.label}`}
-                        onClick={() =>
-                          setAlarmRanges((current) =>
-                            current.filter((item) => item.id !== range.id),
-                          )
-                        }
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  {!alarmRanges.length && <small>Adicione ao menos uma faixa de operação.</small>}
+                  )}
                 </div>
-              )}
-              </div>
               </Section>
             </div>
             {error && <div className="form-error">{error}</div>}

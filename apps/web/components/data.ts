@@ -18,6 +18,8 @@ export interface Device {
   provisioning_status?: string;
   site_name?: string;
   site_reference?: string;
+  /** The industry of the client (migration 037): decides which cards the panel offers. */
+  site_segment?: 'ceramica' | 'argamassa';
   address?: string | null;
   city?: string | null;
   state?: string | null;
@@ -99,7 +101,11 @@ export interface DashboardWidget {
     | 'bar_horizontal'
     | 'shift_board'
     | 'stops'
-    | 'wear';
+    | 'wear'
+    | 'bagging'
+    | 'mortar_output'
+    | 'mortar_materials'
+    | 'mortar_yield';
   title: string;
   position: number;
   /** Which tab of the panel shows it; null means it has none and rides on the first. */

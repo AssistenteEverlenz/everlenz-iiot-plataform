@@ -258,3 +258,5 @@ export function convertTag(value: unknown, tag: TagConfig): number | boolean | s
 export * from './shifts.js';
 // Production accounting step, live in the ingestor and replayed by the API.
 export * from './production-attribution.js';
+// Mortar plants: bagging spouts and mixing batches (migration 037).
+export * from './mortar-attribution.js';

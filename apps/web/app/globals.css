@@ -10146,3 +10146,290 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
     animation: none;
   }
 }
+
+/* Mortar boards (migration 037): they reuse the stops board's tiles, titles and bars, and add
+   the spouts, the product table and the yield comparison. */
+.mortar-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.mortar-actions button,
+.mortar-warning button,
+.mortar-add {
+  padding: 5px 11px;
+  border: 1px solid #cbdadd;
+  border-radius: 8px;
+  background: #fff;
+  color: #24505a;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mortar-actions button:hover,
+.mortar-warning button:hover,
+.mortar-add:hover {
+  border-color: #0b2028;
+}
+.mortar-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #f4d9a6;
+  border-radius: 10px;
+  background: #fff8ec;
+  color: #7a5414;
+  font-size: 12px;
+}
+.mortar-spouts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.mortar-spout {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
+  background: #fff;
+  animation: figure-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.mortar-spout:nth-child(2) {
+  animation-delay: 60ms;
+}
+.mortar-spout:nth-child(n + 3) {
+  animation-delay: 120ms;
+}
+.mortar-spout header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.mortar-spout header > i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.mortar-spout header b {
+  color: #12303a;
+  font-size: 14px;
+}
+.mortar-spout header em {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+}
+.mortar-spout header em u {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.mortar-spout-recipe {
+  overflow: hidden;
+  color: #24505a;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mortar-spout-recipe span {
+  color: #8a9ca2;
+  font-weight: 400;
+}
+.mortar-spout-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.mortar-spout-figures b {
+  display: block;
+  color: #12303a;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-spout-figures small {
+  color: #7b9097;
+  font-size: 10px;
+}
+.mortar-bars .stops-day {
+  min-width: 34px;
+}
+.mortar-bars .stops-day b {
+  font-size: 10px;
+}
+.mortar-stack {
+  width: 22px;
+  height: 80px;
+}
+.mortar-stack > span {
+  display: flex;
+  flex-direction: column-reverse;
+  width: 100%;
+  min-height: 2px;
+  overflow: hidden;
+  border-radius: 5px;
+  transform-origin: center bottom;
+  animation: grow-up 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.stops-day-bar.mortar-stack i {
+  min-height: 0;
+  border-radius: 0;
+  animation: none;
+}
+.mortar-products tbody tr {
+  cursor: pointer;
+}
+.mortar-products td small {
+  display: block;
+  color: #8a9ca2;
+  font-size: 10px;
+}
+.mortar-unlinked td {
+  color: #9a6a12;
+}
+.mortar-detail td {
+  background: #f6fafa;
+  font-size: 11px;
+}
+.mortar-detail span {
+  display: inline-block;
+  margin: 2px 14px 2px 0;
+}
+.mortar-share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+.mortar-share i {
+  height: 8px;
+  border-radius: 4px;
+  background: #12b8a6;
+  transform-origin: left center;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.mortar-share span {
+  color: #5d747b;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-yield {
+  display: grid;
+  gap: 10px;
+}
+.mortar-yield > div {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.mortar-yield span {
+  color: #5d747b;
+  font-size: 12px;
+}
+.mortar-yield i {
+  height: 18px;
+  border-radius: 6px;
+  transform-origin: left center;
+  animation: grow-right 0.62s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.mortar-yield b {
+  color: #12303a;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-modal {
+  display: grid;
+  gap: 12px;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.mortar-form-row,
+.mortar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mortar-form-row input,
+.mortar-row input,
+.mortar-row select {
+  flex: 1;
+  min-width: 0;
+}
+.mortar-config {
+  display: grid;
+  gap: 12px;
+}
+.mortar-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #e6eef0;
+}
+.mortar-switch small {
+  color: #7b9097;
+}
+.mortar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+.mortar-grid > label,
+.mortar-spout-form label {
+  display: grid;
+  gap: 4px;
+  color: #5d747b;
+  font-size: 12px;
+}
+.mortar-sub,
+.mortar-row,
+.mortar-spout-form,
+.mortar-add {
+  grid-column: 1 / -1;
+}
+.mortar-sub {
+  color: #24505a;
+  font-size: 12px;
+  font-weight: 600;
+}
+.mortar-add {
+  justify-self: start;
+}
+.mortar-spout-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #dce6e8;
+  border-radius: 10px;
+}
+.mortar-spout-form legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  color: #12303a;
+  font-weight: 700;
+}
+.mortar-spout-form legend input {
+  width: 90px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mortar-spout,
+  .mortar-stack > span,
+  .mortar-share i,
+  .mortar-yield i {
+    animation: none;
+  }
+}
