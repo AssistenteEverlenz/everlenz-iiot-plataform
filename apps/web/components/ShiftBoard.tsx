@@ -16,6 +16,7 @@ import { usePoll } from './data';
 import { DayCalendar, dayLabel } from './DayCalendar';
 import { ModalPortal } from './ModalPortal';
 import { TargetModal } from './TargetModal';
+import { UtilizationModal, utilizationCaption, type UtilizationBasis } from './UtilizationModal';
 import {
   ShiftDetailModal,
   type CalculatedSetting,
@@ -66,6 +67,8 @@ export interface BoardData {
     elapsedProductive: number;
   };
   utilization: number | null;
+  /** What the utilization is divided by: idle alone, or idle and manual stops (038). */
+  utilizationBasis?: UtilizationBasis;
   target: {
     value: number;
     /** 'hmi': read from the HMI variable; 'fixed': the configured value. */
@@ -862,16 +865,38 @@ const medianLabel = (against: Comparison) =>
  * a compared day gets one of its own: without it the day's curve sat beside a gauge and the
  * compared curve ran the full width, so the same minute fell on two different x positions.
  */
-function Availability({ board, label }: { board: BoardData; label?: string }) {
+function Availability({
+  board,
+  label,
+  onEdit,
+}: {
+  board: BoardData;
+  label?: string;
+  /** Opens the choice of formula; absent on history and compared days. */
+  onEdit?: () => void;
+}) {
   const elapsed = board.time.elapsedProductive ?? 0;
   return (
     <div className="shift-availability">
       <div className="shift-section-title">
-        Aproveitamento da máquina
-        {label && <small> · {label}</small>}
+        <span>
+          Aproveitamento da máquina
+          {label && <small> · {label}</small>}
+        </span>
+        {onEdit && (
+          <button
+            type="button"
+            className="kpi-edit"
+            title="Escolher como o aproveitamento é calculado"
+            aria-label="Escolher como o aproveitamento é calculado"
+            onClick={onEdit}
+          >
+            ✎
+          </button>
+        )}
       </div>
       <Gauge value={board.utilization} />
-      <small className="shift-gauge-caption">produzindo ÷ (produzindo + ociosa)</small>
+      <small className="shift-gauge-caption">{utilizationCaption(board.utilizationBasis)}</small>
       <ul className="shift-states">
         {(
           ['waiting', 'producing', 'idle', 'manual', 'offline', 'closing', 'pause'] as const
@@ -970,6 +995,7 @@ export function ShiftBoardView({
   historical?: boolean;
 }) {
   const [editingTarget, setEditingTarget] = useState(false);
+  const [editingUtilization, setEditingUtilization] = useState(false);
   // Each number of the board opens what is behind it: the shift hour by hour, pallet by pallet.
   const [detail, setDetail] = useState<DetailFocus | null>(null);
   const opens = (focus: DetailFocus) =>
@@ -1297,7 +1323,10 @@ export function ShiftBoardView({
                 />
               </div>
             </div>
-            <Availability board={board} />
+            <Availability
+              board={board}
+              onEdit={historical ? undefined : () => setEditingUtilization(true)}
+            />
           </div>
 
           <div className="shift-timeline" aria-label="Linha do tempo">
@@ -1346,6 +1375,18 @@ export function ShiftBoardView({
             focus={detail}
             calculated={calculatedSettings}
             onClose={() => setDetail(null)}
+          />
+        </ModalPortal>
+      )}
+      {editingUtilization && (
+        <ModalPortal>
+          <UtilizationModal
+            deviceId={deviceId}
+            basis={board?.utilizationBasis ?? 'idle'}
+            onClose={(saved) => {
+              setEditingUtilization(false);
+              if (saved) onChanged?.();
+            }}
           />
         </ModalPortal>
       )}

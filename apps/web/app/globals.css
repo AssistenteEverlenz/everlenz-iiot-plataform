@@ -5752,7 +5752,8 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   align-items: center;
   justify-content: space-between;
 }
-.shift-kpi .kpi-edit {
+.shift-kpi .kpi-edit,
+.shift-availability .kpi-edit {
   padding: 0 4px;
   border: 0;
   background: transparent;
@@ -5761,7 +5762,8 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   line-height: 1;
   cursor: pointer;
 }
-.shift-kpi .kpi-edit:hover {
+.shift-kpi .kpi-edit:hover,
+.shift-availability .kpi-edit:hover {
   color: #0b2028;
 }
 @container (min-width: 900px) {
@@ -8827,7 +8829,8 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 @media (max-width: 700px) {
   /* The pencil that edits the target: a 34px target a finger can hit, same drawing. */
-  .shift-kpi .kpi-edit {
+  .shift-kpi .kpi-edit,
+.shift-availability .kpi-edit {
     width: 34px;
     height: 34px;
     margin: -6px -6px -6px 0;

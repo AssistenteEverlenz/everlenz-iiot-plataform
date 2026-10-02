@@ -1644,12 +1644,14 @@
     background: #0b2028;
     color: #fff;
   }
-  :root[data-theme='dark'] .shift-kpi .kpi-edit {
+  :root[data-theme='dark'] .shift-kpi .kpi-edit,
+  :root[data-theme='dark'] .shift-availability .kpi-edit {
     border: 0;
     background: transparent;
     color: #8d9ea3;
   }
-  :root[data-theme='dark'] .shift-kpi .kpi-edit:hover {
+  :root[data-theme='dark'] .shift-kpi .kpi-edit:hover,
+  :root[data-theme='dark'] .shift-availability .kpi-edit:hover {
     color: #e0e6e8;
   }
   :root[data-theme='dark'] .goal-calendar.large .goal-day {
@@ -3073,5 +3075,186 @@
   }
   :root[data-theme='dark'] .shift-gauge-against {
     color: #839ba3;
+  }
+  :root[data-theme='dark'] .mortar-actions button,
+  :root[data-theme='dark'] .mortar-warning button,
+  :root[data-theme='dark'] .mortar-add {
+    border: 1px solid #2c3f45;
+    background: #12191c;
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .mortar-actions button:hover,
+  :root[data-theme='dark'] .mortar-warning button:hover,
+  :root[data-theme='dark'] .mortar-add:hover {
+    border-color: #0b2028;
+  }
+  :root[data-theme='dark'] .mortar-warning {
+    border: 1px solid #564526;
+    background: #2e220f;
+    color: #e1be84;
+  }
+  :root[data-theme='dark'] .mortar-spout {
+    border: 1px solid #243338;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .mortar-spout header b {
+    color: #d5dee0;
+  }
+  :root[data-theme='dark'] .mortar-spout-recipe {
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .mortar-spout-recipe span {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mortar-spout-figures b {
+    color: #d5dee0;
+  }
+  :root[data-theme='dark'] .mortar-spout-figures small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-products td small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mortar-unlinked td {
+    color: #e6c27f;
+  }
+  :root[data-theme='dark'] .mortar-detail td {
+    background: #162023;
+  }
+  :root[data-theme='dark'] .mortar-share i {
+    background: #12b8a6;
+  }
+  :root[data-theme='dark'] .mortar-share span {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .mortar-yield span {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .mortar-yield b {
+    color: #d5dee0;
+  }
+  :root[data-theme='dark'] .mortar-switch {
+    border-top: 1px solid #1e2b2f;
+  }
+  :root[data-theme='dark'] .mortar-switch small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-grid > label,
+  :root[data-theme='dark'] .mortar-spout-form label {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .mortar-sub {
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .mortar-spout-form {
+    border: 1px solid #243338;
+  }
+  :root[data-theme='dark'] .mortar-spout-form legend {
+    color: #d5dee0;
+  }
+  :root[data-theme='dark'] .mortar-figure {
+    border: 1px solid #243338;
+    background: #12191c;
+    color: inherit;
+  }
+  :root[data-theme='dark'] button.mortar-figure:hover {
+    border-color: #12b8a6;
+    box-shadow: 0 6px 18px #0b20281a;
+  }
+  :root[data-theme='dark'] .mortar-figure > span {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .mortar-figure > b {
+    color: #dae1e3;
+  }
+  :root[data-theme='dark'] .mortar-figure > b small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-figure > em {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-figure > u {
+    color: #b3c3c7;
+  }
+  :root[data-theme='dark'] button.mortar-figure:hover > u {
+    color: #7de8dc;
+  }
+  :root[data-theme='dark'] button.mortar-spout {
+    color: inherit;
+  }
+  :root[data-theme='dark'] button.mortar-spout:hover {
+    border-color: #12b8a6;
+    box-shadow: 0 6px 18px #0b20281a;
+  }
+  :root[data-theme='dark'] .mortar-spout-products .caption {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-spout-products .none {
+    color: #9fb2b7;
+  }
+  :root[data-theme='dark'] .mortar-spout-products .chips span {
+    background: #1c2626;
+    color: #97c4ce;
+  }
+  :root[data-theme='dark'] .mortar-spout-figures span {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-spout-figures b small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-more {
+    color: #7ee7db;
+  }
+  :root[data-theme='dark'] .mortar-split-bar {
+    background: #1a2529;
+  }
+  :root[data-theme='dark'] .mortar-split-legend {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .mortar-split-legend b {
+    color: #d5dee0;
+  }
+  :root[data-theme='dark'] .mortar-split-legend small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mortar-split-empty {
+    color: #9fb2b7;
+  }
+  :root[data-theme='dark'] .mortar-strip-marks {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mortar-explain {
+    border-left: 3px solid #12b8a6;
+    background: #172124;
+    color: #b2c1c6;
+  }
+  :root[data-theme='dark'] .mortar-table tbody tr:hover td {
+    background: #151e21;
+  }
+  :root[data-theme='dark'] .muted {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mortar-donut-center b {
+    color: #dae1e3;
+  }
+  :root[data-theme='dark'] .mortar-donut-center span {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-donut-legend button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+  }
+  :root[data-theme='dark'] .mortar-donut-legend button:hover {
+    background: #172124;
+  }
+  :root[data-theme='dark'] .mortar-donut-legend small {
+    color: #84979e;
+  }
+  :root[data-theme='dark'] .mortar-composition span {
+    color: #fff;
+  }
+  :root[data-theme='dark'] .mortar-recipe-bar {
+    background: #1a2529;
   }
 }

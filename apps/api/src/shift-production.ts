@@ -51,6 +51,35 @@ interface ProductionConfig {
   target_tag_id: string | null;
 }
 
+/**
+ * What the machine's utilization is divided by (migration 038): idle time alone, or idle and
+ * manual stops together for a machine without automation. Production applies migrations by
+ * hand, so a missing column reads as the default instead of failing the board.
+ */
+type UtilizationBasis = 'idle' | 'stopped';
+
+async function utilizationBases(db: Database, tenantId: string, deviceIds: string[]) {
+  const bases = new Map<string, UtilizationBasis>();
+  if (!deviceIds.length) return bases;
+  try {
+    const result = await db.query<{ device_id: string; utilization_basis: string | null }>(
+      `SELECT device_id,utilization_basis FROM production_settings
+       WHERE tenant_id=$1 AND device_id=ANY($2::uuid[])`,
+      [tenantId, deviceIds],
+    );
+    for (const row of result.rows)
+      if (row.utilization_basis === 'stopped') bases.set(row.device_id, 'stopped');
+  } catch {
+    // Column not there yet: every machine keeps the default.
+  }
+  return bases;
+}
+
+function utilizationOf(basis: UtilizationBasis, producing: number, idle: number, manual: number) {
+  const total = producing + idle + (basis === 'stopped' ? manual : 0);
+  return total > 0 ? producing / total : null;
+}
+
 /** Final minutes of a shift in which a stop that lasts to the end counts as "Encerrado". */
 function closingSecondsOf(config: { closing_minutes: number | null }) {
   return (config.closing_minutes ?? 30) * 60;
@@ -505,6 +534,8 @@ async function buildBoard(
   const pauseWorked = Math.max(0, pauseSeconds - summary.producingInPause);
   const metric: Metric = config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets');
   const perShift = await targetFor(db, tenantId, deviceId, config, until);
+  const utilizationBasis =
+    (await utilizationBases(db, tenantId, [deviceId])).get(deviceId) ?? 'idle';
   const targetValue = perShift ? perShift.value * Math.max(occurrences.length, 0) : null;
 
   // Cumulative curve by bucket end: planned (target spread over productive time), actual and,
@@ -664,10 +695,8 @@ async function buildBoard(
       pause: pauseWorked,
       elapsedProductive: summary.elapsedProductive,
     },
-    utilization:
-      summary.producing + summary.idle > 0
-        ? summary.producing / (summary.producing + summary.idle)
-        : null,
+    utilization: utilizationOf(utilizationBasis, summary.producing, summary.idle, summary.manual),
+    utilizationBasis,
     target: targetValue
       ? {
           value: targetValue,
@@ -1271,6 +1300,7 @@ async function panelBoard(db: Database, tenantId: string, deviceId: string, now:
     totals: board.totals,
     time: board.time,
     utilization: board.utilization,
+    utilizationBasis: board.utilizationBasis,
     pacePerHour: board.pacePerHour,
     target: board.target
       ? { value: board.target.value, actual: board.target.actual, projected: board.target.projected }
@@ -1806,6 +1836,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
        ORDER BY s.name,d.name`,
       [current.tenantId, deviceIds, from, new Date(from.getTime() + DAY_MS)],
     );
+    const bases = await utilizationBases(
+      db,
+      current.tenantId,
+      result.rows.map((row) => row.device_id),
+    );
     const shiftRows = await db.query<{
       id: string;
       site_id: string;
@@ -1916,7 +1951,12 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         target: row.target_value == null ? null : Number(row.target_value) * today.length,
         projection: actual + (pacePerHour / 3600) * remaining,
         pacePerHour,
-        utilization: elapsed > 0 ? Number(row.producing) / elapsed : null,
+        utilization: utilizationOf(
+          bases.get(row.device_id) ?? 'idle',
+          Number(row.producing),
+          Number(row.idle),
+          Number(row.manual),
+        ),
         readings: row.readings ?? {},
         texts: row.texts ?? {},
         board: boards[rowIndex],
@@ -2206,6 +2246,34 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     // The whole stored history is recounted with the new configuration, in the background.
     scheduleProductionRebuild(db, current.tenantId, id, req.log);
     return loadConfig(db, current.tenantId, id);
+  });
+
+  // How "Aproveitamento da máquina" is counted, edited from the board's own card.
+  app.patch('/api/devices/:id/production-utilization', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const body = z.object({ basis: z.enum(['idle', 'stopped']) }).parse(req.body);
+    const current = access.principal(req);
+    const updated = await db.transaction(async (sql) => {
+      const result = await sql.query(
+        `UPDATE production_settings SET utilization_basis=$3,updated_at=now()
+         WHERE tenant_id=$1 AND device_id=$2`,
+        [current.tenantId, id, body.basis],
+      );
+      if (!result.rowCount) return false;
+      await recordAudit(sql, req, current, {
+        action: 'device.production_utilization.update',
+        targetType: 'device',
+        targetId: id,
+        summary: body,
+      });
+      return true;
+    });
+    if (!updated)
+      return reply
+        .code(400)
+        .send({ error: 'Configure primeiro o contador de produção do equipamento.' });
+    return { basis: body.basis };
   });
 
   // The target alone, edited from the production board's "Meta" card: a fixed value or an HMI
