@@ -16,7 +16,7 @@ import { usePoll } from './data';
 import { DayCalendar, dayLabel } from './DayCalendar';
 import { ModalPortal } from './ModalPortal';
 import { TargetModal } from './TargetModal';
-import { UtilizationModal, utilizationCaption, type UtilizationBasis } from './UtilizationModal';
+import { UtilizationModal, utilizationCaption, type UtilizationFormula } from './UtilizationModal';
 import {
   ShiftDetailModal,
   type CalculatedSetting,
@@ -67,8 +67,8 @@ export interface BoardData {
     elapsedProductive: number;
   };
   utilization: number | null;
-  /** What the utilization is divided by: idle alone, or idle and manual stops (038). */
-  utilizationBasis?: UtilizationBasis;
+  /** The plant's own utilization formula; null is producing ÷ (producing + idle). */
+  utilizationFormula?: UtilizationFormula | null;
   target: {
     value: number;
     /** 'hmi': read from the HMI variable; 'fixed': the configured value. */
@@ -896,7 +896,7 @@ function Availability({
         )}
       </div>
       <Gauge value={board.utilization} />
-      <small className="shift-gauge-caption">{utilizationCaption(board.utilizationBasis)}</small>
+      <small className="shift-gauge-caption">{utilizationCaption(board.utilizationFormula)}</small>
       <ul className="shift-states">
         {(
           ['waiting', 'producing', 'idle', 'manual', 'offline', 'closing', 'pause'] as const
@@ -1382,7 +1382,8 @@ export function ShiftBoardView({
         <ModalPortal>
           <UtilizationModal
             deviceId={deviceId}
-            basis={board?.utilizationBasis ?? 'idle'}
+            formula={board?.utilizationFormula ?? null}
+            time={board?.time ?? {}}
             onClose={(saved) => {
               setEditingUtilization(false);
               if (saved) onChanged?.();

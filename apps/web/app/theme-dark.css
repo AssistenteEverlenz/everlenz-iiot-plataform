@@ -3280,4 +3280,40 @@
   :root[data-theme='dark'] .mortar-add:hover {
     border-color: var(--brand-accent, #12b8a6);
   }
+  :root[data-theme='dark'] .mortar-color {
+    border: 1px solid #2c3f45;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .utilization-option {
+    border: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .utilization-option:hover,
+  :root[data-theme='dark'] .utilization-option.active {
+    border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .utilization-option small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .utilization-builder fieldset {
+    border: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .utilization-builder legend {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .utilization-chip {
+    border: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .utilization-chip:has(input:checked) {
+    border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .utilization-preview {
+    border-left: 3px solid var(--brand-accent, #12b8a6);
+    background: #162023;
+  }
+  :root[data-theme='dark'] .utilization-preview span {
+    color: #bbc8cd;
+  }
+  :root[data-theme='dark'] .utilization-preview small {
+    color: #798e95;
+  }
 }

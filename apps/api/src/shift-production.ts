@@ -52,32 +52,63 @@ interface ProductionConfig {
 }
 
 /**
- * What the machine's utilization is divided by (migration 038): idle time alone, or idle and
- * manual stops together for a machine without automation. Production applies migrations by
- * hand, so a missing column reads as the default instead of failing the board.
+ * How the machine's utilization is counted, per equipment: the default producing ÷ (producing +
+ * idle), or a formula the plant writes by choosing which state times go above and below the line
+ * (migration 039). Migration 038's 'stopped' is the custom producing ÷ (producing + idle +
+ * manual). Production applies migrations by hand, so a missing column reads as the default.
  */
-type UtilizationBasis = 'idle' | 'stopped';
+const utilizationStates = ['producing', 'idle', 'manual', 'offline'] as const;
+type UtilizationState = (typeof utilizationStates)[number];
+interface UtilizationFormula {
+  numerator: UtilizationState[];
+  denominator: UtilizationState[];
+}
+const utilizationFormulaSchema = z.object({
+  numerator: z.array(z.enum(utilizationStates)).min(1).max(4),
+  denominator: z.array(z.enum(utilizationStates)).min(1).max(4),
+});
 
-async function utilizationBases(db: Database, tenantId: string, deviceIds: string[]) {
-  const bases = new Map<string, UtilizationBasis>();
-  if (!deviceIds.length) return bases;
+async function utilizationFormulas(db: Database, tenantId: string, deviceIds: string[]) {
+  const formulas = new Map<string, UtilizationFormula>();
+  if (!deviceIds.length) return formulas;
+  const read = async (column: string) =>
+    (
+      await db.query<{ device_id: string; basis: string | null; formula: unknown }>(
+        `SELECT device_id,utilization_basis basis,${column} formula FROM production_settings
+         WHERE tenant_id=$1 AND device_id=ANY($2::uuid[])`,
+        [tenantId, deviceIds],
+      )
+    ).rows;
+  let rows: Awaited<ReturnType<typeof read>> = [];
   try {
-    const result = await db.query<{ device_id: string; utilization_basis: string | null }>(
-      `SELECT device_id,utilization_basis FROM production_settings
-       WHERE tenant_id=$1 AND device_id=ANY($2::uuid[])`,
-      [tenantId, deviceIds],
-    );
-    for (const row of result.rows)
-      if (row.utilization_basis === 'stopped') bases.set(row.device_id, 'stopped');
+    rows = await read('utilization_formula');
   } catch {
-    // Column not there yet: every machine keeps the default.
+    try {
+      rows = await read('NULL::jsonb');
+    } catch {
+      // Neither column there yet: every machine keeps the default.
+    }
   }
-  return bases;
+  for (const row of rows) {
+    const parsed = utilizationFormulaSchema.safeParse(row.formula);
+    if (parsed.success) formulas.set(row.device_id, parsed.data);
+    else if (row.basis === 'stopped')
+      formulas.set(row.device_id, {
+        numerator: ['producing'],
+        denominator: ['producing', 'idle', 'manual'],
+      });
+  }
+  return formulas;
 }
 
-function utilizationOf(basis: UtilizationBasis, producing: number, idle: number, manual: number) {
-  const total = producing + idle + (basis === 'stopped' ? manual : 0);
-  return total > 0 ? producing / total : null;
+function utilizationOf(
+  formula: UtilizationFormula | undefined,
+  time: Record<UtilizationState, number>,
+) {
+  const sum = (states: UtilizationState[]) =>
+    [...new Set(states)].reduce((total, state) => total + (time[state] ?? 0), 0);
+  const below = sum(formula?.denominator ?? ['producing', 'idle']);
+  return below > 0 ? sum(formula?.numerator ?? ['producing']) / below : null;
 }
 
 /** Final minutes of a shift in which a stop that lasts to the end counts as "Encerrado". */
@@ -534,8 +565,8 @@ async function buildBoard(
   const pauseWorked = Math.max(0, pauseSeconds - summary.producingInPause);
   const metric: Metric = config.target_metric ?? (config.blocks_tag_id ? 'milheiros' : 'pallets');
   const perShift = await targetFor(db, tenantId, deviceId, config, until);
-  const utilizationBasis =
-    (await utilizationBases(db, tenantId, [deviceId])).get(deviceId) ?? 'idle';
+  const utilizationFormula =
+    (await utilizationFormulas(db, tenantId, [deviceId])).get(deviceId) ?? null;
   const targetValue = perShift ? perShift.value * Math.max(occurrences.length, 0) : null;
 
   // Cumulative curve by bucket end: planned (target spread over productive time), actual and,
@@ -695,8 +726,8 @@ async function buildBoard(
       pause: pauseWorked,
       elapsedProductive: summary.elapsedProductive,
     },
-    utilization: utilizationOf(utilizationBasis, summary.producing, summary.idle, summary.manual),
-    utilizationBasis,
+    utilization: utilizationOf(utilizationFormula ?? undefined, summary),
+    utilizationFormula,
     target: targetValue
       ? {
           value: targetValue,
@@ -1300,7 +1331,7 @@ async function panelBoard(db: Database, tenantId: string, deviceId: string, now:
     totals: board.totals,
     time: board.time,
     utilization: board.utilization,
-    utilizationBasis: board.utilizationBasis,
+    utilizationFormula: board.utilizationFormula,
     pacePerHour: board.pacePerHour,
     target: board.target
       ? { value: board.target.value, actual: board.target.actual, projected: board.target.projected }
@@ -1836,7 +1867,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
        ORDER BY s.name,d.name`,
       [current.tenantId, deviceIds, from, new Date(from.getTime() + DAY_MS)],
     );
-    const bases = await utilizationBases(
+    const formulas = await utilizationFormulas(
       db,
       current.tenantId,
       result.rows.map((row) => row.device_id),
@@ -1951,12 +1982,13 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         target: row.target_value == null ? null : Number(row.target_value) * today.length,
         projection: actual + (pacePerHour / 3600) * remaining,
         pacePerHour,
-        utilization: utilizationOf(
-          bases.get(row.device_id) ?? 'idle',
-          Number(row.producing),
-          Number(row.idle),
-          Number(row.manual),
-        ),
+        // The day's list carries no offline time: a formula that uses it reads it as zero here.
+        utilization: utilizationOf(formulas.get(row.device_id), {
+          producing: Number(row.producing),
+          idle: Number(row.idle),
+          manual: Number(row.manual),
+          offline: 0,
+        }),
         readings: row.readings ?? {},
         texts: row.texts ?? {},
         board: boards[rowIndex],
@@ -2252,13 +2284,14 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
   app.patch('/api/devices/:id/production-utilization', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
-    const body = z.object({ basis: z.enum(['idle', 'stopped']) }).parse(req.body);
+    const body = z.object({ formula: utilizationFormulaSchema.nullable() }).parse(req.body);
     const current = access.principal(req);
     const updated = await db.transaction(async (sql) => {
       const result = await sql.query(
-        `UPDATE production_settings SET utilization_basis=$3,updated_at=now()
+        `UPDATE production_settings SET utilization_formula=$3::jsonb,utilization_basis=NULL,
+           updated_at=now()
          WHERE tenant_id=$1 AND device_id=$2`,
-        [current.tenantId, id, body.basis],
+        [current.tenantId, id, body.formula ? JSON.stringify(body.formula) : null],
       );
       if (!result.rowCount) return false;
       await recordAudit(sql, req, current, {
@@ -2273,7 +2306,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       return reply
         .code(400)
         .send({ error: 'Configure primeiro o contador de produção do equipamento.' });
-    return { basis: body.basis };
+    return { formula: body.formula };
   });
 
   // The target alone, edited from the production board's "Meta" card: a fixed value or an HMI

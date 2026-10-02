@@ -10922,3 +10922,61 @@ button.mortar-figure:hover > u {
 .mortar-row select {
   flex: 1;
 }
+
+/* Choosing how the machine's utilization is counted: the default or the plant's own formula. */
+.utilization-modal { width: min(620px, 100%); }
+.utilization-options { display: grid; gap: 8px; margin-top: 18px; }
+.utilization-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid #e3ebed;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.utilization-option:hover,
+.utilization-option.active { border-color: var(--brand-accent, #12b8a6); }
+.utilization-option input { margin: 3px 0 0; accent-color: var(--brand-accent, #12b8a6); }
+.utilization-option span { display: grid; gap: 3px; }
+.utilization-option b { font-size: 13px; font-weight: 600; }
+.utilization-option small { color: #71868d; font-size: 12px; }
+.utilization-builder { display: grid; gap: 10px; margin-top: 12px; }
+.utilization-builder fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #e3ebed;
+  border-radius: 10px;
+}
+.utilization-builder legend { padding: 0 4px; color: #71868d; font-size: 11px; }
+.utilization-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid #e3ebed;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.utilization-chip:has(input:checked) { border-color: var(--brand-accent, #12b8a6); }
+.utilization-chip input { margin: 0; accent-color: var(--brand-accent, #12b8a6); }
+.utilization-preview {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin: 14px 0 12px;
+  padding: 10px 13px;
+  border-left: 3px solid var(--brand-accent, #12b8a6);
+  background: #f6f9f9;
+  border-radius: 0 8px 8px 0;
+}
+.utilization-preview span { font-size: 12px; color: #324d57; }
+.utilization-preview b { grid-row: span 2; font-size: 22px; font-weight: 550; }
+.utilization-preview small { color: #8a9ca2; font-size: 11px; }
