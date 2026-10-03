@@ -11461,3 +11461,150 @@ button.mortar-spout:hover .mortar-spout-open {
 .mortar-tiles .shift-kpi b small {
   display: inline;
 }
+
+/* Where one block of a board ends and the next begins: a hairline, no words needed. */
+.mortar-divider {
+  height: 0;
+  border-top: 1px solid #e6eef0;
+}
+.mortar-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding-top: 12px;
+  border-top: 1px solid #e6eef0;
+}
+.mortar-section-head strong {
+  color: #20353d;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mortar-section-head small {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+
+/* The period block hovers like every figure: the outline, in the page colour. */
+.mortar-hero {
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.mortar-hero:hover {
+  border-top-color: var(--brand-accent, #12b8a6);
+  border-right-color: var(--brand-accent, #12b8a6);
+  border-bottom-color: var(--brand-accent, #12b8a6);
+  transform: translateY(-1px);
+}
+.mortar-hero.none:hover,
+.mortar-hero:not(.good):not(.warn):not(.bad):hover {
+  border-left-color: var(--brand-accent, #12b8a6);
+}
+.mortar-hero-top.clickable,
+.mortar-hero.clickable {
+  cursor: pointer;
+}
+.mortar-mix-summary .mortar-composition {
+  height: 18px;
+  border-radius: 6px;
+}
+.mortar-tiles .shift-kpi > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.mortar-mix-summary .mortar-tiles {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* A spout, top-down in three weights. */
+.mortar-spout {
+  gap: 10px;
+}
+.mortar-spout-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mortar-spout-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+.mortar-spout-hero b {
+  color: #0b2028;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.mortar-spout-hero small {
+  color: #71868d;
+  font-size: 12px;
+}
+.mortar-spout-hero em {
+  margin-left: 6px;
+  color: #5d747b;
+  font-size: 13px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-spout-eff {
+  display: grid;
+  justify-items: end;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 9%, #fff);
+}
+.mortar-spout-eff b {
+  color: #0f2a33;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.mortar-spout-eff span {
+  color: #5d747b;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mortar-spout-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid #eef3f4;
+  border-bottom: 1px solid #eef3f4;
+}
+.mortar-spout-stats span {
+  display: block;
+  color: #8a9ca2;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mortar-spout-stats b {
+  color: #20353d;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-spout-stats b small {
+  display: inline;
+  color: #8a9ca2;
+  font-size: 11px;
+  font-weight: 500;
+}
+.mortar-spout .mortar-spout-products {
+  display: block;
+  overflow: hidden;
+  color: #8a9ca2;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

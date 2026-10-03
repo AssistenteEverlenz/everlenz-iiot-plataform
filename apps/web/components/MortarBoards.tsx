@@ -259,7 +259,7 @@ export function Bagging({
   const spoutCards = (
     <>
       <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
-      <div className="shift-section-title">Bicos · clique num bico para ver o turno dele</div>
+      <div className="mortar-divider" role="separator" />
       <div className="mortar-spouts">
         {spouts.map((spout, index) => (
           <SpoutCard
@@ -342,6 +342,10 @@ export function Bagging({
   );
 }
 
+/**
+ * One spout, read top-down in three weights: the bags it made and its efficiency large, the
+ * three figures that explain them small and aligned, and what it filled in light text last.
+ */
 function SpoutCard({
   spout,
   color,
@@ -355,8 +359,13 @@ function SpoutCard({
 }) {
   const state = STATES[spout.state];
   const names = spout.products.filter((item) => item.bags > 0);
+  const enabled = spout.runningS + spout.idleS;
+  const efficiency =
+    spout.performance != null && enabled > 0
+      ? (spout.runningS / enabled) * spout.performance
+      : null;
   return (
-    <button type="button" className="mortar-spout" onClick={onOpen}>
+    <button type="button" className="mortar-spout" onClick={onOpen} title="Ver o turno deste bico">
       <header>
         <i style={{ background: color }} />
         <b>Bico {spout.name}</b>
@@ -370,31 +379,20 @@ function SpoutCard({
           ›
         </span>
       </header>
-      <div className="mortar-spout-products">
-        {names.length === 0 ? (
-          <span className="none">Nada ensacado no período</span>
-        ) : (
-          <>
-            <span className="chips">
-              {names.slice(0, 3).map((item) => (
-                <span key={item.recipe} title={item.recipe}>
-                  {item.product ?? item.recipe}
-                </span>
-              ))}
-              {names.length > 3 && <span>+{names.length - 3}</span>}
-            </span>
-          </>
+      <div className="mortar-spout-main">
+        <div className="mortar-spout-hero">
+          <b>{integer(spout.bags)}</b>
+          <small>sacos</small>
+          <em>{tons(spout.kg)} t</em>
+        </div>
+        {efficiency != null && (
+          <div className="mortar-spout-eff" title="Disponível × desempenho">
+            <b>{percent(efficiency, 0)}</b>
+            <span>eficiência</span>
+          </div>
         )}
       </div>
-      <div className="mortar-spout-figures">
-        <div>
-          <span>Sacos</span>
-          <b>{integer(spout.bags)}</b>
-        </div>
-        <div>
-          <span>Toneladas</span>
-          <b>{tons(spout.kg)}</b>
-        </div>
+      <div className="mortar-spout-stats">
         <div>
           <span>Ritmo</span>
           <b>
@@ -406,20 +404,20 @@ function SpoutCard({
           <span>Por saco</span>
           <b>{perBag(spout.secondsPerBag)}</b>
         </div>
+        <div title={spout.stops ? `Maior parada: ${duration(spout.longestStop)}` : undefined}>
+          <span>Paradas</span>
+          <b>
+            {integer(spout.stops)}
+            {spout.stops > 0 && <small> · {duration(spout.stopSeconds)}</small>}
+          </b>
+        </div>
       </div>
       <TimeSplit running={spout.runningS} idle={spout.idleS} off={spout.offS} compact />
-      <span className="mortar-spout-stops">
-        {spout.stops
-          ? `${spout.stops} ${spout.stops === 1 ? 'parada' : 'paradas'} · ${duration(spout.stopSeconds)} parado · maior ${duration(spout.longestStop)}`
-          : 'Nenhuma parada no período'}
-        {spout.performance != null && spout.runningS + spout.idleS > 0 && (
-          <b>
-            {' '}
-            · eficiência{' '}
-            {percent((spout.runningS / (spout.runningS + spout.idleS)) * spout.performance, 0)}
-          </b>
-        )}
-      </span>
+      <div className="mortar-spout-products">
+        {names.length === 0
+          ? 'Nada ensacado no período'
+          : names.map((item) => item.product ?? item.recipe).join(' · ')}
+      </div>
     </button>
   );
 }
@@ -1288,91 +1286,115 @@ export function Materials({ data, deviceId }: { data: Summary; deviceId: string 
     mix.scaleKg != null && mix.scaleTheoreticalKg ? mix.scaleKg / mix.scaleTheoreticalKg - 1 : null;
   return (
     <>
-      <div className="mortar-figures">
-        <Figure
-          label="Bateladas"
-          value={integer(mix.batches)}
-          hint={
-            mix.cycleMinutes != null
-              ? `uma a cada ${mix.cycleMinutes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} min`
-              : mix.lastBatchAt
-                ? `última às ${clock(mix.lastBatchAt)}`
-                : 'nenhuma no período'
-          }
-          onOpen={() => setOpen({ kind: 'batches' })}
-        />
-        <Figure
-          label="Misturado"
-          value={tons(mix.kg)}
-          unit="t"
-          hint={mix.batches ? `${kilos(mix.kg / mix.batches)} por batelada` : 'pela receita'}
-          onOpen={() => setOpen({ kind: 'batches' })}
-        />
-        {mix.materials.map((item) => (
-          <Figure
-            key={item.label}
-            label={item.label}
-            value={tons(item.kg)}
-            unit="t"
-            accent={colorOf(item.label)}
-            hint={
-              bagged > 0
-                ? `${integer((item.kg / bagged) * 1000)} kg por t ensacada`
-                : `${percent(mix.kg ? item.kg / mix.kg : null)} da mistura`
-            }
-            onOpen={() => setOpen({ kind: 'material', label: item.label })}
-          />
-        ))}
-        {mix.cost && (
-          <Figure
-            label="Custo da mistura"
-            value={money(mix.cost.perTon)}
-            unit="/t"
-            hint={`${money(mix.cost.total)} no período · ${money(mix.cost.perBatch)} por batelada`}
-            onOpen={() => setOpen({ kind: 'batches' })}
-          />
-        )}
+      {/* The period in one block, like the bagging board: what was mixed, in how many batches
+          and how fast, with what it was made of; beside it, one figure per material. */}
+      <div className="mortar-summary mortar-mix-summary">
+        <div
+          className="mortar-hero clickable"
+          role="button"
+          tabIndex={0}
+          onClick={() => setOpen({ kind: 'batches' })}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') setOpen({ kind: 'batches' });
+          }}
+          title="Ver as bateladas e as receitas"
+        >
+          <div className="mortar-hero-top">
+            <span>Misturado</span>
+            <b>
+              {tons(mix.kg)} <small>t</small>
+            </b>
+            <em>
+              {integer(mix.batches)} bateladas
+              {mix.cycleMinutes != null &&
+                ` · uma a cada ${mix.cycleMinutes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} min`}
+              {mix.batches > 0 && ` · ${kilos(mix.kg / mix.batches)} por batelada`}
+            </em>
+          </div>
+          {mix.kg > 0 && (
+            <>
+              <div className="mortar-composition">
+                {mix.materials.map((item) => (
+                  <i
+                    key={item.label}
+                    style={{
+                      width: `${(item.kg / mix.kg) * 100}%`,
+                      background: colorOf(item.label),
+                    }}
+                  >
+                    {item.kg / mix.kg > 0.08 && <span>{percent(item.kg / mix.kg, 0)}</span>}
+                  </i>
+                ))}
+              </div>
+              <div className="mortar-hero-facts">
+                {mix.materials.map((item) => (
+                  <span key={item.label}>
+                    <i className="mortar-swatch" style={{ background: colorOf(item.label) }} />
+                    {item.label} <b>{percent(item.kg / mix.kg)}</b>
+                  </span>
+                ))}
+                {scaleGap != null && (
+                  <em className={`mortar-verdict ${Math.abs(scaleGap) <= 0.01 ? 'good' : 'warn'}`}>
+                    Balança {scaleGap >= 0 ? '+' : ''}
+                    {percent(scaleGap)} da receita
+                  </em>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="mortar-tiles">
+          {mix.materials.map((item) => (
+            <div
+              key={item.label}
+              className="shift-kpi clickable"
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpen({ kind: 'material', label: item.label })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ')
+                  setOpen({ kind: 'material', label: item.label });
+              }}
+            >
+              <span>
+                <i className="mortar-swatch" style={{ background: colorOf(item.label) }} />
+                {item.label}
+              </span>
+              <b>
+                {tons(item.kg)} <small>t</small>
+              </b>
+              <em>
+                {bagged > 0
+                  ? `${integer((item.kg / bagged) * 1000)} kg por t ensacada`
+                  : `${percent(mix.kg ? item.kg / mix.kg : null)} da mistura`}
+              </em>
+            </div>
+          ))}
+          {mix.cost && (
+            <div
+              className="shift-kpi clickable"
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpen({ kind: 'batches' })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') setOpen({ kind: 'batches' });
+              }}
+            >
+              <span>Custo da mistura</span>
+              <b>
+                {money(mix.cost.perTon)} <small>/t</small>
+              </b>
+              <em>
+                {money(mix.cost.total)} no período · {money(mix.cost.perBatch)} por batelada
+              </em>
+            </div>
+          )}
+        </div>
       </div>
 
-      {mix.kg > 0 && (
-        <>
-          <div className="stops-title">
-            Composição da mistura<small> · quanto de cada material entrou no período</small>
-          </div>
-          <div className="mortar-composition">
-            {mix.materials.map((item) => (
-              <i
-                key={item.label}
-                style={{ width: `${(item.kg / mix.kg) * 100}%`, background: colorOf(item.label) }}
-              >
-                {item.kg / mix.kg > 0.08 && <span>{percent(item.kg / mix.kg, 0)}</span>}
-              </i>
-            ))}
-          </div>
-          <div className="stops-spent-legend">
-            {mix.materials.map((item) => (
-              <span key={item.label}>
-                <i style={{ background: colorOf(item.label) }} /> {item.label}{' '}
-                <b>{percent(item.kg / mix.kg)}</b>
-              </span>
-            ))}
-            {scaleGap != null && (
-              <span className="mortar-scale">
-                Balança: {tons(mix.scaleKg)} t pesadas contra {tons(mix.scaleTheoreticalKg)} t da
-                receita (
-                <b>
-                  {scaleGap >= 0 ? '+' : ''}
-                  {percent(scaleGap)}
-                </b>
-                )
-              </span>
-            )}
-          </div>
-        </>
-      )}
-
-      <div className="stops-title">
-        Por receita<small> · peso da receita × bateladas; clique para abrir</small>
+      <div className="mortar-section-head">
+        <strong>Por receita</strong>
+        <small>peso da receita × bateladas · clique para abrir</small>
       </div>
       {mix.recipes.length ? (
         <table className="stops-table mortar-table mortar-recipes">
@@ -1423,9 +1445,9 @@ export function Materials({ data, deviceId }: { data: Summary; deviceId: string 
 
       {rows.length > 0 && (
         <>
-          <div className="stops-title">
-            {data.granularity === 'hour' ? 'Hora a hora' : 'Dia a dia'}
-            <small> · toneladas de cada material (barras) e bateladas (linha)</small>
+          <div className="mortar-section-head">
+            <strong>{data.granularity === 'hour' ? 'Hora a hora' : 'Dia a dia'}</strong>
+            <small>toneladas de cada material (barras) e bateladas (linha)</small>
           </div>
           <div className="mortar-chart">
             <ResponsiveContainer width="100%" height="100%">
@@ -1489,9 +1511,9 @@ export function Materials({ data, deviceId }: { data: Summary; deviceId: string 
         </>
       )}
 
-      <div className="stops-title">
-        Lotes de produção
-        <small> · cada lote é uma corrida do misturador; clique para ver o que ele virou</small>
+      <div className="mortar-section-head">
+        <strong>Lotes de produção</strong>
+        <small>cada lote é uma corrida do misturador · clique para ver o que ele virou</small>
       </div>
       {lots.data ? (
         <LotsTable lots={lots.data.lots} />
