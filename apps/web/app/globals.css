@@ -11608,3 +11608,182 @@ button.mortar-spout:hover .mortar-spout-open {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Mortar boards on a phone: dense, but every row kept to one line and nothing piled up. */
+@media (max-width: 760px) {
+  /* The stops card turns its own four columns into blocks; the mortar tables are other tables
+     with other columns, so they stay tables and scroll sideways like every table of the site. */
+  .mortar-board .stops-table,
+  .mortar-panel .stops-table,
+  .mortar-modal .stops-table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mortar-board .stops-table thead,
+  .mortar-panel .stops-table thead,
+  .mortar-modal .stops-table thead {
+    display: table-header-group;
+  }
+  .mortar-board .stops-table tbody,
+  .mortar-panel .stops-table tbody,
+  .mortar-modal .stops-table tbody {
+    display: table-row-group;
+  }
+  .mortar-board .stops-table tr,
+  .mortar-panel .stops-table tr,
+  .mortar-modal .stops-table tr {
+    display: table-row;
+    padding: 0;
+    border: 0;
+  }
+  .mortar-board .stops-table td,
+  .mortar-board .stops-table th,
+  .mortar-panel .stops-table td,
+  .mortar-panel .stops-table th,
+  .mortar-modal .stops-table td,
+  .mortar-modal .stops-table th {
+    display: table-cell;
+    padding: 7px 8px;
+    border-bottom: 1px solid #e6eef0;
+    color: inherit;
+    font-size: 12px;
+    font-weight: inherit;
+    white-space: nowrap;
+  }
+  .mortar-board .stops-table th,
+  .mortar-panel .stops-table th,
+  .mortar-modal .stops-table th {
+    color: #788d94;
+    font-size: 10px;
+  }
+  .mortar-panel .stops-table td.muted,
+  .mortar-modal .stops-table td.muted {
+    color: #8a9ca2;
+  }
+  .mortar-products td small {
+    margin-left: 16px;
+  }
+
+  /* Figures two by two, the way the mixer card already reads well. */
+  .mortar-modal .mortar-figures,
+  .mortar-panel .mortar-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mortar-modal .mortar-figure > b,
+  .mortar-panel .mortar-figure > b {
+    font-size: 21px;
+  }
+
+  /* Pace, efficiency and stops side by side, smaller, instead of three lines. */
+  .mortar-board .mortar-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .mortar-board .mortar-tiles .shift-kpi {
+    padding: 8px 9px;
+  }
+  .mortar-board .mortar-tiles .shift-kpi b {
+    font-size: 18px;
+  }
+  .mortar-board .mortar-tiles .shift-kpi b small {
+    font-size: 10px;
+  }
+  .mortar-board .mortar-tiles .shift-kpi em,
+  .mortar-board .mortar-tiles .mortar-against {
+    font-size: 10px;
+    line-height: 1.3;
+  }
+  .mortar-mix-summary .mortar-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Each filter is one line: its label and its pills, the pills scrolling sideways. */
+  .mortar-board-filters {
+    display: grid;
+    gap: 6px;
+  }
+  .mortar-board-filters .shift-field {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .mortar-board-filters .shift-field > span:first-child {
+    flex: 0 0 auto;
+    width: 58px;
+    font-size: 9px;
+    line-height: 1.2;
+  }
+  .mortar-board-filters .shift-field-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .mortar-board-filters .widget-period,
+  .mortar-curve-head .widget-period {
+    display: flex;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mortar-board-filters .widget-period::-webkit-scrollbar,
+  .mortar-curve-head .widget-period::-webkit-scrollbar {
+    display: none;
+  }
+  .mortar-board-filters .widget-period button,
+  .mortar-curve-head .widget-period button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .mortar-curve-head {
+    display: grid;
+    gap: 6px;
+  }
+
+  /* The period block a little lower. */
+  .mortar-hero {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .mortar-hero-top > b {
+    font-size: 26px;
+  }
+  .mortar-verdict {
+    margin-left: 0;
+  }
+
+  /* A spout card keeps its three weights, a little tighter. */
+  .mortar-spout-hero b {
+    font-size: 24px;
+  }
+  .mortar-spout-eff b {
+    font-size: 17px;
+  }
+
+  /* The detail window: the step picker goes under the title instead of squeezing it. */
+  .detail-modal .modal-title {
+    flex-wrap: wrap;
+  }
+  .detail-modal .detail-step {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .detail-modal .detail-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mortar-modal td small,
+  .mortar-board td small {
+    display: inline;
+  }
+  .mortar-board .shift-chart,
+  .mortar-compare .shift-chart {
+    height: 220px;
+  }
+}
