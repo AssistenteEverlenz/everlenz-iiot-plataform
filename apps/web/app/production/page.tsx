@@ -5,7 +5,12 @@ import { useSearchParams } from 'next/navigation';
 import { ActionModal } from '../../components/ActionModal';
 import { ProductionConfigModal } from '../../components/ProductionConfigModal';
 import { HmiCheckModal } from '../../components/HmiCheckModal';
-import { ShiftBoardView, type ShiftBoardResponse } from '../../components/ShiftBoard';
+import {
+  photoCalculated,
+  photoWindow,
+  ShiftBoardView,
+  type ShiftBoardResponse,
+} from '../../components/ShiftBoard';
 import {
   formulaKeys,
   ShiftDetailCharts,
@@ -1442,6 +1447,9 @@ function DetailModal({
           deviceId={deviceId}
           historical
           minuteSeries={stored?.minutes}
+          calculated={photoCalculated(stored?.calculated ?? config.data?.calculated ?? [], stored)}
+          calculatedSettings={stored?.calculated ?? config.data?.calculated ?? []}
+          detailWindow={photoWindow(stored)}
         />
         <div className="production-detail-charts">
           <div className="shift-section-title">Como foi a produção</div>

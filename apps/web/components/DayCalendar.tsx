@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * A month calendar that only lets a day with production be chosen.
@@ -9,7 +10,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
  * plant never ran and the board opened on nothing: no curve, no numbers, a message alone in
  * the middle of an empty card. Here the days that closed a report are the only ones that
  * answer a click, and the arrows stop at the first and the last of them.
+ *
+ * The sheet is drawn on the screen, not inside the card: a card hides what overflows it, so a
+ * calendar opened near its right edge (the comparison's, last in the row) was cut in half. It
+ * sits under the button, and moves left or above it when the screen has no room there.
  */
+const SHEET_WIDTH = 252;
+const GAP = 6;
 const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const MONTHS = [
   'janeiro',
@@ -52,6 +59,8 @@ export function DayCalendar({
 }) {
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<{ top: number; left: number } | null>(null);
   const days = useMemo(() => new Set(available), [available]);
   const sorted = useMemo(() => [...available].sort(), [available]);
   const first = sorted[0];
@@ -65,7 +74,8 @@ export function DayCalendar({
   useEffect(() => {
     if (!open) return undefined;
     const away = (event: MouseEvent) => {
-      if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!wrapper.current?.contains(target) && !sheet.current?.contains(target)) setOpen(false);
     };
     const escape = (event: KeyboardEvent) => event.key === 'Escape' && setOpen(false);
     document.addEventListener('mousedown', away);
@@ -75,6 +85,34 @@ export function DayCalendar({
       document.removeEventListener('keydown', escape);
     };
   }, [open]);
+
+  // Placed from the button on every open, scroll and resize, so it follows a card that moves.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlace(null);
+      return undefined;
+    }
+    const measure = () => {
+      const button = wrapper.current?.getBoundingClientRect();
+      if (!button) return;
+      const height = sheet.current?.offsetHeight ?? 320;
+      const width = Math.min(SHEET_WIDTH, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(button.left, window.innerWidth - width - 8));
+      const below = button.bottom + GAP;
+      const top =
+        below + height > window.innerHeight - 8 && button.top - GAP - height >= 8
+          ? button.top - GAP - height
+          : below;
+      setPlace({ top, left });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, [open, month]);
 
   const [year, monthIndex] = month ? month.split('-').map(Number) : [0, 0];
   const grid = useMemo(() => {
@@ -105,8 +143,15 @@ export function DayCalendar({
       >
         {value ? dayLabel(value) : available.length ? placeholder : 'sem dias fechados'}
       </button>
-      {open && (
-        <div className="day-calendar-sheet" role="dialog" aria-label="Escolher dia">
+      {open &&
+        createPortal(
+        <div
+          ref={sheet}
+          className="day-calendar-sheet"
+          role="dialog"
+          aria-label="Escolher dia"
+          style={place ? { top: place.top, left: place.left } : { visibility: 'hidden' }}
+        >
           <div className="day-calendar-head">
             <button type="button" onClick={() => shift(-1)} disabled={!canGoBack} aria-label="Mês anterior">
               ‹
@@ -146,8 +191,9 @@ export function DayCalendar({
             )}
           </div>
           <div className="day-calendar-foot">Só os dias com produção fechada podem ser abertos.</div>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </div>
   );
 }

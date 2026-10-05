@@ -20,8 +20,12 @@ import { UtilizationModal, utilizationCaption } from './UtilizationModal';
 import {
   ShiftDetailModal,
   type CalculatedSetting,
+  type DetailData,
   type DetailFocus,
+  type DetailWindow,
 } from './ShiftDetailModal';
+import { evaluateFormula } from './formula';
+import { periodVariables } from './variables';
 
 // "Quadro de produção": one card that answers how the shift (or the day) is going. Produced
 // against the target, where the pace leads by the end (S-curve and projection), what is needed
@@ -591,6 +595,40 @@ export interface CalculatedField {
   unit: string;
 }
 
+/** A closed day as its photograph keeps it. */
+export interface ProductionPhoto {
+  detail: ShiftBoardResponse;
+  minutes: Array<{ t: string; value: number }>;
+  charts?: DetailData;
+  calculated?: CalculatedSetting[];
+}
+
+/** A closed day for the detail modal: its own period, and the pallets its photo kept. */
+export function photoWindow(photo: ProductionPhoto | null | undefined): DetailWindow | null {
+  const span = photo?.detail.board?.span;
+  return span ? { from: span.start, to: span.end, pallets: photo?.charts?.pallets } : null;
+}
+
+/**
+ * The card's formulas over a closed day: what that day made and how its machine spent the time,
+ * and each HMI variable as its average over the day. The live numbers of today are not that day.
+ */
+export function photoCalculated(
+  settings: CalculatedSetting[],
+  photo: ProductionPhoto | null | undefined,
+): CalculatedField[] {
+  if (!photo) return [];
+  const values = periodVariables(photo.detail.board, photo.charts?.variables);
+  return settings.map((field) => {
+    const result = evaluateFormula(field.formula, values);
+    return {
+      label: field.label || 'Calculado',
+      value: result == null ? '—' : formatNumber(result, field.decimals ?? 1),
+      unit: field.unit ?? '',
+    };
+  });
+}
+
 export function ShiftBoard({
   deviceId,
   calculated,
@@ -616,7 +654,7 @@ export function ShiftBoard({
     `/devices/${deviceId}/production-days?limit=400`,
     600000,
   );
-  const photo = usePoll<{ photo: { detail: ShiftBoardResponse; minutes: Array<{ t: string; value: number }> } | null }>(
+  const photo = usePoll<{ photo: ProductionPhoto | null }>(
     day ? `/devices/${deviceId}/production-photo?date=${day}&kind=day` : null,
     600000,
   );
@@ -624,7 +662,7 @@ export function ShiftBoard({
   // Today as a comparison only means something while a past day is open; the pill says so.
   const againstToday = against === 'today';
   const medianDays = medianWindow(against);
-  const other = usePoll<{ photo: { detail: ShiftBoardResponse; minutes: Array<{ t: string; value: number }> } | null }>(
+  const other = usePoll<{ photo: ProductionPhoto | null }>(
     comparingDay ? `/devices/${deviceId}/production-photo?date=${comparingDay}&kind=day` : null,
     600000,
   );
@@ -655,6 +693,13 @@ export function ShiftBoard({
     600000,
   );
   const settings = calculatedSettings ?? config.data?.calculated ?? [];
+  // A past day reads its formulas from its own photo; today keeps the card's live numbers.
+  const dayCalculated = day ? photoCalculated(settings, photo.data?.photo) : (calculated ?? []);
+  const compareCalculated = comparingDay
+    ? photoCalculated(settings, other.data?.photo)
+    : againstToday && day
+      ? (calculated ?? [])
+      : [];
   const shown = day ? (photo.data?.photo?.detail ?? null) : (response.data ?? null);
   // The other day's realized curve, by position in the shift, so a late start still lines up.
   const overlay = medianDays && median.data?.curve.length
@@ -775,7 +820,16 @@ export function ShiftBoard({
       historical={Boolean(day)}
       minuteSeries={day ? photo.data?.photo?.minutes : undefined}
       compare={overlay}
-      calculated={calculated}
+      calculated={dayCalculated}
+      compareCalculated={compareCalculated}
+      detailWindow={day ? photoWindow(photo.data?.photo) : null}
+      compareWindow={
+        below?.board && belowLabel
+          ? comparingDay
+            ? { label: belowLabel, ...(photoWindow(other.data?.photo) ?? { from: below.board.span.start, to: below.board.span.end }) }
+            : { label: belowLabel, from: below.board.span.start, to: below.board.span.end }
+          : null
+      }
       calculatedSettings={settings}
       onChanged={() => void response.refresh()}
       view={below ? zoom : undefined}
@@ -962,6 +1016,9 @@ export function ShiftBoardView({
   historical = false,
   hideHead = false,
   calculated = [],
+  compareCalculated = [],
+  detailWindow,
+  compareWindow,
   calculatedSettings = [],
   minuteSeries,
   compare,
@@ -985,6 +1042,12 @@ export function ShiftBoardView({
   /** A shift photo's minute curve: the zoom reads it instead of the readings. */
   minuteSeries?: Array<{ t: string; value: number }>;
   calculated?: CalculatedField[];
+  /** The compared day's value of each formula, in the same order, shown small under it. */
+  compareCalculated?: CalculatedField[];
+  /** A closed day's period: its numbers open the detail too, read from the kept blocks. */
+  detailWindow?: DetailWindow | null;
+  /** The compared day, for the detail modal to draw beside this one. */
+  compareWindow?: ({ label: string } & DetailWindow) | null;
   calculatedSettings?: CalculatedSetting[];
   /** The TV draws its own header (shift, state, clock). */
   hideHead?: boolean;
@@ -1003,8 +1066,10 @@ export function ShiftBoardView({
   const [editingUtilization, setEditingUtilization] = useState(false);
   // Each number of the board opens what is behind it: the shift hour by hour, pallet by pallet.
   const [detail, setDetail] = useState<DetailFocus | null>(null);
+  // A closed day opens its detail only when its period is known (its photo).
+  const canOpen = !historical || Boolean(detailWindow);
   const opens = (focus: DetailFocus) =>
-    historical
+    !canOpen
       ? {}
       : {
           role: 'button' as const,
@@ -1131,7 +1196,7 @@ export function ShiftBoardView({
       ) : (
         <>
           <div className="shift-kpis">
-            <div className={`shift-kpi hero ${historical ? '' : 'clickable'}`} {...opens('produced')}>
+            <div className={`shift-kpi hero ${canOpen ? 'clickable' : ''}`} {...opens('produced')}>
               <span>Produzido</span>
               <b>
                 {formatNumber(board.totals.milheiros, 1)} <small>milheiros</small>
@@ -1143,7 +1208,7 @@ export function ShiftBoardView({
                 </Against>
               )}
             </div>
-            <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('target')}>
+            <div className={`shift-kpi ${canOpen ? 'clickable' : ''}`} {...opens('target')}>
               <span className="shift-kpi-title">
                 Meta
                 {!historical && (
@@ -1182,7 +1247,7 @@ export function ShiftBoardView({
                 </>
               )}
             </div>
-            <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('projection')}>
+            <div className={`shift-kpi ${canOpen ? 'clickable' : ''}`} {...opens('projection')}>
               <span>Projeção de fechamento</span>
               <b>
                 {formatNumber(
@@ -1208,7 +1273,7 @@ export function ShiftBoardView({
                 </Against>
               )}
             </div>
-            <div className={`shift-kpi ${historical ? '' : 'clickable'}`} {...opens('pace')}>
+            <div className={`shift-kpi ${canOpen ? 'clickable' : ''}`} {...opens('pace')}>
               <span>Ritmo</span>
               <b>
                 {formatNumber(board.pacePerHour, info.decimals)} <small>{info.unit}/h</small>
@@ -1227,7 +1292,7 @@ export function ShiftBoardView({
             </div>
             {board.palletTiming && board.palletTiming.count > 0 && (
               <div
-                className={`shift-kpi ${historical ? '' : 'clickable'}`}
+                className={`shift-kpi ${canOpen ? 'clickable' : ''}`}
                 {...opens('pallets')}
                 title="Média: tempo produzindo dividido pelos paletes do período (paradas não entram). Último: tempo entre os dois últimos paletes. Clique para ver o ranking do turno."
               >
@@ -1250,13 +1315,21 @@ export function ShiftBoardView({
 
           {calculated.length > 0 && (
             <div className="shift-calculated" aria-label="Cálculos do card">
-              {calculated.map((field) => (
+              {calculated.map((field, index) => (
                 <div key={field.label}>
                   <span>{field.label}</span>
                   <b>
                     {field.value}
                     {field.unit && <em>{field.unit}</em>}
                   </b>
+                  {compareLabel && compareCalculated[index] && (
+                    <Against label={compareLabel}>
+                      {compareCalculated[index].value}{' '}
+                      {compareCalculated[index].unit && (
+                        <small>{compareCalculated[index].unit}</small>
+                      )}
+                    </Against>
+                  )}
                 </div>
               ))}
             </div>
@@ -1379,6 +1452,8 @@ export function ShiftBoardView({
             mode={mode}
             focus={detail}
             calculated={calculatedSettings}
+            window={historical ? detailWindow : null}
+            compare={compareWindow}
             onClose={() => setDetail(null)}
           />
         </ModalPortal>

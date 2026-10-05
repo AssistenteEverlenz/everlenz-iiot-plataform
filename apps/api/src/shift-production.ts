@@ -1563,11 +1563,16 @@ type WidgetConfig = {
  * board shows.
  */
 export async function deviceFormulas(db: Database, tenantId: string, deviceId: string) {
+  // The production board (shift_board) is where the plant writes them today; the older
+  // production card is still read for a device that only has that one. A card without any
+  // formula does not hide the next one that has them.
   const widget = await db.query<{ config: WidgetConfig }>(
     `SELECT w.config FROM dashboard_widgets w
      JOIN dashboards d ON d.id=w.dashboard_id AND d.tenant_id=w.tenant_id
-     WHERE w.tenant_id=$1 AND w.device_id=$2 AND w.widget_type='production'
-     ORDER BY d.is_default DESC,w.position LIMIT 1`,
+     WHERE w.tenant_id=$1 AND w.device_id=$2 AND w.widget_type IN ('shift_board','production')
+       AND (jsonb_array_length(coalesce(w.config->'calculated','[]'::jsonb))>0
+         OR coalesce(w.config->>'formula','')<>'')
+     ORDER BY (w.widget_type='shift_board') DESC,d.is_default DESC,w.position LIMIT 1`,
     [tenantId, deviceId],
   );
   const config = widget.rows[0]?.config;
@@ -1779,6 +1784,36 @@ function expandPhoto(photo: { minutes?: Array<{ t: string; value: number }> } & 
   for (let at = Math.floor(start.getTime() / 60000) * 60000; at < end.getTime(); at += 60000)
     minutes.push({ t: new Date(at).toISOString(), value: moved.get(at) ?? 0 });
   return { ...photo, minutes };
+}
+
+/**
+ * A photo read with the card's formulas of today and the HMI variables they need. Photos taken
+ * before the formulas were looked for on the production board carry none, and a formula written
+ * after a day closed would read nothing; the hourly averages of the HMI are kept forever, so the
+ * missing ones are read back for the photo's own period.
+ */
+async function withFormulas(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  photo: Record<string, unknown>,
+  start: Date,
+  end: Date,
+) {
+  const formulas = await deviceFormulas(db, tenantId, deviceId);
+  const charts = (photo.charts ?? {}) as { variables?: Record<string, unknown> };
+  const have = charts.variables ?? {};
+  const missing = formulaKeys(formulas)
+    .split(',')
+    .filter((key) => key && !(key in have));
+  const read = missing.length
+    ? await hourlyVariables(db, tenantId, deviceId, missing.join(','), start, end).catch(() => ({}))
+    : {};
+  return {
+    ...photo,
+    calculated: formulas.length ? formulas : (photo.calculated ?? []),
+    charts: { ...charts, variables: { ...have, ...read } },
+  };
 }
 
 export function registerShiftProductionRoutes(app: FastifyInstance, db: Database, access: Access) {
@@ -2797,7 +2832,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       [tenantId, id, query.kind, start],
     );
     if (!row.rows[0]) return { photo: null };
-    return { photo: expandPhoto(row.rows[0].photo, start, new Date(row.rows[0].period_end)) };
+    const end = new Date(row.rows[0].period_end);
+    return { photo: await withFormulas(db, tenantId, id, expandPhoto(row.rows[0].photo, start, end), start, end) };
   });
 
   // Detail of one history row: the board of any shift, day or off-shift day, as it was (a

@@ -5438,11 +5438,10 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   cursor: not-allowed;
 }
 .day-calendar-sheet {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 40;
-  width: 252px;
+  position: fixed;
+  z-index: 1000;
+  width: min(252px, calc(100vw - 16px));
+  font-size: 12px;
   padding: 10px;
   border: 1px solid #dce6e8;
   border-radius: 12px;

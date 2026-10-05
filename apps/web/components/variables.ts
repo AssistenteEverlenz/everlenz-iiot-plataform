@@ -343,3 +343,21 @@ export const PANEL_TEXTS: Record<string, string> = {
   'painel.produto': 'receita/produto que está rodando agora',
   'painel.turno': 'nome do turno em andamento',
 };
+
+/**
+ * A closed period's variables, for its formulas to read what that day was: the board's own
+ * numbers from its photo, and each HMI variable as its average over the period (the hourly
+ * averages are kept forever, so an old day still has them).
+ */
+export function periodVariables(
+  board: PanelSource | null | undefined,
+  hourly: Record<string, Array<{ hour: string; value: number }>> = {},
+): Record<string, number> {
+  const values = panelVariables(board);
+  for (const [key, points] of Object.entries(hourly)) {
+    const known = points.filter((point) => Number.isFinite(point.value));
+    if (known.length)
+      values[`ihm.${key}`] = known.reduce((sum, point) => sum + point.value, 0) / known.length;
+  }
+  return values;
+}
