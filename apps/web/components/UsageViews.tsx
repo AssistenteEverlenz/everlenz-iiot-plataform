@@ -1,5 +1,6 @@
 'use client';
 
+import type React from 'react';
 import {
   Bar,
   BarChart,
@@ -265,11 +266,14 @@ export function UserUsageModal({
   days,
   onDays,
   onClose,
+  actions,
 }: {
   userId: string;
   days: number;
   onDays: (days: number) => void;
   onClose: () => void;
+  /** What can be done to the account (edit, deactivate, new password, delete), on top. */
+  actions?: React.ReactNode;
 }) {
   const usage = usePoll<UserUsage>(`/usage/users/${userId}?days=${days}`, 120000);
   const data = usage.data;
@@ -293,7 +297,7 @@ export function UserUsageModal({
       <div className="modal-card detail-modal usage-modal" onMouseDown={(event) => event.stopPropagation()}>
         <div className="modal-title">
           <div>
-            <div className="eyebrow">USO DA PLATAFORMA</div>
+            <div className="eyebrow">{actions ? 'USUÁRIO · USO DA PLATAFORMA' : 'USO DA PLATAFORMA'}</div>
             <h2>{data?.user.name ?? 'Carregando…'}</h2>
             {data && (
               <p className="shifts-help">
@@ -308,6 +312,7 @@ export function UserUsageModal({
             </button>
           </div>
         </div>
+        {actions && <div className="row-actions usage-actions">{actions}</div>}
         {usage.error && <div className="form-error">{usage.error}</div>}
         {data && (
           <>

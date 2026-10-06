@@ -3616,4 +3616,44 @@
   :root[data-theme='dark'] .usage-pages {
     color: #a5b6bc;
   }
+  :root[data-theme='dark'] .user-row:hover td,
+  :root[data-theme='dark'] .user-row:focus-visible td {
+    box-shadow: inset 0 1px 0 var(--brand-accent, #12b8a6), inset 0 -1px 0 var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .user-row:hover td:first-child,
+  :root[data-theme='dark'] .user-row:focus-visible td:first-child {
+    box-shadow: inset 1px 1px 0 var(--brand-accent, #12b8a6), inset 0 -1px 0 var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .user-row:hover td:last-child,
+  :root[data-theme='dark'] .user-row:focus-visible td:last-child {
+    box-shadow: inset -1px 1px 0 var(--brand-accent, #12b8a6), inset 0 -1px 0 var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .user-row:focus-visible {
+    outline: none;
+  }
+  @media (max-width: 700px) {
+    :root[data-theme='dark'] .user-row {
+      border: 1px solid #202d32;
+    }
+    :root[data-theme='dark'] .user-row td {
+      border: 0;
+    }
+    :root[data-theme='dark'] .user-row:hover td,
+    :root[data-theme='dark'] .user-row:focus-visible td,
+    :root[data-theme='dark'] .user-row:hover td:first-child,
+    :root[data-theme='dark'] .user-row:hover td:last-child {
+      box-shadow: none;
+    }
+    :root[data-theme='dark'] .user-row:hover,
+    :root[data-theme='dark'] .user-row:focus-visible {
+      border-color: var(--brand-accent, #12b8a6);
+    }
+    :root[data-theme='dark'] .user-row td[data-label='Status'] small {
+      color: #92a2a8;
+    }
+    :root[data-theme='dark'] .user-row td[data-label='Equipamentos'],
+    :root[data-theme='dark'] .user-row td[data-label='Último acesso'] {
+      color: #92a2a8;
+    }
+  }
 }

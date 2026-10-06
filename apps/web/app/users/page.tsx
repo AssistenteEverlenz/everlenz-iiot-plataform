@@ -194,58 +194,44 @@ export default function UsersPage() {
               <th>Equipamentos</th>
               <th>Último acesso</th>
               <th>Status</th>
-              <th />
             </tr>
           </thead>
           <tbody>
             {filteredUsers.map((user) => (
-              <tr key={user.id}>
-                <td>
-                  <button
-                    type="button"
-                    className="usage-name"
-                    title="Ver como esta pessoa usa a plataforma"
-                    onClick={() => setUsageOf(user.id)}
-                  >
-                    <strong>{user.full_name}</strong>
-                    <small>{user.email}</small>
-                  </button>
+              // The whole row opens the person: their use of the platform and, for a client, what
+              // can be done to the account. Four buttons per row made the table too wide to read
+              // on a phone.
+              <tr
+                key={user.id}
+                className="user-row"
+                tabIndex={0}
+                title="Abrir usuário"
+                onClick={() => setUsageOf(user.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setUsageOf(user.id);
+                  }
+                }}
+              >
+                <td data-label="Usuário">
+                  <strong>{user.full_name}</strong>
+                  <small>{user.email}</small>
                 </td>
-                <td>
+                <td data-label="Perfil">
                   <span className={`role-badge ${user.role}`}>
                     {user.role === 'master' ? 'MASTER' : 'CLIENTE'}
                   </span>
                 </td>
-                <td>
+                <td data-label="Equipamentos">
                   {user.role === 'master' ? 'Todos' : `${user.device_ids.length} liberado(s)`}
                 </td>
-                <td>{time(user.last_login_at)}</td>
-                <td>
+                <td data-label="Último acesso">{time(user.last_login_at)}</td>
+                <td data-label="Status">
                   <span className={`badge ${user.status === 'active' ? '' : 'offline'}`}>
                     {user.status === 'active' ? 'Ativo' : 'Desativado'}
                   </span>
                   {user.must_change_password && <small>Troca de senha pendente</small>}
-                </td>
-                <td>
-                  <div className="row-actions">
-                    {user.role === 'user' && (
-                      <>
-                        <button onClick={() => editUser(user)}>Editar</button>
-                        <button onClick={() => setPendingAction({ type: 'toggle', user })}>
-                          {user.status === 'active' ? 'Desativar' : 'Ativar'}
-                        </button>
-                        <button onClick={() => setPendingAction({ type: 'reset', user })}>
-                          Nova senha
-                        </button>
-                        <button
-                          className="danger-text"
-                          onClick={() => setPendingAction({ type: 'remove', user })}
-                        >
-                          Excluir
-                        </button>
-                      </>
-                    )}
-                  </div>
                 </td>
               </tr>
             ))}
@@ -259,6 +245,42 @@ export default function UsersPage() {
             days={usageDays}
             onDays={setUsageDays}
             onClose={() => setUsageOf(null)}
+            actions={(() => {
+              // A master account is not edited from here: only a client's.
+              const user = users.data?.find((item) => item.id === usageOf);
+              if (!user || user.role !== 'user') return null;
+              // The confirmation and the form open on their own, over the list.
+              const then = (action: () => void) => () => {
+                setUsageOf(null);
+                action();
+              };
+              return (
+                <>
+                  <button type="button" onClick={then(() => editUser(user))}>
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={then(() => setPendingAction({ type: 'toggle', user }))}
+                  >
+                    {user.status === 'active' ? 'Desativar' : 'Ativar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={then(() => setPendingAction({ type: 'reset', user }))}
+                  >
+                    Nova senha
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-text"
+                    onClick={then(() => setPendingAction({ type: 'remove', user }))}
+                  >
+                    Excluir
+                  </button>
+                </>
+              );
+            })()}
           />
         </ModalPortal>
       )}

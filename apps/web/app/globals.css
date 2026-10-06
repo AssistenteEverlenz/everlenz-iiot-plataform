@@ -11899,3 +11899,58 @@ button.mortar-spout:hover .mortar-spout-open {
   .usage-modal .detail-step { width: 100%; justify-content: space-between; }
   .usage-pages { max-width: 220px; }
 }
+
+/* Usuários: the row is the way into the person; hover like the rest, outline only. */
+.user-row { cursor: pointer; }
+.user-row td { transition: background-color 0.15s ease, box-shadow 0.15s ease; }
+.user-row:hover td,
+.user-row:focus-visible td {
+  box-shadow: inset 0 1px 0 var(--brand-accent, #12b8a6), inset 0 -1px 0 var(--brand-accent, #12b8a6);
+}
+.user-row:hover td:first-child,
+.user-row:focus-visible td:first-child {
+  box-shadow: inset 1px 1px 0 var(--brand-accent, #12b8a6), inset 0 -1px 0 var(--brand-accent, #12b8a6);
+  border-radius: 8px 0 0 8px;
+}
+.user-row:hover td:last-child,
+.user-row:focus-visible td:last-child {
+  box-shadow: inset -1px 1px 0 var(--brand-accent, #12b8a6), inset 0 -1px 0 var(--brand-accent, #12b8a6);
+  border-radius: 0 8px 8px 0;
+}
+.user-row:focus-visible { outline: none; }
+.user-row td small { display: block; }
+.usage-actions { justify-content: flex-start; margin: 4px 0 2px; }
+@media (max-width: 700px) {
+  /* A card per person instead of a table wider than the screen. */
+  .table-scroll:has(.user-row) table,
+  .table-scroll:has(.user-row) tbody { display: block; }
+  .table-scroll:has(.user-row) thead { display: none; }
+  .user-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 12px;
+    margin-bottom: 8px;
+    padding: 12px;
+    border: 1px solid #e3ebed;
+    border-radius: 12px;
+  }
+  .user-row td { display: block; padding: 0; border: 0; }
+  .user-row:hover td,
+  .user-row:focus-visible td,
+  .user-row:hover td:first-child,
+  .user-row:hover td:last-child { box-shadow: none; }
+  .user-row:hover,
+  .user-row:focus-visible { border-color: var(--brand-accent, #12b8a6); }
+  .user-row td[data-label='Usuário'] { grid-column: 1 / -1; }
+  .user-row td[data-label='Perfil'] { order: 1; }
+  .user-row td[data-label='Status'] { order: 2; }
+  .user-row td[data-label='Equipamentos'] { order: 3; }
+  .user-row td[data-label='Último acesso'] { order: 4; }
+  .user-row td[data-label='Status'] small { font-size: 11px; color: #6b7f86; }
+  .user-row td[data-label='Equipamentos'],
+  .user-row td[data-label='Último acesso'] { color: #6b7f86; font-size: 12px; }
+  .user-row td[data-label='Último acesso']::before { content: 'Último acesso '; }
+  .user-row td[data-label='Status'],
+  .user-row td[data-label='Último acesso'] { text-align: right; }
+  .usage-actions { flex-wrap: wrap; }
+}
