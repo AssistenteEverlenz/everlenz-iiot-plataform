@@ -199,7 +199,8 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
     // Each spout runs one to three products a day, changing at fixed hours; yesterday every
     // spout ran three, to show a day with several products. The right spout often stays off
     // on Saturdays. Each spout has its own pace (the left one is the best tuned).
-    const yesterday = day === 1;
+    // Today and yesterday every spout runs three products: the days a demonstration opens on.
+    const yesterday = day <= 1;
     const plan = SPOUTS.map((_, index) => {
       const count = yesterday ? 3 : 1 + Math.floor(rand() * 3);
       const start = Math.floor(rand() * PRODUCTS.length);
