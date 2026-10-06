@@ -30,6 +30,13 @@ interface SnapshotWidget {
   position: number;
   width: string;
   config: Record<string, unknown>;
+  /** The panel tab the card sits on (migration 036); absent in older snapshots. */
+  tab_id?: string | null;
+}
+interface SnapshotTab {
+  id: string;
+  name: string;
+  position: number;
 }
 interface SnapshotContent {
   version: 1;
@@ -39,6 +46,42 @@ interface SnapshotContent {
   productionContext: { product_key: string | null; fallback_product_code: string } | null;
   /** The configured TV (screens and cards); absent in snapshots taken before migration 023. */
   tv?: TvScreen[];
+  /**
+   * The panel's tabs (migration 036). Absent in snapshots and models saved before they were kept:
+   * those leave the panel's tabs as they are, and their cards land on the first tab.
+   */
+  tabs?: SnapshotTab[];
+}
+
+/**
+ * Puts a snapshot's or model's tabs on a panel, in place of the ones it has, and says which new
+ * tab each old one became. New ids every time: a model is applied to panels that are not its own.
+ */
+async function replaceTabs(
+  sql: Executor,
+  tenantId: string,
+  dashboardId: string,
+  tabs: SnapshotTab[],
+) {
+  await sql.query('DELETE FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2', [
+    tenantId,
+    dashboardId,
+  ]);
+  const tabFor = new Map<string, string>();
+  for (const tab of [...tabs].sort((a, b) => a.position - b.position)) {
+    const id = randomUUID();
+    await sql.query(
+      'INSERT INTO dashboard_tabs(id,tenant_id,dashboard_id,name,position) VALUES($1,$2,$3,$4,$5)',
+      [id, tenantId, dashboardId, tab.name, tab.position],
+    );
+    tabFor.set(tab.id, id);
+  }
+  return tabFor;
+}
+
+/** The tabs to recreate, or null when the content carries none and the panel keeps its own. */
+async function tabsOf(sql: Executor, tenantId: string, dashboardId: string, content: SnapshotContent) {
+  return content.tabs ? replaceTabs(sql, tenantId, dashboardId, content.tabs) : null;
 }
 
 function withoutOwnColumns(row: Record<string, unknown> | undefined) {
@@ -63,7 +106,12 @@ async function capture(
   const row = dashboard.rows[0];
   if (!row) return null;
   const widgets = await sql.query<SnapshotWidget>(
-    `SELECT id,device_id,tag_id,widget_type,title,position,width,config FROM dashboard_widgets
+    `SELECT id,device_id,tag_id,widget_type,title,position,width,config,tab_id FROM dashboard_widgets
+     WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
+    [tenantId, dashboardId],
+  );
+  const tabs = await sql.query<SnapshotTab>(
+    `SELECT id,name,position FROM dashboard_tabs
      WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
     [tenantId, dashboardId],
   );
@@ -92,6 +140,7 @@ async function capture(
     production,
     productionContext,
     tv: await loadTv(sql, tenantId, dashboardId),
+    tabs: tabs.rows,
   };
 }
 
@@ -135,13 +184,14 @@ async function restore(
     tenantId,
     dashboardId,
   ]);
+  const tabFor = await tabsOf(sql, tenantId, dashboardId, content);
   let position = 0;
   for (const widget of content.widgets) {
     if (!devices.has(widget.device_id)) continue;
     await sql.query(
       `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,
-         position,width,config)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+         position,width,config,tab_id)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)`,
       [
         widget.id,
         tenantId,
@@ -153,6 +203,7 @@ async function restore(
         position,
         widget.width,
         JSON.stringify(widget.config ?? {}),
+        tabFor && widget.tab_id ? (tabFor.get(widget.tab_id) ?? null) : null,
       ],
     );
     position += 1;
@@ -229,14 +280,15 @@ async function insertModelCard(
   widget: SnapshotWidget,
   position: number,
   tagId: string | null,
+  tabFor: Map<string, string> | null = null,
 ) {
   const config = { ...(widget.config ?? {}) };
   for (const key of DEVICE_SPECIFIC_CONFIG) delete config[key];
   const id = randomUUID();
   await sql.query(
     `INSERT INTO dashboard_widgets(id,tenant_id,dashboard_id,device_id,tag_id,widget_type,title,
-       position,width,config)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+       position,width,config,tab_id)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)`,
     [
       id,
       tenantId,
@@ -248,6 +300,7 @@ async function insertModelCard(
       position,
       widget.width,
       JSON.stringify(config),
+      tabFor && widget.tab_id ? (tabFor.get(widget.tab_id) ?? null) : null,
     ],
   );
   return id;
@@ -274,11 +327,12 @@ export async function applyDashboardTemplate(
 ) {
   const template = await loadTemplate(sql, tenantId);
   const widgets = template?.widgets ?? [];
+  const tabFor = template ? await tabsOf(sql, tenantId, dashboardId, template) : null;
   const cardFor = new Map<string, string>();
   for (const [position, widget] of widgets.entries())
     cardFor.set(
       widget.id,
-      await insertModelCard(sql, tenantId, dashboardId, deviceId, widget, position, null),
+      await insertModelCard(sql, tenantId, dashboardId, deviceId, widget, position, null, tabFor),
     );
   if (template?.tv?.length) await saveTv(sql, tenantId, dashboardId, remapTv(template.tv, cardFor));
   return widgets.length;
@@ -315,11 +369,21 @@ export async function applyTemplateToDashboard(
     tenantId,
     dashboardId,
   ]);
+  const tabFor = await tabsOf(sql, tenantId, dashboardId, template);
   const cardFor = new Map<string, string>();
   for (const [position, widget] of template.widgets.entries())
     cardFor.set(
       widget.id,
-      await insertModelCard(sql, tenantId, dashboardId, deviceId, widget, position, tagFor[position]),
+      await insertModelCard(
+        sql,
+        tenantId,
+        dashboardId,
+        deviceId,
+        widget,
+        position,
+        tagFor[position],
+        tabFor,
+      ),
     );
   const screens = template.tv?.length ?? 0;
   if (screens) await saveTv(sql, tenantId, dashboardId, remapTv(template.tv!, cardFor));
@@ -327,6 +391,7 @@ export async function applyTemplateToDashboard(
     cards: template.widgets.length,
     withVariable: tagFor.filter(Boolean).length,
     screens,
+    tabs: template.tabs?.length ?? 0,
   };
 }
 

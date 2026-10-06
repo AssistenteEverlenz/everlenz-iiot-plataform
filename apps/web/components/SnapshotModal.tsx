@@ -179,8 +179,8 @@ export function SnapshotModal({
           <section className="snapshot-section">
             <strong>Modelo de painel</strong>
             <p className="shifts-help">
-              Os próximos equipamentos cadastrados começam com os cards deste painel, sem
-              variável: cada card recebe a variável pelo lápis.
+              Os próximos equipamentos cadastrados começam com os cards e as abas deste painel,
+              sem variável: cada card recebe a variável pelo lápis.
             </p>
             <button
               type="button"
@@ -197,7 +197,7 @@ export function SnapshotModal({
               Usar este painel como modelo
             </button>
             <p className="shifts-help">
-              Ou traga o modelo para este painel: os cards e a TV passam a ser os do modelo. Cada
+              Ou traga o modelo para este painel: os cards, as abas e a TV passam a ser os do modelo. Cada
               card mantém a variável do card do mesmo tipo que já estava aqui; os outros recebem a
               variável pelo lápis. Um snapshot do painel é salvo antes.
             </p>
@@ -205,7 +205,7 @@ export function SnapshotModal({
               type="button"
               disabled={Boolean(busy)}
               onClick={() => {
-                if (!window.confirm('Trocar os cards e a TV deste painel pelos do modelo?')) return;
+                if (!window.confirm('Trocar os cards, as abas e a TV deste painel pelos do modelo?')) return;
                 void run(
                   'load',
                   async () => {
