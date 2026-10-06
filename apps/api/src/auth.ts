@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { recordLogin } from './usage.js';
 import { randomBytes } from 'node:crypto';
 import type { Database, SqlExecutor } from '@iiot/database';
 import { recordAudit } from './audit.js';
@@ -332,6 +333,7 @@ export function registerAuthRoutes(
       access.clearLoginAttempts(accountKey);
       const persistent = body.remember ?? false;
       const token = await access.createSession(user.id, request, persistent);
+      await recordLogin(db, user, request, persistent);
       await db.query(
         'UPDATE app_users SET last_login_at=now(),failed_attempts=0,locked_until=NULL WHERE id=$1',
         [user.id],

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useUsageBeat } from './useUsageBeat';
 import { NavIcon, type NavIconName } from './NavIcon';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -150,6 +151,9 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [pathname, router, session]);
+
+  // The master's usage page counts the minutes each person has the platform on screen.
+  useUsageBeat(Boolean(session) && pathname !== '/login', pathname);
 
   const style = useMemo(
     () =>

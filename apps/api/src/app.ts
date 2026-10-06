@@ -11,6 +11,7 @@ import { recordAudit } from './audit.js';
 import { publishCommand, type CommandPublisher } from './commands.js';
 import { registerProductionRoutes } from './production.js';
 import { registerShiftProductionRoutes, scheduleProductionRebuild } from './shift-production.js';
+import { registerUsageRoutes } from './usage.js';
 import { registerWearRoutes } from './wear.js';
 import { registerMortarRoutes } from './mortar.js';
 import { registerMortarBoardRoutes } from './mortar-board.js';
@@ -773,6 +774,7 @@ export async function createApp(
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
   registerTvRoutes(app, db, access);
+  registerUsageRoutes(app, db, access);
   registerOperationTvRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);

@@ -3,6 +3,9 @@
 import { useMemo, useState } from 'react';
 import { mutate, time, usePoll, type Device } from '../../components/data';
 import { ActionModal } from '../../components/ActionModal';
+import Link from 'next/link';
+import { ModalPortal } from '../../components/ModalPortal';
+import { UserUsageModal } from '../../components/UsageViews';
 
 interface ManagedUser {
   id: string;
@@ -46,6 +49,9 @@ export default function UsersPage() {
     user: ManagedUser;
   } | null>(null);
   const [query, setQuery] = useState('');
+  // Whose use of the platform is open, and over how many days.
+  const [usageOf, setUsageOf] = useState<string | null>(null);
+  const [usageDays, setUsageDays] = useState(30);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
   const [deviceFilter, setDeviceFilter] = useState('');
   const [ceramicQuery, setCeramicQuery] = useState('');
@@ -129,9 +135,14 @@ export default function UsersPage() {
           <h1>Usuários e acessos</h1>
           <p>Defina quem entra na plataforma e quais equipamentos cada pessoa pode consultar.</p>
         </div>
-        <button className="primary-button" onClick={createUser}>
-          ＋ Novo usuário
-        </button>
+        <div className="heading-actions">
+          <Link className="secondary-button" href="/users/usage">
+            Uso da plataforma
+          </Link>
+          <button className="primary-button" onClick={createUser}>
+            ＋ Novo usuário
+          </button>
+        </div>
       </div>
       {users.error && <div className="error-banner">{users.error}</div>}
       <section className="user-summary-grid">
@@ -190,8 +201,15 @@ export default function UsersPage() {
             {filteredUsers.map((user) => (
               <tr key={user.id}>
                 <td>
-                  <strong>{user.full_name}</strong>
-                  <small>{user.email}</small>
+                  <button
+                    type="button"
+                    className="usage-name"
+                    title="Ver como esta pessoa usa a plataforma"
+                    onClick={() => setUsageOf(user.id)}
+                  >
+                    <strong>{user.full_name}</strong>
+                    <small>{user.email}</small>
+                  </button>
                 </td>
                 <td>
                   <span className={`role-badge ${user.role}`}>
@@ -234,6 +252,16 @@ export default function UsersPage() {
           </tbody>
         </table>
       </section>
+      {usageOf && (
+        <ModalPortal>
+          <UserUsageModal
+            userId={usageOf}
+            days={usageDays}
+            onDays={setUsageDays}
+            onClose={() => setUsageOf(null)}
+          />
+        </ModalPortal>
+      )}
       {open && (
         <div className="modal-backdrop" onMouseDown={() => setOpen(false)}>
           <form
