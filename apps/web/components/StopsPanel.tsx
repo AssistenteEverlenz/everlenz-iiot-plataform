@@ -122,13 +122,10 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
     const worked = rows.filter((row) => row.stops > 0).length;
     const producing = time?.producing ?? 0;
     /*
-     * The stopped side is taken from the stops, not from the buckets.
-     *
-     * A bucket only exists while the equipment is talking, so the hours a line spends off the
-     * air leave no idle seconds anywhere -- and availability read from buckets alone answered
-     * 93 % for a week in which the line was silent for eighteen hours. The stops know about
-     * that time, because that is exactly what they record, so the bar, the Pareto and the
-     * availability all count the same seconds.
+     * The stopped side is the production board's own: idle, manual and offline inside the
+     * shifts, day by day, so this board and the production board never disagree on a minute.
+     * Offline counts here (a line off the air during its shift is stopped), and time outside
+     * the shifts does not count at all.
      */
     const running = producing + seconds;
     // The pace the line held, against the pace it reaches when it is going well.

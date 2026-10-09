@@ -2442,102 +2442,146 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const tenantId = access.principal(req).tenantId;
     const to = query.to ?? plantDate(new Date());
     const from = query.from ?? addDays(to, -(query.days - 1));
-
-    const byDay = await db.query<{
-      dia: string;
-      paradas: string;
-      segundos: string;
-      pausas: string;
-      segundos_pausa: string;
-      maior: string;
-    }>(
-      `SELECT production_date::text AS dia,
-              count(*) FILTER (WHERE NOT during_pause)::text AS paradas,
-              coalesce(round(sum(seconds) FILTER (WHERE NOT during_pause))::text,'0') AS segundos,
-              count(*) FILTER (WHERE during_pause)::text AS pausas,
-              coalesce(round(sum(seconds) FILTER (WHERE during_pause))::text,'0') AS segundos_pausa,
-              coalesce(round(max(seconds) FILTER (WHERE NOT during_pause))::text,'0') AS maior
-       FROM production_stops
-       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
-       GROUP BY production_date ORDER BY production_date`,
-      [tenantId, id, from, to],
-    );
-
-    const byReason = await db.query<{ state: string; paradas: string; segundos: string }>(
-      `SELECT state, count(*)::text AS paradas, coalesce(round(sum(seconds))::text,'0') AS segundos
-       FROM production_stops
-       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
-         AND NOT during_pause
-       GROUP BY state ORDER BY 2 DESC`,
-      [tenantId, id, from, to],
-    );
-
-    const longest = await db.query<{
-      started_at: Date;
-      seconds: number | null;
-      state: string;
-      product_code: string | null;
-    }>(
-      `SELECT started_at,seconds,state,product_code FROM production_stops
-       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
-         AND NOT during_pause AND seconds IS NOT NULL
-       ORDER BY seconds DESC LIMIT 10`,
-      [tenantId, id, from, to],
-    );
+    const now = new Date();
 
     /*
-     * Every stop of the window, for the detail behind each number. A count alone says the line
-     * stopped fifty-five times and nothing about which fifty-five, so the card can open the
-     * list that produced any of its figures. Capped, because a ninety-day window on a line
-     * that trips often is thousands of rows and nobody reads past the first hundreds.
+     * Only the time inside the shifts counts, exactly as on the production board: the same
+     * five-minute buckets read through the same summary, day by day over that day's shifts, so
+     * the idle, manual and offline time here are the board's to the minute. A stop is cut to
+     * the shifts too: one that began at 16h and lasted until 7h counts only its in-shift part,
+     * and one wholly outside the shifts is not a stop of the line. The stored stops are left as
+     * they happened; the cut is made when they are read, so past days come out right as well.
      */
-    const all = await db.query<{
+    const config = await loadConfig(db, tenantId, id);
+    const { shifts } = config
+      ? await loadShifts(db, tenantId, config.site_id)
+      : { shifts: DEFAULT_SHIFTS };
+    const occurrences = expandShifts(shifts, from, to);
+    const closingSeconds = config ? closingSecondsOf(config) : 0;
+    const buckets = occurrences.length
+      ? await loadBuckets(
+          db,
+          tenantId,
+          id,
+          new Date(Math.floor(occurrences[0].start.getTime() / BUCKET_MS) * BUCKET_MS),
+          new Date(Math.min(now.getTime(), occurrences.at(-1)!.end.getTime()) + BUCKET_MS),
+        )
+      : [];
+    const dates = [...new Set(occurrences.map((item) => item.productionDate))];
+    const spentByDay = new Map<string, Summary>();
+    for (const date of dates) {
+      const ofDay = occurrences.filter((item) => item.productionDate === date);
+      const span = spanOf(ofDay);
+      if (span.start > now) continue;
+      spentByDay.set(
+        date,
+        summarize(
+          buckets.filter((row) => {
+            const at = new Date(row.bucket).getTime();
+            return at >= span.start.getTime() && at < span.end.getTime();
+          }),
+          span,
+          ofDay.flatMap(productiveWindows),
+          now,
+          closingSeconds,
+        ),
+      );
+    }
+    const total = (key: 'producing' | 'idle' | 'manual' | 'offline' | 'pieces') =>
+      [...spentByDay.values()].reduce((sum, day) => sum + Number(day[key] ?? 0), 0);
+    const productive = occurrences.flatMap(productiveWindows);
+    const pauses = occurrences.flatMap((item) => item.breaks);
+
+    const raw = await db.query<{
       started_at: Date;
       ended_at: Date | null;
-      seconds: number | null;
       state: string;
       product_code: string | null;
       during_pause: boolean;
-      production_date: string;
     }>(
-      `SELECT started_at,ended_at,seconds,state,product_code,during_pause,production_date::text
-       FROM production_stops
-       WHERE tenant_id=$1 AND device_id=$2 AND production_date BETWEEN $3::date AND $4::date
-       ORDER BY started_at DESC LIMIT 1000`,
-      [tenantId, id, from, to],
+      `SELECT started_at,ended_at,state,product_code,during_pause FROM production_stops
+       WHERE tenant_id=$1 AND device_id=$2
+         AND started_at < $4 AND coalesce(ended_at,now()) > $3
+       ORDER BY started_at DESC`,
+      [
+        tenantId,
+        id,
+        occurrences[0]?.start ?? plantInstant(from, '00:00'),
+        occurrences.at(-1)?.end ?? plantInstant(addDays(to, 1), '00:00'),
+      ],
     );
+    // Each stop with the seconds it took inside the shifts (or inside a scheduled pause, for a
+    // stop that happened during one); the ones that leave nothing are not stops of the line.
+    const stops = raw.rows
+      .map((row) => {
+        const start = new Date(row.started_at);
+        const end = row.ended_at ? new Date(row.ended_at) : now;
+        const seconds = productiveSecondsIn(row.during_pause ? pauses : productive, start, end);
+        // Its day is the day of the shift it falls in, as on the board.
+        const shift = occurrences.find((item) => item.start < end && start < item.end);
+        return {
+          start,
+          end: row.ended_at ? end : null,
+          seconds: Math.round(seconds),
+          state: row.state,
+          product: row.product_code,
+          planned: row.during_pause,
+          date: shift?.productionDate ?? plantDate(start),
+        };
+      })
+      .filter((stop) => stop.seconds > 0 && stop.date >= from && stop.date <= to);
+    const failures = stops.filter((stop) => !stop.planned);
 
-    /*
-     * How the window was spent, and how fast the line goes when it is going.
-     *
-     * Availability is run time over the time the line was meant to run, which here is
-     * producing + idle + manual: the same ratio the production board calls "aproveitamento",
-     * so the two boards never disagree. The reference rate is the p95 of the full five-minute
-     * buckets -- the pace the line actually reaches on a good stretch -- because nobody ever
-     * wrote down an ideal cycle time, and a rate taken from the line itself is honest about
-     * what this line can do.
-     */
-    const spent = await db.query<{
-      producing: string | null;
-      idle: string | null;
-      manual: string | null;
-      pieces: string | null;
-      reference: string | null;
-    }>(
-      `WITH b AS (
-         SELECT * FROM production_buckets
-         WHERE tenant_id=$1 AND device_id=$2
-           AND (bucket AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $3::date AND $4::date
-       )
-       SELECT coalesce(sum(producing_s),0)::text producing,
-              coalesce(sum(idle_s),0)::text idle,
-              coalesce(sum(manual_s),0)::text manual,
-              coalesce(sum(pieces),0)::text pieces,
-              (SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY pieces*12.0)
-                 FROM b WHERE producing_s >= 285 AND pieces > 0)::text reference
-       FROM b`,
-      [tenantId, id, from, to],
-    );
+    const byDate = new Map<string, { stops: number; pauses: number; pauseSeconds: number; longest: number }>();
+    for (const stop of stops) {
+      const day = byDate.get(stop.date) ?? { stops: 0, pauses: 0, pauseSeconds: 0, longest: 0 };
+      if (stop.planned) {
+        day.pauses += 1;
+        day.pauseSeconds += stop.seconds;
+      } else {
+        day.stops += 1;
+        day.longest = Math.max(day.longest, stop.seconds);
+      }
+      byDate.set(stop.date, day);
+    }
+    const days = [...new Set([...spentByDay.keys(), ...byDate.keys()])].sort().map((date) => {
+      const spent = spentByDay.get(date);
+      const counted = byDate.get(date);
+      return {
+        date,
+        stops: counted?.stops ?? 0,
+        // The board's own stopped time of that day.
+        seconds: Math.round((spent?.idle ?? 0) + (spent?.manual ?? 0) + (spent?.offline ?? 0)),
+        pauses: counted?.pauses ?? 0,
+        pauseSeconds: counted?.pauseSeconds ?? 0,
+        longestSeconds: counted?.longest ?? 0,
+      };
+    });
+
+    // Each reason: how many times from the stops, how long from the board's own time.
+    const seconds: Record<string, number> = {
+      idle: total('idle'),
+      manual: total('manual'),
+      offline: total('offline'),
+    };
+    const reasons = (['idle', 'manual', 'offline'] as const)
+      .map((state) => ({
+        state,
+        stops: failures.filter((stop) => stop.state === state).length,
+        seconds: Math.round(seconds[state]),
+      }))
+      .filter((reason) => reason.stops > 0 || reason.seconds > 0)
+      .sort((a, b) => b.stops - a.stops);
+
+    // The pace the line reaches on a good five minutes, inside the shifts only.
+    const full = buckets
+      .filter((row) => Number(row.producing_s) >= 285 && Number(row.pieces) > 0)
+      .filter((row) => productiveSecondsIn(productive, new Date(row.bucket), new Date(new Date(row.bucket).getTime() + BUCKET_MS)) > 0)
+      .map((row) => Number(row.pieces) * 12)
+      .sort((a, b) => a - b);
+    const reference = full.length
+      ? full[Math.min(full.length - 1, Math.floor(0.95 * (full.length - 1)))]
+      : null;
 
     const planned = await db.query<{ seconds: string | null; reports: string }>(
       `SELECT coalesce(sum(planned_seconds),0)::text seconds, count(*)::text reports
@@ -2546,51 +2590,43 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
          AND production_date BETWEEN $3::date AND $4::date`,
       [tenantId, id, from, to],
     );
-
-    const spentRow = spent.rows[0];
     const plannedRow = planned.rows[0];
 
     return {
       from,
       to,
       time: {
-        producing: Number(spentRow?.producing ?? 0),
-        idle: Number(spentRow?.idle ?? 0),
-        manual: Number(spentRow?.manual ?? 0),
-        pieces: Number(spentRow?.pieces ?? 0),
+        producing: Math.round(total('producing')),
+        idle: Math.round(total('idle')),
+        manual: Math.round(total('manual')),
+        offline: Math.round(total('offline')),
+        pieces: total('pieces'),
         // Pieces per hour the line reaches on a good five minutes; null until there is one.
-        reference: spentRow?.reference == null ? null : Number(spentRow.reference),
+        reference,
         plannedSeconds: Number(plannedRow?.seconds ?? 0),
         reports: Number(plannedRow?.reports ?? 0),
       },
-      all: all.rows.map((row) => ({
-        startedAt: new Date(row.started_at).toISOString(),
-        endedAt: row.ended_at ? new Date(row.ended_at).toISOString() : null,
-        seconds: row.seconds == null ? null : Number(row.seconds),
-        state: row.state,
-        product: row.product_code,
-        planned: row.during_pause,
-        date: row.production_date,
+      // Capped: a ninety-day window on a line that trips often is thousands of rows.
+      all: stops.slice(0, 1000).map((stop) => ({
+        startedAt: stop.start.toISOString(),
+        endedAt: stop.end ? stop.end.toISOString() : null,
+        seconds: stop.seconds,
+        state: stop.state,
+        product: stop.product,
+        planned: stop.planned,
+        date: stop.date,
       })),
-      days: byDay.rows.map((row) => ({
-        date: row.dia,
-        stops: Number(row.paradas),
-        seconds: Number(row.segundos),
-        pauses: Number(row.pausas),
-        pauseSeconds: Number(row.segundos_pausa),
-        longestSeconds: Number(row.maior),
-      })),
-      reasons: byReason.rows.map((row) => ({
-        state: row.state,
-        stops: Number(row.paradas),
-        seconds: Number(row.segundos),
-      })),
-      longest: longest.rows.map((row) => ({
-        startedAt: new Date(row.started_at).toISOString(),
-        seconds: Number(row.seconds),
-        state: row.state,
-        product: row.product_code,
-      })),
+      days,
+      reasons,
+      longest: [...failures]
+        .sort((a, b) => b.seconds - a.seconds)
+        .slice(0, 10)
+        .map((stop) => ({
+          startedAt: stop.start.toISOString(),
+          seconds: stop.seconds,
+          state: stop.state,
+          product: stop.product,
+        })),
     };
   });
 
