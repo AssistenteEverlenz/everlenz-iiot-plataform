@@ -15,6 +15,7 @@ import { registerUsageRoutes } from './usage.js';
 import { registerWearRoutes } from './wear.js';
 import { registerMortarRoutes } from './mortar.js';
 import { registerMortarBoardRoutes } from './mortar-board.js';
+import { registerMortarHistoryRoutes } from './mortar-history.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
 import { registerTvRoutes } from './tv-screens.js';
@@ -771,6 +772,7 @@ export async function createApp(
   registerWearRoutes(app, db, access);
   registerMortarRoutes(app, db, access);
   registerMortarBoardRoutes(app, db, access);
+  registerMortarHistoryRoutes(app, db, access);
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
   registerTvRoutes(app, db, access);

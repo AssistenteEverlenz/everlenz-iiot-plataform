@@ -338,8 +338,8 @@ export async function seedMortarDemo(db: Database, tenantId: string, days = 30) 
     ],
   });
 
-  // A target of 6.000 bags per shift, and what a ton of each material costs.
-  await call('PATCH', `/api/devices/${deviceId}/mortar/target`, { metric: 'bags', perShift: 6000 });
+  // A target of 4.800 bags per shift: some days beat it, some do not, and what a ton of each material costs.
+  await call('PATCH', `/api/devices/${deviceId}/mortar/target`, { metric: 'bags', perShift: 4800 });
   await call('PUT', '/api/mortar/prices', {
     prices: [
       { label: 'Areia', pricePerTon: 95 },

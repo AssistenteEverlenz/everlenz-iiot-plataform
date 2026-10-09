@@ -18,6 +18,7 @@ import {
   type DetailData,
 } from '../../components/ShiftDetailModal';
 import { usePlatform } from '../../components/PlatformShell';
+import { MortarProduction } from '../../components/MortarProduction';
 import { mutate, usePoll, type Device } from '../../components/data';
 import {
   duration,
@@ -602,6 +603,8 @@ function ProductionPage() {
     );
   }
 
+  // A mortar line has its own production page: bags, spouts, mix and stock, by day, week or month.
+  if (device?.site_segment === 'argamassa') return <MortarProduction initialLine={device.id} />;
   return (
     <>
       <div className="heading">
@@ -760,56 +763,56 @@ function ProductionPage() {
               <span className="detail-spinner" aria-label="Carregando" />
             </div>
           ) : (
-          <div className="goal-days">
-            {Array.from({ length: goalLead }, (_, index) => (
-              <span key={`blank-${index}`} className="goal-day blank" />
-            ))}
-            {goalDays.map((day) => {
-              const unit = day.metric ? metricInfo[day.metric] : null;
-              const amounts =
-                unit && day.ratio != null
-                  ? `${formatNumber(day.achieved, unit.decimals)} de ${formatNumber(day.target, unit.decimals)} ${unit.unit}`
-                  : null;
-              const label =
-                day.status === 'none'
-                  ? 'sem turno registrado'
-                  : amounts
-                    ? `${amounts} (${formatNumber((day.ratio ?? 0) * 100)}%)`
-                    : 'sem meta';
-              return (
-                <div
-                  key={day.date}
-                  className="goal-day"
-                  data-goal={day.status}
-                  // Big cards already show the numbers; small squares show them on hover.
-                  title={
-                    goalSize === 'large'
-                      ? `${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`
-                      : undefined
-                  }
-                  data-tip={
-                    goalSize === 'large'
-                      ? undefined
-                      : `${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`
-                  }
-                >
-                  {goalSize === 'large' ? (
-                    <>
-                      <span className="goal-date">
-                        {WEEKDAYS[weekdayOf(day.date)]} {brDate(day.date).slice(0, 5)}
-                      </span>
-                      <b>{day.ratio == null ? '—' : `${formatNumber(day.ratio * 100)}%`}</b>
-                      <small>
-                        {amounts ?? (day.status === 'none' ? 'sem turno' : 'sem meta')}
-                      </small>
-                    </>
-                  ) : goalSize === 'medium' ? (
-                    <span>{Number(day.date.slice(8))}</span>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+            <div className="goal-days">
+              {Array.from({ length: goalLead }, (_, index) => (
+                <span key={`blank-${index}`} className="goal-day blank" />
+              ))}
+              {goalDays.map((day) => {
+                const unit = day.metric ? metricInfo[day.metric] : null;
+                const amounts =
+                  unit && day.ratio != null
+                    ? `${formatNumber(day.achieved, unit.decimals)} de ${formatNumber(day.target, unit.decimals)} ${unit.unit}`
+                    : null;
+                const label =
+                  day.status === 'none'
+                    ? 'sem turno registrado'
+                    : amounts
+                      ? `${amounts} (${formatNumber((day.ratio ?? 0) * 100)}%)`
+                      : 'sem meta';
+                return (
+                  <div
+                    key={day.date}
+                    className="goal-day"
+                    data-goal={day.status}
+                    // Big cards already show the numbers; small squares show them on hover.
+                    title={
+                      goalSize === 'large'
+                        ? `${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`
+                        : undefined
+                    }
+                    data-tip={
+                      goalSize === 'large'
+                        ? undefined
+                        : `${WEEKDAYS[weekdayOf(day.date)]} ${brDate(day.date)} · ${label}`
+                    }
+                  >
+                    {goalSize === 'large' ? (
+                      <>
+                        <span className="goal-date">
+                          {WEEKDAYS[weekdayOf(day.date)]} {brDate(day.date).slice(0, 5)}
+                        </span>
+                        <b>{day.ratio == null ? '—' : `${formatNumber(day.ratio * 100)}%`}</b>
+                        <small>
+                          {amounts ?? (day.status === 'none' ? 'sem turno' : 'sem meta')}
+                        </small>
+                      </>
+                    ) : goalSize === 'medium' ? (
+                      <span>{Number(day.date.slice(8))}</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </section>
       )}
@@ -1006,12 +1009,7 @@ function ProductionPage() {
         />
       )}
       {detail && deviceId && (
-        <DetailModal
-          deviceId={deviceId}
-          row={detail}
-          view={view}
-          onClose={() => setDetail(null)}
-        />
+        <DetailModal deviceId={deviceId} row={detail} view={view} onClose={() => setDetail(null)} />
       )}
       {editingConfig && device && (
         <ProductionConfigModal
@@ -1308,7 +1306,10 @@ function DetailModal({
     shown.open ? 30000 : 600000,
   );
   // Hour by hour and pallet by pallet of this very shift, the same charts the board opens.
-  const window = shown.start && shown.end ? `&from=${encodeURIComponent(shown.start)}&to=${encodeURIComponent(shown.end)}` : '';
+  const window =
+    shown.start && shown.end
+      ? `&from=${encodeURIComponent(shown.start)}&to=${encodeURIComponent(shown.end)}`
+      : '';
   const liveKeys = formulaKeys(config.data?.calculated ?? []);
   const liveCharts = usePoll<DetailData>(
     live
@@ -1332,11 +1333,15 @@ function DetailModal({
       >
         <div className="modal-title">
           <div>
-            <div className="eyebrow">{shownView === 'day' ? 'DIA DE PRODUÇÃO' : 'TURNO DE PRODUÇÃO'}</div>
+            <div className="eyebrow">
+              {shownView === 'day' ? 'DIA DE PRODUÇÃO' : 'TURNO DE PRODUÇÃO'}
+            </div>
             <h2>
               {brDate(shown.date)}
               {shownView === 'day' ? '' : ` · ${shown.shift}`}
-              {shown.start && shownView !== 'day' ? ` · ${clockOf(shown.start)}–${clockOf(shown.end)}` : ''}
+              {shown.start && shownView !== 'day'
+                ? ` · ${clockOf(shown.start)}–${clockOf(shown.end)}`
+                : ''}
             </h2>
           </div>
           <button type="button" className="icon-button" onClick={onClose}>
@@ -1365,100 +1370,107 @@ function DetailModal({
         )}
         {!detail.data ? (
           <div className="production-detail-loading">
-            {detail.error ? <p>{detail.error}</p> : <span className="detail-spinner" aria-label="Carregando" />}
+            {detail.error ? (
+              <p>{detail.error}</p>
+            ) : (
+              <span className="detail-spinner" aria-label="Carregando" />
+            )}
           </div>
         ) : (
           <>
-        <div className="production-detail-summary">
-          <div>
-            <span>Milheiros</span>
-            <b>{formatNumber(shown.milheiros, 2)}</b>
-          </div>
-          <div>
-            <span>Peças</span>
-            <b>{formatNumber(shown.pieces)}</b>
-          </div>
-          <div>
-            <span>Paletes</span>
-            <b>{formatNumber(shown.pallets)}</b>
-          </div>
-          <div>
-            <span>Toneladas</span>
-            <b>{formatNumber(shown.tons, 1)}</b>
-          </div>
-          <div>
-            <span>Meta</span>
-            <b>
-              {shown.target && shown.targetMetric
-                ? `${formatNumber(shown.target, metricInfo[shown.targetMetric].decimals)} ${metricInfo[shown.targetMetric].unit}`
-                : '—'}
-            </b>
-          </div>
-          <div>
-            <span>% da meta</span>
-            <b>{reached == null ? '—' : `${formatNumber(reached * 100)}%`}</b>
-          </div>
-          <div>
-            <span>Aproveitamento</span>
-            <b>{machine == null ? '—' : `${formatNumber(machine * 100)}%`}</b>
-          </div>
-          <div>
-            <span>Tempo planejado</span>
-            <b>{shown.planned ? duration(shown.planned) : '—'}</b>
-          </div>
-        </div>
-        <div className="production-detail-products">
-          <div className="shift-section-title">Produtos</div>
-          {products.length ? (
-            <table className="production-table">
-              <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th className="numeric">Milheiros</th>
-                  <th className="numeric">Peças</th>
-                  <th className="numeric">Paletes</th>
-                  <th className="numeric">Toneladas</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.product_code}>
-                    <td>{product.product_code}</td>
-                    <td className="numeric">{formatNumber(product.pieces / 1000, 2)}</td>
-                    <td className="numeric">{formatNumber(product.pieces)}</td>
-                    <td className="numeric">{formatNumber(product.pallets)}</td>
-                    <td className="numeric">{formatNumber(Number(product.tons), 1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="shifts-help">Sem produção registrada.</p>
-          )}
-        </div>
-        {row.offShift && (
-          <p className="shifts-help">
-            Fora de turno: o quadro abaixo mostra o dia inteiro, e os totais acima só o que foi
-            produzido fora dos turnos.
-          </p>
-        )}
-        <ShiftBoardView
-          data={detail.data}
-          deviceId={deviceId}
-          historical
-          minuteSeries={stored?.minutes}
-          calculated={photoCalculated(stored?.calculated ?? config.data?.calculated ?? [], stored)}
-          calculatedSettings={stored?.calculated ?? config.data?.calculated ?? []}
-          detailWindow={photoWindow(stored)}
-        />
-        <div className="production-detail-charts">
-          <div className="shift-section-title">Como foi a produção</div>
-          <ShiftDetailCharts
-            data={charts.data}
-            focus="produced"
-            calculated={stored?.calculated ?? config.data?.calculated ?? []}
-          />
-        </div>
+            <div className="production-detail-summary">
+              <div>
+                <span>Milheiros</span>
+                <b>{formatNumber(shown.milheiros, 2)}</b>
+              </div>
+              <div>
+                <span>Peças</span>
+                <b>{formatNumber(shown.pieces)}</b>
+              </div>
+              <div>
+                <span>Paletes</span>
+                <b>{formatNumber(shown.pallets)}</b>
+              </div>
+              <div>
+                <span>Toneladas</span>
+                <b>{formatNumber(shown.tons, 1)}</b>
+              </div>
+              <div>
+                <span>Meta</span>
+                <b>
+                  {shown.target && shown.targetMetric
+                    ? `${formatNumber(shown.target, metricInfo[shown.targetMetric].decimals)} ${metricInfo[shown.targetMetric].unit}`
+                    : '—'}
+                </b>
+              </div>
+              <div>
+                <span>% da meta</span>
+                <b>{reached == null ? '—' : `${formatNumber(reached * 100)}%`}</b>
+              </div>
+              <div>
+                <span>Aproveitamento</span>
+                <b>{machine == null ? '—' : `${formatNumber(machine * 100)}%`}</b>
+              </div>
+              <div>
+                <span>Tempo planejado</span>
+                <b>{shown.planned ? duration(shown.planned) : '—'}</b>
+              </div>
+            </div>
+            <div className="production-detail-products">
+              <div className="shift-section-title">Produtos</div>
+              {products.length ? (
+                <table className="production-table">
+                  <thead>
+                    <tr>
+                      <th>Produto</th>
+                      <th className="numeric">Milheiros</th>
+                      <th className="numeric">Peças</th>
+                      <th className="numeric">Paletes</th>
+                      <th className="numeric">Toneladas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.map((product) => (
+                      <tr key={product.product_code}>
+                        <td>{product.product_code}</td>
+                        <td className="numeric">{formatNumber(product.pieces / 1000, 2)}</td>
+                        <td className="numeric">{formatNumber(product.pieces)}</td>
+                        <td className="numeric">{formatNumber(product.pallets)}</td>
+                        <td className="numeric">{formatNumber(Number(product.tons), 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="shifts-help">Sem produção registrada.</p>
+              )}
+            </div>
+            {row.offShift && (
+              <p className="shifts-help">
+                Fora de turno: o quadro abaixo mostra o dia inteiro, e os totais acima só o que foi
+                produzido fora dos turnos.
+              </p>
+            )}
+            <ShiftBoardView
+              data={detail.data}
+              deviceId={deviceId}
+              historical
+              minuteSeries={stored?.minutes}
+              calculated={photoCalculated(
+                stored?.calculated ?? config.data?.calculated ?? [],
+                stored,
+              )}
+              calculatedSettings={stored?.calculated ?? config.data?.calculated ?? []}
+              detailWindow={photoWindow(stored)}
+            />
+            <div className="production-detail-charts">
+              <div className="shift-section-title">Como foi a produção</div>
+              <ShiftDetailCharts
+                data={charts.data}
+                focus="produced"
+                calculated={stored?.calculated ?? config.data?.calculated ?? []}
+              />
+            </div>
           </>
         )}
       </div>
