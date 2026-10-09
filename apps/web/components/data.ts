@@ -209,6 +209,27 @@ export interface DashboardTab {
   name: string;
   position: number;
 }
+/*
+ * The first answers a screen is still waiting for. Each usePoll counts here until its first
+ * request comes back (with data or with an error), so the shell can cover a page whose fields
+ * are drawn but whose numbers have not arrived yet, instead of showing zeros on a slow network.
+ * Later refreshes never count: only the first load of each poll does.
+ */
+const firstLoads = new Set<symbol>();
+const loadListeners = new Set<() => void>();
+function notifyLoads() {
+  for (const listener of loadListeners) listener();
+}
+export function subscribeFirstLoads(listener: () => void) {
+  loadListeners.add(listener);
+  return () => {
+    loadListeners.delete(listener);
+  };
+}
+export function firstLoadsPending() {
+  return firstLoads.size;
+}
+
 export function usePoll<T>(path: string | null, intervalMs = 5000) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState<string | null>(null);
@@ -241,17 +262,26 @@ export function usePoll<T>(path: string | null, intervalMs = 5000) {
     let disposed = false;
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const token = Symbol(path);
+    firstLoads.add(token);
+    notifyLoads();
+    const loaded = () => {
+      if (firstLoads.delete(token)) notifyLoads();
+    };
     // A tab nobody is looking at stops polling and catches up the moment it is shown again:
     // forgotten tabs each counted as a full client against the database transfer allowance.
     let paused = false;
     const tick = async () => {
       if (document.hidden) {
         paused = true;
+        // A hidden tab is not waited for: nobody is looking at the loader either.
+        loaded();
         return;
       }
       const started = Date.now();
       controller = new AbortController();
       await refresh(controller.signal);
+      loaded();
       if (!disposed)
         timer = setTimeout(() => void tick(), Math.max(0, intervalMs - (Date.now() - started)));
     };
@@ -264,6 +294,7 @@ export function usePoll<T>(path: string | null, intervalMs = 5000) {
     void tick();
     return () => {
       disposed = true;
+      loaded();
       document.removeEventListener('visibilitychange', wake);
       controller?.abort();
       if (timer) clearTimeout(timer);

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useUsageBeat } from './useUsageBeat';
+import { PageLoader } from './PageLoader';
 import { NavIcon, type NavIconName } from './NavIcon';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -265,6 +266,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
           {children}
+          {/* Covers the page until its first numbers arrive (slow networks). */}
+          <PageLoader pathname={pathname} branding={branding} />
         </main>
         <nav className="bottom-navigation">
           {bottomNavigation.map((item, index) => (

@@ -11954,3 +11954,41 @@ button.mortar-spout:hover .mortar-spout-open {
   .user-row td[data-label='Último acesso'] { text-align: right; }
   .usage-actions { flex-wrap: wrap; }
 }
+
+/* A page still waiting for its first numbers: covered, with the white label's spinner and a
+   line about what is being read. Beside the sidebar, never over it. */
+.page-loader {
+  position: fixed;
+  inset: 0 0 0 var(--sidebar-width, 0);
+  z-index: 40;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 40%, #e2f3ef, #f2f5f6 42%);
+  text-align: center;
+  animation: page-loader-in 0.2s ease;
+}
+.page-loader strong {
+  max-width: 360px;
+  color: #4d6770;
+  font-size: 14px;
+  font-weight: 500;
+  animation: page-loader-line 0.35s ease;
+}
+@keyframes page-loader-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes page-loader-line {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 700px) {
+  .page-loader { left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-loader,
+  .page-loader strong { animation: none; }
+}
