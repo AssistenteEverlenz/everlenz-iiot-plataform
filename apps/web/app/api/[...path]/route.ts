@@ -3,16 +3,20 @@ import { clientAddressHeaders, sessionCookie } from '../../../lib/session';
 import { originAllowed } from '../../../lib/origin';
 
 const allowed =
-  /^(?:health|overview|operations\/(?:overview|settings|tv)|tenants|sites(?:\/[0-9a-f-]+\/(?:shifts|location|segment))?|devices(?:\/[0-9a-f-]+(?:\/(?:location|operation-card|raw-capture|tags(?:\/[0-9a-f-]+\/(?:history|hmi-check|decimals))?|latest|signals|statistics|mqtt-credential|production-context|production-settings|production-overview|hidden-products|legacy-attempts|legacy-allow|production-config|production-days|production-detail|production-median|production-photo|production-target|production-utilization|recipes|weights|mortar(?:\/(?:settings|board|detail|target|lots|utilization|days))?|maintenance|wear|stops|shift-board|shift-detail|shift-minutes|shift-reports(?:\/(?:snapshot|recalculate))?))?)?|mortar\/(?:products(?:\/[0-9a-f-]+)?|recipes|prices|lines|history|stock-opening)|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|counters|template(?:\/apply)?|tv(?:\/apply-template)?|snapshots(?:\/[0-9a-f-]+\/restore)?|tabs(?:\/[0-9a-f-]+)?|widgets(?:\/[0-9a-f-]+(?:\/reset-counter)?)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?|usage\/(?:beat|overview|users\/[0-9a-f-]+))$/;
+  /^(?:health|overview|operations\/(?:overview|settings|tv)|tenants|sites(?:\/[0-9a-f-]+\/(?:shifts|location|segment))?|devices(?:\/[0-9a-f-]+(?:\/(?:location|operation-card|raw-capture|tags(?:\/[0-9a-f-]+\/(?:history|hmi-check|decimals))?|latest|signals|statistics|mqtt-credential|production-context|production-settings|production-overview|hidden-products|legacy-attempts|legacy-allow|production-config|production-days|production-detail|production-median|production-photo|production-target|production-utilization|recipes|weights|mortar(?:\/(?:settings|board|detail|target|lots|utilization|days))?|maintenance|wear|stops|briefing|shift-board|shift-detail|shift-minutes|shift-reports(?:\/(?:snapshot|recalculate))?))?)?|mortar\/(?:products(?:\/[0-9a-f-]+)?|recipes|prices|lines|history|stock-opening)|telemetry|mqtt\/(?:raw|topics)|dashboards(?:\/[0-9a-f-]+(?:\/(?:layout|statistics|counters|template(?:\/apply)?|tv(?:\/apply-template)?|snapshots(?:\/[0-9a-f-]+\/restore)?|tabs(?:\/[0-9a-f-]+)?|widgets(?:\/[0-9a-f-]+(?:\/reset-counter)?)?))?)?|export\/telemetry\.csv|users(?:\/[0-9a-f-]+(?:\/reset-password)?)?|branding(?:\/public)?|usage\/(?:beat|overview|users\/[0-9a-f-]+)|users\/[0-9a-f-]+\/whatsapp-(?:test|messages)|n8n\/production-messages\/(?:next|[0-9a-f-]+\/result))$/;
 
 async function forward(request: NextRequest, params: Promise<{ path: string[] }>) {
   const path = (await params).path.join('/');
   if (!allowed.test(path)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (request.method !== 'GET' && !originAllowed(request))
+  // n8n calls from its own server with its key, never with a browser session: no cookie is
+  // forwarded and the browser origin check does not apply.
+  const machine = path.startsWith('n8n/');
+  if (request.method !== 'GET' && !machine && !originAllowed(request))
     return NextResponse.json({ error: 'Origin not allowed' }, { status: 403 });
   const base = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001';
   const body = request.method === 'GET' ? undefined : await request.text();
-  const token = request.cookies.get(sessionCookie)?.value;
+  const token = machine ? undefined : request.cookies.get(sessionCookie)?.value;
+  const n8nKey = machine ? request.headers.get('x-n8n-key') : null;
   try {
     const result = await fetch(
       `${base}/${path === 'health' ? 'health' : `api/${path}`}${request.nextUrl.search}`,
@@ -24,6 +28,7 @@ async function forward(request: NextRequest, params: Promise<{ path: string[] }>
             ? { 'content-type': request.headers.get('content-type') ?? 'application/json' }
             : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(n8nKey ? { 'x-n8n-key': n8nKey } : {}),
           ...clientAddressHeaders(request),
         },
         cache: 'no-store',

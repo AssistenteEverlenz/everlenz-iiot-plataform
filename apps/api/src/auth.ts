@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { recordLogin } from './usage.js';
+import { N8N_ROUTES, normalizePhone } from './production-messages.js';
 import { randomBytes } from 'node:crypto';
 import type { Database, SqlExecutor } from '@iiot/database';
 import { recordAudit } from './audit.js';
@@ -76,7 +77,13 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
     string,
     { count: number; startedAt: number; blockedUntil: number }
   >();
-  const publicRoutes = new Set(['/health', '/api/auth/login', '/api/branding/public']);
+  // n8n's routes carry their own key (production-messages.ts) instead of a session.
+  const publicRoutes = new Set([
+    '/health',
+    '/api/auth/login',
+    '/api/branding/public',
+    ...N8N_ROUTES,
+  ]);
 
   function principal(request: FastifyRequest): Principal {
     const authenticated = principals.get(request);
@@ -432,7 +439,9 @@ export function registerAuthRoutes(
     async () =>
       (
         await db.query(
-          'SELECT product_name,subtitle,logo_url,primary_color,accent_color FROM tenant_branding ORDER BY tenant_id LIMIT 1',
+          `SELECT product_name,subtitle,logo_url,primary_color,accent_color,
+             coalesce((to_jsonb(b)->>'briefing_enabled')::boolean,true) briefing_enabled
+           FROM tenant_branding b ORDER BY tenant_id LIMIT 1`,
         )
       ).rows[0],
   );
@@ -463,8 +472,15 @@ export function registerAuthRoutes(
           .optional(),
         primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
         accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+        // Resumo da operação when a panel opens (migration 043).
+        briefingEnabled: z.boolean().optional(),
       })
       .parse(request.body);
+    if (body.briefingEnabled !== undefined)
+      await db.query('UPDATE tenant_branding SET briefing_enabled=$2 WHERE tenant_id=$1', [
+        current.tenantId,
+        body.briefingEnabled,
+      ]);
     return (
       await db.query(
         `UPDATE tenant_branding SET product_name=$2,subtitle=$3,logo_url=$4,primary_color=$5,accent_color=$6,updated_at=now()
@@ -487,6 +503,8 @@ export function registerAuthRoutes(
     return (
       await db.query(
         `SELECT u.id,u.email,u.full_name,u.role,u.status,u.must_change_password,u.can_log_measurements,u.last_login_at,u.created_at,u.updated_at,
+          -- Read through jsonb: the list keeps working before migration 043 is applied.
+          to_jsonb(u)->>'phone' phone,coalesce((to_jsonb(u)->>'whatsapp_daily')::boolean,false) whatsapp_daily,
           COALESCE(array_agg(a.device_id) FILTER(WHERE a.device_id IS NOT NULL),'{}') device_ids
          FROM app_users u LEFT JOIN user_device_access a ON a.user_id=u.id AND a.tenant_id=u.tenant_id
          WHERE u.tenant_id=$1 GROUP BY u.id ORDER BY u.role='master' DESC,u.full_name,u.id`,
@@ -499,6 +517,9 @@ export function registerAuthRoutes(
     if (!access.requireMaster(request, reply)) return;
     const current = access.principal(request);
     const body = userMutationSchema.parse(request.body);
+    const phone = normalizePhone(body.phone);
+    if (body.phone && !phone)
+      return reply.code(400).send({ error: 'Telefone inválido: use DDD + número.' });
     const duplicate = await db.query('SELECT 1 FROM app_users WHERE lower(email)=lower($1)', [
       body.email,
     ]);
@@ -509,9 +530,10 @@ export function registerAuthRoutes(
     const passwordHash = await hashPassword(initialPassword);
     const user = await db.transaction(async (sql) => {
       const created = await sql.query<{ id: string } & Record<string, unknown>>(
-        `INSERT INTO app_users(tenant_id,email,full_name,role,status,password_hash,must_change_password,can_log_measurements,created_by)
-         VALUES($1,lower($2),$3,'user',$4,$5,true,$6,$7)
-         RETURNING id,email,full_name,role,status,must_change_password,can_log_measurements,created_at`,
+        `INSERT INTO app_users(tenant_id,email,full_name,role,status,password_hash,must_change_password,can_log_measurements,created_by,
+           phone,whatsapp_daily,whatsapp_since)
+         VALUES($1,lower($2),$3,'user',$4,$5,true,$6,$7,$8,$9,CASE WHEN $9 THEN now() END)
+         RETURNING id,email,full_name,role,status,must_change_password,can_log_measurements,created_at,phone,whatsapp_daily`,
         [
           current.tenantId,
           body.email.trim(),
@@ -520,6 +542,8 @@ export function registerAuthRoutes(
           passwordHash,
           body.canLogMeasurements,
           current.id,
+          phone ?? null,
+          Boolean(phone && body.whatsappDaily),
         ],
       );
       await replaceDeviceAccess(sql, current.tenantId, created.rows[0].id, body.deviceIds);
@@ -545,6 +569,9 @@ export function registerAuthRoutes(
     const current = access.principal(request);
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const body = userMutationSchema.partial().parse(request.body);
+    const phone = body.phone === undefined ? undefined : normalizePhone(body.phone);
+    if (body.phone && !phone)
+      return reply.code(400).send({ error: 'Telefone inválido: use DDD + número.' });
     const target = await db.query<{ role: 'master' | 'user' }>(
       'SELECT role FROM app_users WHERE tenant_id=$1 AND id=$2',
       [current.tenantId, id],
@@ -565,9 +592,13 @@ export function registerAuthRoutes(
       const updated = await sql.query(
         `UPDATE app_users SET email=COALESCE(lower($3),email),full_name=COALESCE($4,full_name),
          status=COALESCE($5,status),can_log_measurements=COALESCE($6,can_log_measurements),
+         phone=CASE WHEN $7 THEN $8 ELSE phone END,
+         whatsapp_since=CASE WHEN COALESCE($9,whatsapp_daily) AND NOT whatsapp_daily THEN now()
+           ELSE whatsapp_since END,
+         whatsapp_daily=CASE WHEN $7 AND $8::text IS NULL THEN false ELSE COALESCE($9,whatsapp_daily) END,
          updated_at=now() WHERE tenant_id=$1 AND id=$2
          RETURNING id,email,full_name,role,status,must_change_password,can_log_measurements,
-           last_login_at,created_at,updated_at`,
+           last_login_at,created_at,updated_at,phone,whatsapp_daily`,
         [
           current.tenantId,
           id,
@@ -575,6 +606,9 @@ export function registerAuthRoutes(
           body.fullName?.trim() ?? null,
           body.status ?? null,
           body.canLogMeasurements ?? null,
+          phone !== undefined,
+          phone ?? null,
+          body.whatsappDaily ?? null,
         ],
       );
       if (body.deviceIds) await replaceDeviceAccess(sql, current.tenantId, id, body.deviceIds);
@@ -687,6 +721,9 @@ const userMutationSchema = z.object({
   deviceIds: z.array(z.uuid()).max(500).default([]),
   // Writing a brick weight backs a maintenance decision, so it is granted, not assumed.
   canLogMeasurements: z.boolean().default(false),
+  // WhatsApp daily summary (migration 043): an empty phone turns it off.
+  phone: z.string().max(30).nullable().optional(),
+  whatsappDaily: z.boolean().optional(),
 });
 
 async function validDevices(db: Database, tenantId: string, deviceIds: string[]) {

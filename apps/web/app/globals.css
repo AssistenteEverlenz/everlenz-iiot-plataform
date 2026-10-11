@@ -12572,7 +12572,7 @@ button.mortar-spout:hover .mortar-spout-open {
   animation: page-loader-in 0.18s ease;
 }
 .briefing-card {
-  width: min(560px, 100%);
+  width: min(660px, 100%);
   max-height: calc(100vh - 32px);
   overflow: auto;
   display: grid;
@@ -12625,8 +12625,8 @@ button.mortar-spout:hover .mortar-spout-open {
 .briefing-tiles span,
 .briefing-since span {
   color: #6b7f86;
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .briefing-hero strong {

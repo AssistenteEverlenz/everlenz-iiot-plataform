@@ -17,6 +17,16 @@ interface ManagedUser {
   can_log_measurements: boolean;
   last_login_at: string | null;
   device_ids: string[];
+  phone?: string | null;
+  whatsapp_daily?: boolean;
+}
+
+/** "5527999998888" as "(27) 99999-8888". */
+function phoneLabel(phone: string | null | undefined) {
+  const digits = String(phone ?? '').replace(/\D/g, '').replace(/^55/, '');
+  if (digits.length < 10) return phone ?? '';
+  const local = digits.slice(2);
+  return `(${digits.slice(0, 2)}) ${local.slice(0, local.length - 4)}-${local.slice(-4)}`;
 }
 
 interface UserForm {
@@ -25,6 +35,8 @@ interface UserForm {
   status: 'active' | 'inactive';
   deviceIds: string[];
   canLogMeasurements: boolean;
+  phone: string;
+  whatsappDaily: boolean;
 }
 
 const emptyForm: UserForm = {
@@ -33,6 +45,8 @@ const emptyForm: UserForm = {
   status: 'active',
   deviceIds: [],
   canLogMeasurements: false,
+  phone: '',
+  whatsappDaily: false,
 };
 
 export default function UsersPage() {
@@ -82,6 +96,8 @@ export default function UsersPage() {
       status: user.status,
       deviceIds: user.device_ids,
       canLogMeasurements: user.can_log_measurements,
+      phone: phoneLabel(user.phone),
+      whatsappDaily: Boolean(user.whatsapp_daily),
     });
     setError('');
     setOpen(true);
@@ -92,9 +108,11 @@ export default function UsersPage() {
     setSaving(true);
     setError('');
     try {
-      if (editing) await mutate(`/users/${editing.id}`, 'PATCH', form);
+      // An empty phone is sent as null: it removes the phone and turns the summary off.
+      const payload = { ...form, phone: form.phone.trim() || null };
+      if (editing) await mutate(`/users/${editing.id}`, 'PATCH', payload);
       else {
-        const result = await mutate<{ temporaryPassword: string }>('/users', 'POST', form);
+        const result = await mutate<{ temporaryPassword: string }>('/users', 'POST', payload);
         setCredential({ email: form.email, password: result.temporaryPassword });
       }
       setOpen(false);
@@ -278,6 +296,24 @@ export default function UsersPage() {
                   >
                     Excluir
                   </button>
+                  {user.phone && (
+                    <button
+                      type="button"
+                      title={`Enfileira o resumo de hoje até agora para ${phoneLabel(user.phone)}`}
+                      onClick={async () => {
+                        try {
+                          await mutate(`/users/${user.id}/whatsapp-test`, 'POST');
+                          window.alert(
+                            'Teste na fila. O n8n envia na próxima rodada (entre 07h e 21h, com intervalo mínimo de 3 min entre mensagens).',
+                          );
+                        } catch (reason) {
+                          window.alert(reason instanceof Error ? reason.message : 'Não foi possível enviar o teste.');
+                        }
+                      }}
+                    >
+                      Enviar teste no WhatsApp
+                    </button>
+                  )}
                 </>
               );
             })()}
@@ -330,6 +366,39 @@ export default function UsersPage() {
                   <option value="active">Ativo</option>
                   <option value="inactive">Desativado</option>
                 </select>
+              </label>
+            </div>
+            <div className="user-whatsapp">
+              <label className="field">
+                WhatsApp
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={form.phone}
+                  placeholder="(27) 99999-8888"
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      phone: event.target.value,
+                      whatsappDaily: event.target.value.trim() ? form.whatsappDaily : false,
+                    })
+                  }
+                />
+              </label>
+              <label className="user-measure-permission">
+                <input
+                  type="checkbox"
+                  checked={form.whatsappDaily}
+                  disabled={!form.phone.trim()}
+                  onChange={(event) => setForm({ ...form, whatsappDaily: event.target.checked })}
+                />
+                <span>
+                  <strong>Receber o resumo diário de produção no WhatsApp</strong>
+                  <small>
+                    Enviado quando o dia de produção fecha (com a hora extra incluída), entre 07h e
+                    21h, com os equipamentos que esta pessoa acessa.
+                  </small>
+                </span>
               </label>
             </div>
             <label className="user-measure-permission">

@@ -92,6 +92,10 @@ services:
       DEV_TENANT_ID: ${DEV_TENANT_ID:?Set the server-side tenant UUID}
       OPERATOR_RAW_ACCESS: ${OPERATOR_RAW_ACCESS:-false}
       DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-30}
+      # The WhatsApp daily summary (apps/api/src/production-messages.ts): n8n's key, and the
+      # address the message links to. Empty key = the n8n routes answer 503.
+      N8N_API_KEY: ${N8N_API_KEY:-}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://iotplataform.everlenz.com.br}
       MQTT_PROVISION_DIR: /mqtt-provision/requests
       # Equipment commands ("Zerar contador" on the PLC). Empty password = read-only platform.
       MQTT_INTERNAL_HOST: ${MQTT_INTERNAL_HOST:-mosquitto}

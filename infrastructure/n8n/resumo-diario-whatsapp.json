@@ -1,0 +1,366 @@
+{
+  "name": "IIoT - Resumo diário de produção no WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Resumo diário de produção no WhatsApp\n\n1. Preencha **Configuração** (endereço e chave da plataforma, dados da Evolution).\n2. Ative o fluxo. A cada 3 min ele pede **uma** mensagem à plataforma.\n\nQuem controla o ritmo é a plataforma: ela só entrega mensagens entre **07h e 21h** e com no mínimo **3 min** entre envios, e cada envio ainda espera alguns segundos aleatórios e mostra \"digitando\". Assim o número não dispara em rajada e não é tratado como spam.\n\nUma falha na Evolution volta para a fila e é tentada de novo (até 3 vezes).",
+        "height": 300,
+        "width": 520,
+        "color": 5
+      },
+      "id": "1024dde5-bff9-4aed-a917-377776c123d2",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -260
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 3
+            }
+          ]
+        }
+      },
+      "id": "b1b9b941-3339-4992-9cdf-31631fde4b8a",
+      "name": "A cada 3 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ee92544b-615c-4c6a-beb2-aea3336b9f03",
+              "name": "PLATAFORMA_URL",
+              "value": "https://iotplataform.everlenz.com.br",
+              "type": "string"
+            },
+            {
+              "id": "5f7c39ad-b694-4bd2-8e3e-daebddadcc60",
+              "name": "PLATAFORMA_CHAVE",
+              "value": "COLE_AQUI_A_N8N_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "2172375c-715b-49c1-ba65-8a4ebcfbcac0",
+              "name": "EVOLUTION_URL",
+              "value": "https://evolutionapi.assistentedrfin.com.br",
+              "type": "string"
+            },
+            {
+              "id": "be0d1d7c-3d8d-4862-ad6d-9de3bc36d401",
+              "name": "EVOLUTION_INSTANCIA",
+              "value": "NOME_DA_INSTANCIA",
+              "type": "string"
+            },
+            {
+              "id": "44aa8078-c6b8-4fb2-b9f8-7db4d83d4f2b",
+              "name": "EVOLUTION_APIKEY",
+              "value": "COLE_AQUI_A_APIKEY_DA_EVOLUTION",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5c8b6116-40d9-4752-98f3-6c09ef817f09",
+      "name": "Configuração",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Configuração').item.json.PLATAFORMA_URL }}/api/n8n/production-messages/next",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-key",
+              "value": "={{ $('Configuração').item.json.PLATAFORMA_CHAVE }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "6bc182f1-77ad-4de1-bdbd-5c033e505294",
+      "name": "Buscar próxima mensagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "50a19a03-b56f-4c21-b224-4d939d50b167",
+              "leftValue": "={{ $json.message?.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f75e2b08-0536-4166-a244-f4639703d25a",
+      "name": "Tem mensagem?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        100
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b71f7d6a-4bae-4dea-ae79-754d4790be45",
+      "name": "Nada para enviar",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.message.waitSeconds }}"
+      },
+      "id": "2a09b1e8-fce1-466a-ad99-6c685878c001",
+      "name": "Espera aleatória",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').item.json.EVOLUTION_URL }}/message/sendText/{{ encodeURIComponent($('Configuração').item.json.EVOLUTION_INSTANCIA) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Configuração').item.json.EVOLUTION_APIKEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $('Tem mensagem?').item.json.message.number }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $('Tem mensagem?').item.json.message.text }}"
+            },
+            {
+              "name": "delay",
+              "value": "={{ 2000 + Math.floor(Math.random() * 3000) }}"
+            },
+            {
+              "name": "presence",
+              "value": "composing"
+            },
+            {
+              "name": "linkPreview",
+              "value": "={{ false }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "0def77e1-73eb-45fd-b658-be4a7d152ee7",
+      "name": "Enviar WhatsApp (Evolution)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').item.json.PLATAFORMA_URL }}/api/n8n/production-messages/{{ $('Tem mensagem?').item.json.message.id }}/result",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-key",
+              "value": "={{ $('Configuração').item.json.PLATAFORMA_CHAVE }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { ok: true } }}",
+        "options": {}
+      },
+      "id": "5f18d11d-d567-4664-942e-dc75e8348f6c",
+      "name": "Confirmar envio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').item.json.PLATAFORMA_URL }}/api/n8n/production-messages/{{ $('Tem mensagem?').item.json.message.id }}/result",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-key",
+              "value": "={{ $('Configuração').item.json.PLATAFORMA_CHAVE }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
+        "options": {}
+      },
+      "id": "31f8eddd-1847-4deb-9c5b-c0d47e043df5",
+      "name": "Registrar falha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "A cada 3 minutos": {
+      "main": [
+        [
+          {
+            "node": "Configuração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuração": {
+      "main": [
+        [
+          {
+            "node": "Buscar próxima mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar próxima mensagem": {
+      "main": [
+        [
+          {
+            "node": "Tem mensagem?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem mensagem?": {
+      "main": [
+        [
+          {
+            "node": "Espera aleatória",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nada para enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera aleatória": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp (Evolution)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar WhatsApp (Evolution)": {
+      "main": [
+        [
+          {
+            "node": "Confirmar envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {},
+  "tags": []
+}

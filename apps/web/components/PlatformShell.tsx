@@ -26,6 +26,8 @@ export interface Branding {
   logo_url: string | null;
   primary_color: string;
   accent_color: string;
+  /** Resumo da operação when a panel opens; absent (on) before migration 043. */
+  briefing_enabled?: boolean;
 }
 
 interface PlatformContextValue {

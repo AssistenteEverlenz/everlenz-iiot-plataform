@@ -13,6 +13,7 @@ export default function SettingsPage() {
     logoUrl: '',
     primaryColor: '#0b2028',
     accentColor: '#12b8a6',
+    briefingEnabled: true,
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -24,6 +25,7 @@ export default function SettingsPage() {
         logoUrl: branding.data.logo_url ?? '',
         primaryColor: branding.data.primary_color,
         accentColor: branding.data.accent_color,
+        briefingEnabled: branding.data.briefing_enabled !== false,
       });
   }, [branding.data]);
   async function save(event: React.FormEvent) {
@@ -130,6 +132,20 @@ export default function SettingsPage() {
               />
             </label>
           </div>
+          <label className="user-measure-permission">
+            <input
+              type="checkbox"
+              checked={form.briefingEnabled}
+              onChange={(event) => setForm({ ...form, briefingEnabled: event.target.checked })}
+            />
+            <span>
+              <strong>Mostrar o resumo da operação ao abrir um painel</strong>
+              <small>
+                Produzido no dia, meta, ritmo, paradas e o que mudou desde a última visita, numa
+                tela só. Fecha com um toque em qualquer lugar.
+              </small>
+            </span>
+          </label>
           {message && <div className="form-message">{message}</div>}
           <button className="primary-button" disabled={saving}>
             {saving ? 'Salvando...' : 'Salvar identidade'}

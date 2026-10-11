@@ -222,7 +222,7 @@ function closingFromAt(buckets: BucketRow[], span: TimeWindow, closingSeconds: n
   return span.end.getTime() - from <= closingSeconds * 1000 ? from : null;
 }
 
-async function loadConfig(db: Database, tenantId: string, deviceId: string) {
+export async function loadConfig(db: Database, tenantId: string, deviceId: string) {
   const result = await db.query<ProductionConfig>(
     `SELECT d.site_id,ps.blocks_tag_id,ps.pallets_tag_id,ps.tons_total_tag_id,ps.auto_tag_id,
        ps.idle_seconds,ps.weight_per_unit_kg,ps.weight_tag_id,ps.target_metric,ps.target_per_shift,
@@ -232,6 +232,12 @@ async function loadConfig(db: Database, tenantId: string, deviceId: string) {
     [tenantId, deviceId],
   );
   return result.rows[0] ?? null;
+}
+
+/** The shift occurrences that can belong to one production day (it may start the day before). */
+export async function loadShiftsFor(db: Database, tenantId: string, siteId: string, date: string) {
+  const { shifts } = await loadShifts(db, tenantId, siteId);
+  return expandShifts(shifts, addDays(date, -1), date);
 }
 
 export async function loadShifts(db: Database, tenantId: string, siteId: string) {
@@ -741,7 +747,7 @@ async function buildBoard(
  * was last in automatic (from the 5-minute buckets, cheap); idle since the counter stopped plus
  * the idle limit. A producing machine carries no "since".
  */
-async function currentState(
+export async function currentState(
   db: Database,
   deviceId: string,
   idleSeconds: number,
@@ -1495,7 +1501,7 @@ async function shiftDetailData(
 }
 
 /** The board of one history row (shift, day or off-shift day) as it was. */
-async function productionDetailData(
+export async function productionDetailData(
   db: Database,
   tenantId: string,
   id: string,

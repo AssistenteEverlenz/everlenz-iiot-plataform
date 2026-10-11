@@ -1,4 +1,5 @@
 'use client';
+import { BriefingModal } from './BriefingModal';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFirstDraw } from './firstDraw';
 import { createPortal } from 'react-dom';
@@ -1704,6 +1705,10 @@ export function DashboardCanvas({ id }: { id: string }) {
   }
   return (
     <div className={tv ? 'tv-shell' : ''}>
+      {/* The day in one screen before the panel, once per visit; never on the TV. */}
+      {!tv && deviceId && branding.briefing_enabled !== false && (
+        <BriefingModal deviceId={deviceId} dashboardId={id} />
+      )}
       {/* The equipment, its heartbeat and the actions live in the shell's bars, so the first
           thing on screen is the first card. */}
       <DashboardChrome
