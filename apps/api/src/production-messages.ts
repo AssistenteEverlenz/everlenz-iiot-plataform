@@ -278,7 +278,7 @@ export async function queueProductionMessages(db: Database, now = new Date()) {
 }
 
 /** n8n authenticates with a shared key; the routes are off while none is configured. */
-function n8nAllowed(req: FastifyRequest, reply: FastifyReply) {
+export function n8nAllowed(req: FastifyRequest, reply: FastifyReply) {
   const expected = process.env.N8N_API_KEY ?? '';
   if (!expected) {
     reply.code(503).send({ error: 'N8N_API_KEY não configurada' });
@@ -340,6 +340,56 @@ export async function claimNextMessage(db: Database, now: Date) {
       waitSeconds: 5 + Math.floor(Math.random() * 40),
     },
   };
+}
+
+/**
+ * Push instead of pull: when N8N_SUMMARY_WEBHOOK_URL is set, the platform posts the next message
+ * to n8n itself, at the queue's own pace (window, gap, lease), so the plants that close at 17:00
+ * go out one by one. n8n sends it and answers on the result route; a webhook that does not take
+ * it gives the message back to the queue.
+ */
+export async function dispatchProductionMessages(db: Database, now = new Date()) {
+  const url = process.env.N8N_SUMMARY_WEBHOOK_URL ?? '';
+  if (!url || !process.env.N8N_API_KEY) return 0;
+  let next: Awaited<ReturnType<typeof claimNextMessage>>;
+  try {
+    next = await claimNextMessage(db, now);
+  } catch {
+    return 0; // Migration 043 not applied yet.
+  }
+  const message = next.message;
+  if (!message) return 0;
+  const details = await db.query<{ full_name: string; production_date: string }>(
+    `SELECT u.full_name,m.production_date::text production_date FROM production_messages m
+     JOIN app_users u ON u.id=m.user_id WHERE m.id=$1`,
+    [message.id],
+  );
+  const web = (process.env.PUBLIC_WEB_URL ?? 'https://iotplataform.everlenz.com.br').replace(/\/$/, '');
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-n8n-key': process.env.N8N_API_KEY },
+      body: JSON.stringify({
+        ...message,
+        name: details.rows[0]?.full_name ?? '',
+        productionDate: details.rows[0]?.production_date ?? null,
+        resultUrl: `${web}/api/n8n/production-messages/${message.id}/result`,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) throw new Error(`webhook respondeu HTTP ${response.status}`);
+    return 1;
+  } catch (error) {
+    // Not taken: back to the queue, counted as an attempt, tried again in ten minutes.
+    await db.query(
+      `UPDATE production_messages SET error=$2,
+         status=CASE WHEN attempts >= $3 THEN 'failed' ELSE 'pending' END,
+         due_at=now()+interval '10 minutes'
+       WHERE id=$1 AND status='sending'`,
+      [message.id, error instanceof Error ? error.message.slice(0, 300) : 'falha no webhook', MAX_ATTEMPTS],
+    );
+    return 0;
+  }
 }
 
 export const N8N_ROUTES = [

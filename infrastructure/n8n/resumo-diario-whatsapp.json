@@ -3,70 +3,66 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Resumo diário de produção no WhatsApp\n\n1. Preencha **Configuração** (endereço e chave da plataforma, dados da Evolution).\n2. Ative o fluxo. A cada 3 min ele pede **uma** mensagem à plataforma.\n\nQuem controla o ritmo é a plataforma: ela só entrega mensagens entre **07h e 21h** e com no mínimo **3 min** entre envios, e cada envio ainda espera alguns segundos aleatórios e mostra \"digitando\". Assim o número não dispara em rajada e não é tratado como spam.\n\nUma falha na Evolution volta para a fila e é tentada de novo (até 3 vezes).",
+        "content": "## Resumo diário de produção\n\nA plataforma chama este webhook quando um dia de produção fecha (turnos encerrados e a máquina parada há 30 min, hora extra incluída) — **uma mensagem por vez**, das 07h às 21h e com no mínimo 3 min entre envios. Quem acumula os fechamentos das 17h e dá o ritmo é a fila da plataforma; aqui só se envia.\n\n1. Preencha **Configuração**.\n2. Ative e copie a URL de produção do nó **Resumo recebido** para a variável **N8N_SUMMARY_WEBHOOK_URL** da plataforma (Coolify).",
         "height": 300,
-        "width": 520,
+        "width": 560,
         "color": 5
       },
-      "id": "7eabf03a-2c8a-4e29-a504-28eaa4149c5b",
+      "id": "613afbdd-ad1d-4487-8d5f-419a227f14ba",
       "name": "Nota",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
         -80,
-        -260
+        -280
       ]
     },
     {
       "parameters": {
-        "rule": {
-          "interval": [
-            {
-              "field": "minutes",
-              "minutesInterval": 3
-            }
-          ]
-        }
+        "httpMethod": "POST",
+        "path": "everlenz-iiot-resumo",
+        "options": {}
       },
-      "id": "f4001353-0f3c-46ed-8d52-aea292d6ba86",
-      "name": "A cada 3 minutos",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "id": "0ffe20d4-843b-4a52-8ac8-4670209cb166",
+      "name": "Resumo recebido",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
       "position": [
         0,
         100
-      ]
+      ],
+      "webhookId": "2ec0d833-a1d2-41a9-8eba-b873a0903e68"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "03cfb13e-3838-4393-906e-87ab7f4232ba",
+              "id": "a82785ae-a700-4584-b06f-ef529e8a3691",
               "name": "PLATAFORMA_URL",
               "value": "https://iotplataform.everlenz.com.br",
               "type": "string"
             },
             {
-              "id": "1d639ead-c70e-4bdd-9ee0-abf165361cd8",
+              "id": "b88bafb0-2180-4ea6-9279-e62f1f07e4d7",
               "name": "PLATAFORMA_CHAVE",
               "value": "COLE_AQUI_A_N8N_API_KEY",
               "type": "string"
             },
             {
-              "id": "eca8b42b-1a32-4077-bec1-9a72300ec0e7",
+              "id": "16f1bc9e-dd62-4ff1-b134-262d6ef98a31",
               "name": "EVOLUTION_URL",
               "value": "https://evolutionapi.assistentedrfin.com.br",
               "type": "string"
             },
             {
-              "id": "d2446805-bc7f-4822-ba37-2f42b2eac38b",
+              "id": "f6d00360-0cbd-4d4d-b22b-87e2dc75d097",
               "name": "EVOLUTION_INSTANCIA",
               "value": "NOME_DA_INSTANCIA",
               "type": "string"
             },
             {
-              "id": "dafd3c52-2a8f-4294-b42e-0516699b3055",
+              "id": "0788af23-4e28-47e7-ac1a-51435f6f1049",
               "name": "EVOLUTION_APIKEY",
               "value": "COLE_AQUI_A_APIKEY_DA_EVOLUTION",
               "type": "string"
@@ -75,37 +71,12 @@
         },
         "options": {}
       },
-      "id": "e1ae470c-a00c-47f3-814d-35ba154b1e8f",
+      "id": "c319e20a-5c59-4d63-a50a-a3be25c22272",
       "name": "Configuração",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
         220,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{ $('Configuração').item.json.PLATAFORMA_URL }}/api/n8n/production-messages/next",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-n8n-key",
-              "value": "={{ $('Configuração').item.json.PLATAFORMA_CHAVE }}"
-            }
-          ]
-        },
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "id": "8cee8f36-4dd3-4762-b471-6078cc634abe",
-      "name": "Buscar próxima mensagem",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        440,
         100
       ]
     },
@@ -120,13 +91,12 @@
           },
           "conditions": [
             {
-              "id": "a7c90909-3f9b-4881-a037-17e811b1569e",
-              "leftValue": "={{ $json.message?.id }}",
-              "rightValue": "",
+              "id": "c942b5a5-854d-4727-8c1b-1a1d6a2454bf",
+              "leftValue": "={{ $('Resumo recebido').first().json.headers['x-n8n-key'] }}",
+              "rightValue": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}",
               "operator": {
                 "type": "string",
-                "operation": "exists",
-                "singleValue": true
+                "operation": "equals"
               }
             }
           ],
@@ -134,49 +104,49 @@
         },
         "options": {}
       },
-      "id": "e7c5316d-ffd7-445f-84e2-30831c1f32f9",
-      "name": "Tem mensagem?",
+      "id": "8d597e2a-f9fe-4e9e-8860-b4c3f4647a92",
+      "name": "Chave válida?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        660,
+        440,
         100
       ]
     },
     {
       "parameters": {},
-      "id": "8829bc7a-9dbc-4af5-9f9e-d4e8749826f2",
-      "name": "Nada para enviar",
+      "id": "0326861d-3bbb-40a5-b655-ace27c10298f",
+      "name": "Ignora",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        880,
+        660,
         260
       ]
     },
     {
       "parameters": {
-        "amount": "={{ $json.message.waitSeconds }}"
+        "amount": "={{ $('Resumo recebido').first().json.body.waitSeconds || 10 }}"
       },
-      "id": "30e6cf12-883b-4d54-90fc-c1ef67897918",
+      "id": "7e9b492d-a654-4c79-b065-5020b176cef2",
       "name": "Espera aleatória",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        880,
+        660,
         0
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Configuração').item.json.EVOLUTION_URL }}/message/sendText/{{ encodeURIComponent($('Configuração').item.json.EVOLUTION_INSTANCIA) }}",
+        "url": "={{ $('Configuração').first().json.EVOLUTION_URL }}/message/sendText/{{ encodeURIComponent($('Configuração').first().json.EVOLUTION_INSTANCIA) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Configuração').item.json.EVOLUTION_APIKEY }}"
+              "value": "={{ $('Configuração').first().json.EVOLUTION_APIKEY }}"
             }
           ]
         },
@@ -185,15 +155,15 @@
           "parameters": [
             {
               "name": "number",
-              "value": "={{ $('Tem mensagem?').item.json.message.number }}"
+              "value": "={{ $('Resumo recebido').first().json.body.number }}"
             },
             {
               "name": "text",
-              "value": "={{ $('Tem mensagem?').item.json.message.text }}"
+              "value": "={{ $('Resumo recebido').first().json.body.text }}"
             },
             {
               "name": "delay",
-              "value": "={{ 2000 + Math.floor(Math.random() * 3000) }}"
+              "value": "={{ 1500 + Math.floor(Math.random() * 2500) }}"
             },
             {
               "name": "presence",
@@ -209,12 +179,12 @@
           "timeout": 60000
         }
       },
-      "id": "f5236afa-331c-4958-b67d-bab08445d415",
-      "name": "Enviar WhatsApp (Evolution)",
+      "id": "a69e45d0-7b54-46d5-aeaa-413ecd210020",
+      "name": "Envia resumo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
+        880,
         0
       ],
       "onError": "continueErrorOutput"
@@ -222,13 +192,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Configuração').item.json.PLATAFORMA_URL }}/api/n8n/production-messages/{{ $('Tem mensagem?').item.json.message.id }}/result",
+        "url": "={{ $('Resumo recebido').first().json.body.resultUrl }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-n8n-key",
-              "value": "={{ $('Configuração').item.json.PLATAFORMA_CHAVE }}"
+              "value": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}"
             }
           ]
         },
@@ -237,25 +207,25 @@
         "jsonBody": "={{ { ok: true } }}",
         "options": {}
       },
-      "id": "e9ffd856-695b-4dcc-8fef-f91feab196ad",
-      "name": "Confirmar envio",
+      "id": "24746a0c-01b8-4b30-8f78-63d66a516715",
+      "name": "Confirma envio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1340,
+        1120,
         -80
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Configuração').item.json.PLATAFORMA_URL }}/api/n8n/production-messages/{{ $('Tem mensagem?').item.json.message.id }}/result",
+        "url": "={{ $('Resumo recebido').first().json.body.resultUrl }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-n8n-key",
-              "value": "={{ $('Configuração').item.json.PLATAFORMA_CHAVE }}"
+              "value": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}"
             }
           ]
         },
@@ -264,18 +234,18 @@
         "jsonBody": "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
         "options": {}
       },
-      "id": "57fea105-80ee-4db1-a4b0-f7ab350938c7",
-      "name": "Registrar falha",
+      "id": "6ec913d0-6821-468e-a156-441b60e6b35d",
+      "name": "Registra falha",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1340,
+        1120,
         120
       ]
     }
   ],
   "connections": {
-    "A cada 3 minutos": {
+    "Resumo recebido": {
       "main": [
         [
           {
@@ -290,25 +260,14 @@
       "main": [
         [
           {
-            "node": "Buscar próxima mensagem",
+            "node": "Chave válida?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Buscar próxima mensagem": {
-      "main": [
-        [
-          {
-            "node": "Tem mensagem?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Tem mensagem?": {
+    "Chave válida?": {
       "main": [
         [
           {
@@ -319,7 +278,7 @@
         ],
         [
           {
-            "node": "Nada para enviar",
+            "node": "Ignora",
             "type": "main",
             "index": 0
           }
@@ -330,25 +289,25 @@
       "main": [
         [
           {
-            "node": "Enviar WhatsApp (Evolution)",
+            "node": "Envia resumo",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Enviar WhatsApp (Evolution)": {
+    "Envia resumo": {
       "main": [
         [
           {
-            "node": "Confirmar envio",
+            "node": "Confirma envio",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Registrar falha",
+            "node": "Registra falha",
             "type": "main",
             "index": 0
           }

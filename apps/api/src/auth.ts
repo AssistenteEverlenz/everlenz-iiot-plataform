@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { recordLogin } from './usage.js';
 import { N8N_ROUTES, normalizePhone } from './production-messages.js';
+import { WHATSAPP_ROUTES } from './whatsapp-assistant.js';
 import { randomBytes } from 'node:crypto';
 import type { Database, SqlExecutor } from '@iiot/database';
 import { recordAudit } from './audit.js';
@@ -83,6 +84,7 @@ export function createAccessControl(db: Database, settings: AuthSettings) {
     '/api/auth/login',
     '/api/branding/public',
     ...N8N_ROUTES,
+    ...WHATSAPP_ROUTES,
   ]);
 
   function principal(request: FastifyRequest): Principal {

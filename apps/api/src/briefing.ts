@@ -57,14 +57,18 @@ async function madeBetween(db: Database, deviceId: string, metric: string, from:
   return inMetric(metric, result.rows[0]);
 }
 
-export function registerBriefingRoutes(app: FastifyInstance, db: Database, access: Access) {
-  app.get('/api/devices/:id/briefing', async (req, reply) => {
-    const { id } = z.object({ id: z.uuid() }).parse(req.params);
-    if (!(await access.requireDevice(req, reply, id))) return;
-    const current = access.principal(req);
+/**
+ * One machine's day so far, as the panel's summary shows it. With a person (current.id) it also
+ * tells what changed since that person's last visit; the WhatsApp assistant calls it without one.
+ */
+export async function buildBriefing(
+  db: Database,
+  current: { tenantId: string; id: string | null },
+  id: string,
+  now = new Date(),
+) {
     const config = await loadConfig(db, current.tenantId, id);
-    if (!config || !(config.blocks_tag_id || config.pallets_tag_id)) return { configured: false };
-    const now = new Date();
+    if (!config || !(config.blocks_tag_id || config.pallets_tag_id)) return { configured: false as const };
     const today = plantDate(now);
     const [detail, device, state] = await Promise.all([
       productionDetailData(db, current.tenantId, id, config, { date: today, kind: 'day' }),
@@ -95,7 +99,7 @@ export function registerBriefingRoutes(app: FastifyInstance, db: Database, acces
          WHERE device_id=$1 AND NOT during_pause AND started_at >= $2`,
         [id, dayStart],
       ),
-      previousVisitEnd(db, current.id, now),
+      current.id ? previousVisitEnd(db, current.id, now) : Promise.resolve(null),
     ]);
     const made = await madeBetween(db, id, metric, dayStart, now);
     // Yesterday from midnight to the same time of day.
@@ -123,7 +127,7 @@ export function registerBriefingRoutes(app: FastifyInstance, db: Database, acces
     }
 
     return {
-      configured: true,
+      configured: true as const,
       device: { id, name: device.rows[0]?.name ?? '' },
       now: now.toISOString(),
       shiftStatus: detail.status,
@@ -150,5 +154,13 @@ export function registerBriefingRoutes(app: FastifyInstance, db: Database, acces
       yesterday,
       sinceVisit,
     };
+}
+
+export function registerBriefingRoutes(app: FastifyInstance, db: Database, access: Access) {
+  app.get('/api/devices/:id/briefing', async (req, reply) => {
+    const { id } = z.object({ id: z.uuid() }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const current = access.principal(req);
+    return buildBriefing(db, { tenantId: current.tenantId, id: current.id }, id);
   });
 }

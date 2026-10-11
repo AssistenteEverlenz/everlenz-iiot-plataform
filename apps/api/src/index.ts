@@ -9,7 +9,7 @@ import {
 } from './shift-production.js';
 import { pruneReadings } from './retention.js';
 import { recordStops } from './production-stops.js';
-import { queueProductionMessages } from './production-messages.js';
+import { dispatchProductionMessages, queueProductionMessages } from './production-messages.js';
 const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
 
@@ -122,6 +122,9 @@ async function closeShifts() {
     // The WhatsApp summary of each day that has just closed (production-messages.ts).
     const messages = await queueProductionMessages(database);
     if (messages) app.log.info({ event: 'production_messages_queued', messages });
+    // And, when n8n takes them by webhook, hand the next one out (one per minute at most).
+    const sent = await dispatchProductionMessages(database);
+    if (sent) app.log.info({ event: 'production_message_dispatched' });
   } catch (error) {
     app.log.warn({
       event: 'shift_report_close_failed',

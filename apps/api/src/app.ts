@@ -14,6 +14,7 @@ import { registerShiftProductionRoutes, scheduleProductionRebuild } from './shif
 import { registerUsageRoutes } from './usage.js';
 import { registerProductionMessageRoutes } from './production-messages.js';
 import { registerBriefingRoutes } from './briefing.js';
+import { registerWhatsappAssistantRoutes } from './whatsapp-assistant.js';
 import { registerWearRoutes } from './wear.js';
 import { registerMortarRoutes } from './mortar.js';
 import { registerMortarBoardRoutes } from './mortar-board.js';
@@ -782,6 +783,7 @@ export async function createApp(
   registerUsageRoutes(app, db, access);
   registerProductionMessageRoutes(app, db, access);
   registerBriefingRoutes(app, db, access);
+  registerWhatsappAssistantRoutes(app, db);
   registerOperationTvRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
