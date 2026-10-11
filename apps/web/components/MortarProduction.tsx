@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -187,6 +187,8 @@ const delta = (now: number | null | undefined, before: number | null | undefined
   now == null || before == null || !before ? null : now / before - 1;
 function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
   if (value == null || !Number.isFinite(value)) return null;
+  // Under a tenth of a percent is no change worth an arrow.
+  if (Math.abs(value) < 0.0005) return <i className="mp-delta">= igual</i>;
   const good = invert ? value < 0 : value > 0;
   return (
     <i className={`mp-delta ${Math.abs(value) < 0.005 ? '' : good ? 'up' : 'down'}`}>
@@ -211,7 +213,7 @@ export function MortarProduction({ initialLine }: { initialLine?: string }) {
   }));
   const [group, setGroup] = useState<Group>('day');
   const [against, setAgainst] = useState<Against>('previous');
-  const [tab, setTab] = useState<'overview' | 'history' | 'compare'>('overview');
+  const [tab, setTab] = useState<Tab>('summary');
   const [openingStock, setOpeningStock] = useState(false);
   const [productsOpen, setProductsOpen] = useState(false);
   // The history opens a period down: month, week, day, and the board of that day.
@@ -358,36 +360,29 @@ export function MortarProduction({ initialLine }: { initialLine?: string }) {
         </div>
       </section>
 
-      <div className="mp-tabs" role="tablist">
-        {(
-          [
-            ['overview', 'Panorama'],
-            ['history', 'Histórico'],
-            ['compare', 'Comparativos'],
-          ] as const
-        ).map(([id, text]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            className={tab === id ? 'active' : ''}
-            onClick={() => setTab(id)}
-          >
-            {text}
-          </button>
-        ))}
-        <span className="mp-tabs-period">
-          {brDay(shown.from)}/{shown.from.slice(2, 4)} a {brDay(shown.to)}/{shown.to.slice(2, 4)}
+      <SectionTabs
+        tab={tab}
+        onPick={(next) => {
+          // Opening a week or a day belongs to the day-by-day tab: the others show the period.
+          setTab(next);
+          if (next !== 'days') setDrill(null);
+        }}
+      />
+      {tab !== 'compare' && (
+        <div className="mp-period">
+          Mostrando{' '}
+          <b>
+            {brDay(shown.from)}/{shown.from.slice(2, 4)} a {brDay(shown.to)}/{shown.to.slice(2, 4)}
+          </b>
           {otherRange && (
-            <small>
+            <>
               {' '}
-              · contra {brDay(otherRange.from)}/{otherRange.from.slice(2, 4)} a{' '}
+              comparado com {brDay(otherRange.from)}/{otherRange.from.slice(2, 4)} a{' '}
               {brDay(otherRange.to)}/{otherRange.to.slice(2, 4)}
-            </small>
+            </>
           )}
-        </span>
-      </div>
+        </div>
+      )}
 
       {!lineList.length && lines.data ? (
         <div className="notice">
@@ -396,20 +391,31 @@ export function MortarProduction({ initialLine }: { initialLine?: string }) {
         </div>
       ) : !data ? (
         <div className="stops-empty">{history.error ?? 'Carregando a produção…'}</div>
-      ) : tab === 'overview' ? (
-        <Overview data={data} before={before} onDay={(date) => setDayBoard(date)} />
-      ) : tab === 'history' ? (
-        <HistoryTab
+      ) : tab === 'summary' ? (
+        <Summary data={data} before={before} against={against} />
+      ) : tab === 'days' ? (
+        <DaysTab
           data={data}
-          before={before}
-          drill={drill}
-          onDrill={(slot) => {
-            if (shown.group === 'day') return setDayBoard(slot);
-            const r = slotRange(slot, shown.group);
-            setDrill({ ...r, group: shown.group === 'month' ? 'week' : 'day' });
-          }}
-          onBack={() => setDrill(null)}
+          calendar={data}
+          onDay={(date) => setDayBoard(date)}
+          history={
+            <HistoryTab
+              data={data}
+              before={before}
+              drill={drill}
+              onDrill={(slot) => {
+                if (shown.group === 'day') return setDayBoard(slot);
+                const r = slotRange(slot, shown.group);
+                setDrill({ ...r, group: shown.group === 'month' ? 'week' : 'day' });
+              }}
+              onBack={() => setDrill(null)}
+            />
+          }
         />
+      ) : tab === 'spouts' ? (
+        <SpoutsTab data={data} />
+      ) : tab === 'products' ? (
+        <ProductsTab data={data} />
       ) : (
         <CompareTab line={line} range={range} group={group} />
       )}
@@ -437,38 +443,154 @@ export function MortarProduction({ initialLine }: { initialLine?: string }) {
   );
 }
 
-// ---- Overview -----------------------------------------------------------------------------------
+// ---- Sections -----------------------------------------------------------------------------------
 
-function Overview({
+/*
+ * How the page reads. Each tab answers one question and fits about a screen; each card says in
+ * its title what it answers and, beside it, the one number worth taking away, so whoever opens
+ * it does not have to work the chart out. Colours mean the same everywhere: the product and
+ * spout colours of the boards, and green / amber / red only for the target, as on the board.
+ */
+type Tab = 'summary' | 'days' | 'spouts' | 'products' | 'compare';
+const ICON = {
+  summary: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  days: 'M7 3v3M17 3v3M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM8 12h2M14 12h2M8 16h2',
+  spouts: 'M12 13l4-4M4.5 18a9 9 0 1 1 15 0M12 13h0',
+  products: 'M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8',
+  compare: 'M7 4v16M7 4L3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4',
+} as const;
+const TABS: Array<[Tab, string, string]> = [
+  ['summary', 'Resumo', 'Como foi o período'],
+  ['days', 'Dia a dia', 'Cada dia, até o turno'],
+  ['spouts', 'Bicos e ritmo', 'Onde a linha ganha e perde'],
+  ['products', 'Produtos e estoque', 'O que saiu e o que ficou'],
+  ['compare', 'Comparar', 'Um período contra outro'],
+];
+function SectionTabs({ tab, onPick }: { tab: Tab; onPick: (tab: Tab) => void }) {
+  return (
+    <div className="dashboard-tabs" role="tablist" aria-label="Seções da produção">
+      {TABS.map(([id, name, hint]) => (
+        <div key={id} className={`dashboard-tab${tab === id ? ' active' : ''}`}>
+          <button type="button" role="tab" aria-selected={tab === id} onClick={() => onPick(id)}>
+            <span className="dashboard-tab-icon" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d={ICON[id]} />
+              </svg>
+            </span>
+            <span className="dashboard-tab-text">
+              <b>{name}</b>
+              <small>{hint}</small>
+            </span>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** The target as the board paints it: green when beaten, amber close, red below. */
+const HIT = '#1fbf7a';
+const NEAR = '#f2a93b';
+const MISS = '#e4572e';
+const reach = (bags: number, target: number) =>
+  !target ? null : bags >= target ? HIT : bags >= target * 0.9 ? NEAR : MISS;
+const unitOf = (group: Group) => (group === 'day' ? 'dia' : group === 'week' ? 'semana' : 'mês');
+
+/** A card's title, what it shows, and the one figure to take away from it. */
+function Head({ title, hint, note }: { title: string; hint?: string; note?: ReactNode }) {
+  return (
+    <div className="mp-card-head">
+      <strong>{title}</strong>
+      {hint && <small>{hint}</small>}
+      {note && <span className="mp-note">{note}</span>}
+    </div>
+  );
+}
+
+/** The last point of a line carries its own name and value, so no legend has to be read. */
+const endLabel =
+  (count: number, text: (value: number) => string, fill: string) =>
+  (props: { x?: number | string; y?: number | string; index?: number; value?: unknown }) => {
+    if (props.index !== count - 1 || props.value == null) return <g />;
+    return (
+      <text
+        x={Number(props.x) + 6}
+        y={Number(props.y)}
+        dy={4}
+        fill={fill}
+        fontSize={11}
+        fontWeight={600}
+      >
+        {text(Number(props.value))}
+      </text>
+    );
+  };
+
+// ---- Resumo -----------------------------------------------------------------------------------
+
+function Summary({
   data,
   before,
-  onDay,
+  against,
 }: {
   data: History;
   before: History | null;
-  onDay: (date: string) => void;
+  against: Against;
 }) {
   const { totals } = data;
   const productNames = data.products.map((item) => item.name);
   const colorOf = (name: string) => color(PRODUCT_COLORS, Math.max(0, productNames.indexOf(name)));
-  const rows = useMemo(() => {
-    let cumulative = 0;
-    return data.series.map((slot, at) => {
-      cumulative += slot.bags;
-      return {
-        label: slotLabel(slot.slot, data.group),
-        ...Object.fromEntries(productNames.map((name) => [name, slot.products[name] ?? 0])),
-        target: slot.targetBags || null,
-        cumulative,
-        compare: before?.series[at]?.bags ?? null,
-      };
-    });
-  }, [data, before, productNames]);
-  const drawing = useFirstDraw(rows.length > 0);
   const targetShare = totals.targetBags ? totals.bags / totals.targetBags : null;
+  const change = delta(totals.bags, before?.totals.bags);
+  const top = data.products[0];
+  const versus = against === 'year' ? 'no mesmo período do ano passado' : 'no período anterior';
 
   return (
     <div className="mp-overview">
+      {/* The period in one sentence: what anyone should know before looking at a chart. */}
+      <p className="mp-headline">
+        De {brDay(data.from)} a {brDay(data.to)} a linha ensacou{' '}
+        <b>{integer(totals.bags)} sacos</b> ({tons(totals.kg)} t)
+        {change != null && Math.abs(change) >= 0.005 && (
+          <>
+            ,{' '}
+            <b className={change > 0 ? 'up' : 'down'}>
+              {percent(Math.abs(change), 1)} {change > 0 ? 'a mais' : 'a menos'}
+            </b>{' '}
+            que {versus}
+          </>
+        )}
+        .{' '}
+        {totals.daysWithTarget > 0 && (
+          <>
+            A meta foi batida em{' '}
+            <b>
+              {totals.daysHit} de {totals.daysWithTarget} dias
+            </b>
+            .{' '}
+          </>
+        )}
+        {totals.best && (
+          <>
+            O melhor dia foi <b>{brDay(totals.best.day)}</b>, com {integer(totals.best.bags)} sacos
+          </>
+        )}
+        {top && (
+          <>
+            {totals.best ? ', e o' : 'O'} produto que mais saiu foi o <b>{top.name}</b> (
+            {percent(top.share, 0)})
+          </>
+        )}
+        .
+      </p>
+
       <div className="mp-kpis">
         <div className="shift-kpi hero">
           <span>Ensacado</span>
@@ -476,7 +598,7 @@ function Overview({
             {integer(totals.bags)} <small>sacos</small>
           </b>
           <em>
-            {tons(totals.kg)} t <Delta value={delta(totals.bags, before?.totals.bags)} />
+            {tons(totals.kg)} t <Delta value={change} />
           </em>
         </div>
         <div className="shift-kpi">
@@ -490,35 +612,34 @@ function Overview({
           </em>
         </div>
         <div className="shift-kpi">
-          <span>Melhor dia</span>
-          <b>{totals.best ? integer(totals.best.bags) : '—'}</b>
-          <em>
-            {totals.best ? `${brDay(totals.best.day)} · ${tons(totals.best.kg)} t` : 'sem produção'}
-          </em>
-        </div>
-        <div className="shift-kpi">
           <span>Meta</span>
           <b>
             {totals.daysWithTarget ? `${totals.daysHit}/${totals.daysWithTarget}` : '—'}{' '}
             <small>dias batidos</small>
           </b>
           <em>
-            {targetShare != null
-              ? `${percent(targetShare, 0)} da meta do período`
-              : 'sem meta definida'}
+            {targetShare != null ? `${percent(targetShare, 0)} do previsto` : 'sem meta definida'}
           </em>
         </div>
         <div className="shift-kpi">
           <span>Eficiência</span>
           <b>{percent(totals.effectiveness ?? totals.availability, 1)}</b>
           <em>
-            {percent(totals.availability, 0)} disp. × {percent(totals.performance, 0)} desemp.{' '}
+            {percent(totals.availability, 0)} do tempo ensacando{' '}
             <Delta
               value={delta(
                 totals.effectiveness ?? totals.availability,
                 before?.totals.effectiveness ?? before?.totals.availability,
               )}
             />
+          </em>
+        </div>
+        <div className="shift-kpi">
+          <span>Paradas</span>
+          <b>{integer(totals.stops)}</b>
+          <em>
+            {duration(totals.stopSeconds)} parado{' '}
+            <Delta value={delta(totals.stops, before?.totals.stops)} invert />
           </em>
         </div>
         <div className="shift-kpi">
@@ -532,131 +653,581 @@ function Overview({
         </div>
       </div>
 
-      <section className="card mp-card">
-        <div className="mp-card-head">
-          <strong>Evolução da produção</strong>
-          <small>
-            sacos por {data.group === 'day' ? 'dia' : data.group === 'week' ? 'semana' : 'mês'}, por
-            produto · linha: acumulado
-          </small>
+      <div className="mp-grid wide">
+        <ProductionChart data={data} productNames={productNames} colorOf={colorOf} />
+        <PaceChart data={data} before={before} against={against} />
+      </div>
+
+      <div className="mp-grid">
+        <section className="card mp-card">
+          <Head
+            title="O que mais saiu"
+            hint="sacos de cada produto no período"
+            note={
+              top && (
+                <>
+                  <b>{top.name}</b> · {percent(top.share, 0)} dos sacos
+                </>
+              )
+            }
+          />
+          <ProductBars data={data} colorOf={colorOf} />
+        </section>
+        <section className="card mp-card">
+          <Head
+            title="Quanto cada bico ensacou"
+            hint="do que mais ensacou para o que menos"
+            note={
+              data.spouts[0] && (
+                <>
+                  <b>{data.spouts[0].name}</b> à frente
+                </>
+              )
+            }
+          />
+          <SpoutRanking data={data} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/** Bags per day, painted by the target; the products of each bar one click away. */
+function ProductionChart({
+  data,
+  productNames,
+  colorOf,
+}: {
+  data: History;
+  productNames: string[];
+  colorOf: (name: string) => string;
+}) {
+  const [split, setSplit] = useState(false);
+  const rows = data.series.map((slot) => ({
+    label: slotLabel(slot.slot, data.group),
+    bags: slot.bags,
+    target: slot.targetBags || null,
+    fill: reach(slot.bags, slot.targetBags) ?? 'var(--brand-accent, #12b8a6)',
+    ...Object.fromEntries(productNames.map((name) => [name, slot.products[name] ?? 0])),
+  }));
+  const drawing = useFirstDraw(rows.length > 0);
+  const hasTarget = rows.some((row) => row.target);
+  const lastTarget = rows.reduce((at, row, index) => (row.target ? index : at), -1);
+  return (
+    <section className="card mp-card">
+      <div className="mp-card-head">
+        <strong>Quanto foi ensacado</strong>
+        <small>sacos por {unitOf(data.group)}</small>
+        <div className="widget-period mp-switch" role="group" aria-label="Cor das barras">
+          <button type="button" className={split ? '' : 'active'} onClick={() => setSplit(false)}>
+            Pela meta
+          </button>
+          <button type="button" className={split ? 'active' : ''} onClick={() => setSplit(true)}>
+            Por produto
+          </button>
         </div>
-        <div className="mp-chart tall">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={rows} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
-              <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
-              <XAxis
-                dataKey="label"
-                tick={AXIS}
-                tickLine={false}
-                axisLine={false}
-                minTickGap={12}
-              />
-              <YAxis
-                yAxisId="bags"
-                tick={AXIS}
-                width={52}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v: number) => integer(v)}
-              />
-              <YAxis
-                yAxisId="sum"
-                orientation="right"
-                tick={AXIS}
-                width={60}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v: number) => integer(v)}
-              />
-              <Tooltip
-                formatter={(value, name) => [
-                  `${integer(Number(value))} sacos`,
-                  name === 'cumulative'
-                    ? 'acumulado'
-                    : name === 'target'
-                      ? 'meta'
-                      : name === 'compare'
-                        ? 'período comparado'
-                        : name,
-                ]}
-              />
-              {productNames.map((name, index) => (
+      </div>
+      <div className="mp-chart tall">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={rows} margin={{ top: 8, right: 64, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
+            <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={12} />
+            <YAxis
+              tick={AXIS}
+              width={52}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v: number) => integer(v)}
+            />
+            <Tooltip
+              cursor={{ fill: '#0b20280a' }}
+              formatter={(value, name) => [
+                `${integer(Number(value))} sacos`,
+                name === 'target' ? 'meta' : name === 'bags' ? 'ensacado' : name,
+              ]}
+            />
+            {split ? (
+              productNames.map((name, index) => (
                 <Bar
                   key={name}
-                  yAxisId="bags"
                   dataKey={name}
                   stackId="p"
                   fill={colorOf(name)}
-                  radius={index === productNames.length - 1 ? [3, 3, 0, 0] : undefined}
+                  stroke="#fff"
+                  strokeWidth={1}
+                  radius={index === productNames.length - 1 ? [4, 4, 0, 0] : undefined}
                   isAnimationActive={drawing}
                   animationDuration={drawing ? 700 : 0}
                 />
-              ))}
+              ))
+            ) : (
+              <Bar
+                dataKey="bags"
+                radius={[4, 4, 0, 0]}
+                isAnimationActive={drawing}
+                animationDuration={drawing ? 700 : 0}
+              >
+                {rows.map((row) => (
+                  <Cell key={row.label} fill={row.fill} />
+                ))}
+              </Bar>
+            )}
+            {hasTarget && (
               <Line
-                yAxisId="bags"
                 dataKey="target"
                 stroke="#0b2028"
                 strokeDasharray="6 4"
                 strokeWidth={1.5}
                 dot={false}
-                connectNulls
+                activeDot={false}
+                isAnimationActive={false}
+                label={endLabel(lastTarget + 1, (v) => `meta ${integer(v)}`, '#0b2028')}
               />
-              {before && (
-                <Line
-                  yAxisId="bags"
-                  dataKey="compare"
-                  stroke="#b07cc6"
-                  strokeDasharray="2 4"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              )}
-              <Line
-                yAxisId="sum"
-                dataKey="cumulative"
-                stroke="var(--brand-accent, #12b8a6)"
-                strokeWidth={2.5}
-                dot={false}
-                isAnimationActive={drawing}
-                animationDuration={drawing ? 700 : 0}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="mp-legend">
-          {productNames.map((name) => (
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mp-legend">
+        {split ? (
+          productNames.map((name) => (
             <span key={name}>
               <i style={{ background: colorOf(name) }} /> {name}
             </span>
-          ))}
+          ))
+        ) : hasTarget ? (
+          <>
+            <span>
+              <i style={{ background: HIT }} /> bateu a meta
+            </span>
+            <span>
+              <i style={{ background: NEAR }} /> perto (90 a 99%)
+            </span>
+            <span>
+              <i style={{ background: MISS }} /> abaixo de 90%
+            </span>
+          </>
+        ) : (
+          <span>
+            <i style={{ background: 'var(--brand-accent, #12b8a6)' }} /> sacos ensacados · defina
+            uma meta para pintar os dias
+          </span>
+        )}
+        {hasTarget && (
           <span>
             <i className="dash" style={{ borderColor: '#0b2028' }} /> meta
           </span>
-          {before && (
-            <span>
-              <i className="dash" style={{ borderColor: '#b07cc6' }} /> período comparado
-            </span>
-          )}
-          <span>
-            <i style={{ background: 'var(--brand-accent, #12b8a6)' }} /> acumulado
-          </span>
-        </div>
-      </section>
+        )}
+      </div>
+    </section>
+  );
+}
 
-      <section className="card mp-card">
-        <div className="mp-card-head">
-          <strong>Calendário de {data.to.slice(0, 4)}</strong>
-          <small>cada dia pintado pelo que ensacou · clique num dia para abrir o quadro dele</small>
+/** The period added up as it went: where it stands against the target and the last period. */
+function PaceChart({
+  data,
+  before,
+  against,
+}: {
+  data: History;
+  before: History | null;
+  against: Against;
+}) {
+  const rows = useMemo(() => {
+    let done = 0;
+    let goal = 0;
+    let was = 0;
+    return data.series.map((slot, at) => {
+      done += slot.bags;
+      goal += slot.targetBags;
+      was += before?.series[at]?.bags ?? 0;
+      return {
+        label: slotLabel(slot.slot, data.group),
+        done,
+        goal: goal || null,
+        was: before && at < before.series.length ? was : null,
+      };
+    });
+  }, [data, before]);
+  const drawing = useFirstDraw(rows.length > 0);
+  const last = rows.at(-1);
+  const gap = last?.goal ? last.done - last.goal : null;
+  const beforeName = against === 'year' ? 'ano passado' : 'anterior';
+  return (
+    <section className="card mp-card">
+      <Head
+        title="Ritmo do período"
+        hint="somando dia após dia"
+        note={
+          gap == null ? null : gap >= 0 ? (
+            <b className="up">{integer(gap)} acima da meta</b>
+          ) : (
+            <b className="down">faltam {integer(-gap)} para a meta</b>
+          )
+        }
+      />
+      <div className="mp-chart tall">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={rows} margin={{ top: 8, right: 60, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
+            <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={16} />
+            <YAxis
+              tick={AXIS}
+              width={56}
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(v: number) => integer(v)}
+            />
+            <Tooltip
+              formatter={(value, name) => [
+                `${integer(Number(value))} sacos`,
+                name === 'done' ? 'ensacado' : name === 'goal' ? 'meta' : beforeName,
+              ]}
+            />
+            {before && (
+              <Line
+                dataKey="was"
+                stroke="#a8b8bd"
+                strokeDasharray="2 4"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            )}
+            {last?.goal != null && (
+              <Line
+                dataKey="goal"
+                stroke="#0b2028"
+                strokeDasharray="6 4"
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            )}
+            <Line
+              dataKey="done"
+              stroke="var(--brand-accent, #12b8a6)"
+              strokeWidth={2.5}
+              dot={false}
+              isAnimationActive={drawing}
+              animationDuration={drawing ? 700 : 0}
+              label={endLabel(rows.length, (v) => integer(v), '#0b2028')}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mp-legend">
+        <span>
+          <i style={{ background: 'var(--brand-accent, #12b8a6)' }} /> ensacado
+        </span>
+        {last?.goal != null && (
+          <span>
+            <i className="dash" style={{ borderColor: '#0b2028' }} /> meta
+          </span>
+        )}
+        {before && (
+          <span>
+            <i className="dash" style={{ borderColor: '#a8b8bd' }} /> {beforeName}
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** Products, biggest first: a bar, the bags and their share, nothing to decode. */
+function ProductBars({ data, colorOf }: { data: History; colorOf: (name: string) => string }) {
+  if (!data.products.length) return <div className="stops-empty">Nenhum saco no período.</div>;
+  const top = Math.max(1, data.products[0]?.bags ?? 1);
+  return (
+    <div className="mp-bars">
+      {data.products.map((item) => (
+        <div key={item.name} title={`${item.name}: ${integer(item.bags)} sacos, ${tons(item.kg)} t`}>
+          <span>
+            <i style={{ background: colorOf(item.name) }} /> {item.name}
+          </span>
+          <div className="mp-spout-bar">
+            <i style={{ width: `${(item.bags / top) * 100}%`, background: colorOf(item.name) }} />
+          </div>
+          <b>{integer(item.bags)}</b>
+          <small>{percent(item.share, 0)}</small>
         </div>
-        <CalendarHeat year={data.to.slice(0, 4)} days={data.calendar} onDay={onDay} />
+      ))}
+    </div>
+  );
+}
+
+function SpoutRanking({ data }: { data: History }) {
+  if (!data.spouts.length) return <div className="stops-empty">Nenhum bico no período.</div>;
+  const top = Math.max(1, data.spouts[0]?.bags ?? 1);
+  return (
+    <div className="mp-spouts">
+      {data.spouts.map((spout, index) => (
+        <div key={spout.id} className="mp-spout">
+          <div className="mp-spout-name">
+            <i style={{ background: color(SPOUT_COLORS, index) }} />
+            <b>{spout.name}</b>
+            <span className="mp-rank">{index + 1}º</span>
+          </div>
+          <div className="mp-spout-bar">
+            <i
+              style={{
+                width: `${(spout.bags / top) * 100}%`,
+                background: color(SPOUT_COLORS, index),
+              }}
+            />
+          </div>
+          <div className="mp-spout-figures">
+            <span>
+              <b>{integer(spout.bags)}</b> sacos
+            </span>
+            <span>
+              <b>{percent(spout.effectiveness ?? spout.availability, 0)}</b> eficiência
+            </span>
+            <span>
+              <b>{spout.pacePerHour == null ? '—' : integer(spout.pacePerHour)}</b> sacos/h
+            </span>
+            <span>
+              <b>{integer(spout.stops)}</b> paradas · {duration(spout.stopSeconds)}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- Dia a dia ---------------------------------------------------------------------------------
+
+function DaysTab({
+  data,
+  calendar,
+  history,
+  onDay,
+}: {
+  data: History;
+  calendar: History;
+  history: ReactNode;
+  onDay: (date: string) => void;
+}) {
+  const best = calendar.calendar.reduce<{ date: string; bags: number } | null>(
+    (at, day) => (!at || day.bags > at.bags ? day : at),
+    null,
+  );
+  const worked = calendar.calendar.filter((day) => day.bags > 0).length;
+  return (
+    <div className="mp-overview">
+      <section className="card mp-card">
+        <Head
+          title={`O ano de ${calendar.to.slice(0, 4)}, dia por dia`}
+          hint="quanto mais escuro, mais sacos · clique num dia para abrir o quadro dele"
+          note={
+            best &&
+            best.bags > 0 && (
+              <>
+                {worked} dias produzidos · recorde <b>{brDay(best.date)}</b>,{' '}
+                {integer(best.bags)} sacos
+              </>
+            )
+          }
+        />
+        <CalendarHeat year={calendar.to.slice(0, 4)} days={calendar.calendar} onDay={onDay} />
+      </section>
+      {history}
+      {data.series.length === 0 && <div className="stops-empty">Nenhum dia no período.</div>}
+    </div>
+  );
+}
+
+// ---- Bicos e ritmo -------------------------------------------------------------------------------
+
+function SpoutsTab({ data }: { data: History }) {
+  const rows = data.series.map((slot, at) => ({
+    label: slotLabel(slot.slot, data.group),
+    ...Object.fromEntries(
+      data.spouts.map((spout) => {
+        const point = spout.series[at];
+        const value = point?.effectiveness ?? point?.availability;
+        return [spout.id, value == null || !point?.bags ? null : Math.round(value * 1000) / 10];
+      }),
+    ),
+  }));
+  const lastOf = (id: string) =>
+    rows.reduce((at, row, index) => ((row as Record<string, unknown>)[id] != null ? index : at), -1);
+  const values = rows.flatMap((row) =>
+    data.spouts.map((spout) => (row as Record<string, unknown>)[spout.id]).filter(
+      (v): v is number => typeof v === 'number',
+    ),
+  );
+  const floor = values.length ? Math.max(0, Math.floor(Math.min(...values) / 10) * 10 - 10) : 0;
+  const best = data.heatmap.reduce<(typeof data.heatmap)[number] | null>(
+    (at, cell) => (!at || cell.bags > at.bags ? cell : at),
+    null,
+  );
+  const weakest = [...data.spouts]
+    .filter((spout) => (spout.effectiveness ?? spout.availability) != null)
+    .sort(
+      (a, b) =>
+        (a.effectiveness ?? a.availability ?? 0) - (b.effectiveness ?? b.availability ?? 0),
+    )[0];
+  return (
+    <div className="mp-overview">
+      <section className="card mp-card">
+        <Head
+          title="Os bicos lado a lado"
+          hint="tudo o que cada bico fez no período"
+          note={
+            weakest &&
+            data.spouts.length > 1 && (
+              <>
+                menor eficiência: <b>{weakest.name}</b>
+              </>
+            )
+          }
+        />
+        <table className="stops-table mortar-table">
+          <thead>
+            <tr>
+              <th>Bico</th>
+              <th className="n">Sacos</th>
+              <th className="n">t</th>
+              <th className="n">Sacos/h</th>
+              <th>Eficiência</th>
+              <th className="n">Tempo ensacando</th>
+              <th className="n">Ritmo</th>
+              <th className="n">Paradas</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.spouts.map((spout, index) => {
+              const eff = spout.effectiveness ?? spout.availability;
+              return (
+                <tr key={spout.id}>
+                  <td>
+                    <span className="mortar-dot" style={{ background: color(SPOUT_COLORS, index) }} />
+                    <b>{spout.name}</b>
+                  </td>
+                  <td className="n">{integer(spout.bags)}</td>
+                  <td className="n">{tons(spout.kg)}</td>
+                  <td className="n">
+                    {spout.pacePerHour == null ? '—' : integer(spout.pacePerHour)}
+                  </td>
+                  <td>
+                    <div className="mortar-share mp-target">
+                      <i
+                        style={{
+                          width: `${Math.min(100, (eff ?? 0) * 100)}%`,
+                          background: color(SPOUT_COLORS, index),
+                        }}
+                      />
+                      <span>{percent(eff, 1)}</span>
+                    </div>
+                  </td>
+                  <td className="n">{percent(spout.availability, 0)}</td>
+                  <td className="n">{percent(spout.performance, 0)}</td>
+                  <td className="n">
+                    {integer(spout.stops)}{' '}
+                    <small className="muted">· {duration(spout.stopSeconds)}</small>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </section>
 
       <div className="mp-grid">
         <section className="card mp-card">
-          <div className="mp-card-head">
-            <strong>Mix de produtos · curva ABC</strong>
-            <small>A: os que fazem 80% dos sacos · B: até 95% · C: o resto</small>
+          <Head title="Eficiência de cada bico" hint={`${unitOf(data.group)} a ${unitOf(data.group)}`} />
+          <div className="mp-chart tall">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={rows} margin={{ top: 8, right: 44, bottom: 0, left: 0 }}>
+                <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={AXIS}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={12}
+                />
+                <YAxis
+                  tick={AXIS}
+                  width={40}
+                  tickLine={false}
+                  axisLine={false}
+                  domain={[floor, 100]}
+                  ticks={Array.from({ length: (100 - floor) / 10 + 1 }, (_, i) => floor + i * 10)}
+                  tickFormatter={(v: number) => `${v}%`}
+                />
+                <Tooltip
+                  formatter={(value, name) => [
+                    `${Number(value).toLocaleString('pt-BR')}%`,
+                    data.spouts.find((spout) => spout.id === name)?.name ?? '',
+                  ]}
+                />
+                {data.spouts.map((spout, index) => (
+                  <Line
+                    key={spout.id}
+                    dataKey={spout.id}
+                    stroke={color(SPOUT_COLORS, index)}
+                    strokeWidth={2}
+                    dot={false}
+                    connectNulls
+                    isAnimationActive={false}
+                    label={endLabel(lastOf(spout.id) + 1, () => spout.name, color(SPOUT_COLORS, index))}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
           </div>
+        </section>
+        <section className="card mp-card">
+          <Head
+            title="Os horários que mais rendem"
+            hint="média de sacos em cada hora, por dia da semana"
+            note={
+              best && (
+                <>
+                  pico: <b>{WEEKDAYS[best.weekday - 1]}, {best.hour}h</b>
+                </>
+              )
+            }
+          />
+          <WeekHeat cells={data.heatmap} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ---- Produtos e estoque --------------------------------------------------------------------------
+
+function ProductsTab({ data }: { data: History }) {
+  const { totals } = data;
+  const productNames = data.products.map((item) => item.name);
+  const colorOf = (name: string) => color(PRODUCT_COLORS, Math.max(0, productNames.indexOf(name)));
+  const mix = data.series
+    .filter((slot) => slot.bags > 0)
+    .map((slot) => ({
+      label: slotLabel(slot.slot, data.group),
+      ...Object.fromEntries(productNames.map((name) => [name, slot.products[name] ?? 0])),
+    }));
+  const stockTotal = data.stock.reduce((sum, item) => sum + (item.series.at(-1) ?? item.opening), 0);
+  const leading = data.products.filter((item) => item.abc === 'A').length;
+  return (
+    <div className="mp-overview">
+      <div className="mp-grid">
+        <section className="card mp-card">
+          <Head
+            title="Os produtos do período"
+            hint="classe A: os que fazem 80% dos sacos · B: até 95% · C: o resto"
+            note={
+              leading > 0 && (
+                <>
+                  <b>{leading}</b> {leading === 1 ? 'produto faz' : 'produtos fazem'} 80% dos sacos
+                </>
+              )
+            }
+          />
           <table className="stops-table mortar-table">
             <thead>
               <tr>
@@ -681,9 +1252,7 @@ function Overview({
                   <td className="n">{tons(item.kg)}</td>
                   <td>
                     <div className="mortar-share">
-                      <i
-                        style={{ width: `${item.share * 100}%`, background: colorOf(item.name) }}
-                      />
+                      <i style={{ width: `${item.share * 100}%`, background: colorOf(item.name) }} />
                       <span>{percent(item.share)}</span>
                     </div>
                   </td>
@@ -693,25 +1262,11 @@ function Overview({
           </table>
         </section>
         <section className="card mp-card">
-          <div className="mp-card-head">
-            <strong>Evolução do mix</strong>
-            <small>participação de cada produto em cada período</small>
-          </div>
+          <Head title="Como o mix mudou" hint={`a parte de cada produto em cada ${unitOf(data.group)}`} />
           <div className="mp-chart">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                // Days with no bags (a Sunday) would drop every share to zero: they are left out.
-                data={rows.filter((row, at) => (data.series[at]?.bags ?? 0) > 0)}
-                stackOffset="expand"
-                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-              >
-                <XAxis
-                  dataKey="label"
-                  tick={AXIS}
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={12}
-                />
+              <BarChart data={mix} stackOffset="expand" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={12} />
                 <YAxis
                   tick={AXIS}
                   width={40}
@@ -719,151 +1274,59 @@ function Overview({
                   axisLine={false}
                   tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
                 />
-                <Tooltip formatter={(value, name) => [`${integer(Number(value))} sacos`, name]} />
+                <Tooltip
+                  cursor={{ fill: '#0b20280a' }}
+                  formatter={(value, name) => [`${integer(Number(value))} sacos`, name]}
+                />
                 {productNames.map((name) => (
-                  <Area
+                  <Bar
                     key={name}
                     dataKey={name}
                     stackId="m"
-                    type="monotone"
-                    stroke={colorOf(name)}
                     fill={colorOf(name)}
-                    fillOpacity={0.75}
+                    stroke="#fff"
+                    strokeWidth={1}
                     isAnimationActive={false}
                   />
                 ))}
-              </AreaChart>
+              </BarChart>
             </ResponsiveContainer>
+          </div>
+          <div className="mp-legend">
+            {productNames.map((name) => (
+              <span key={name}>
+                <i style={{ background: colorOf(name) }} /> {name}
+              </span>
+            ))}
           </div>
         </section>
       </div>
 
       <div className="mp-grid">
         <section className="card mp-card">
-          <div className="mp-card-head">
-            <strong>Bicos</strong>
-            <small>quanto cada um ensacou e a eficiência no período</small>
-          </div>
-          <div className="mp-spouts">
-            {data.spouts.map((spout, index) => {
-              const top = Math.max(1, data.spouts[0]?.bags ?? 1);
-              return (
-                <div key={spout.id} className="mp-spout">
-                  <div className="mp-spout-name">
-                    <i style={{ background: color(SPOUT_COLORS, index) }} />
-                    <b>{spout.name}</b>
-                    <span className="mp-rank">{index + 1}º</span>
-                  </div>
-                  <div className="mp-spout-bar">
-                    <i
-                      style={{
-                        width: `${(spout.bags / top) * 100}%`,
-                        background: color(SPOUT_COLORS, index),
-                      }}
-                    />
-                  </div>
-                  <div className="mp-spout-figures">
-                    <span>
-                      <b>{integer(spout.bags)}</b> sacos
-                    </span>
-                    <span>
-                      <b>{percent(spout.effectiveness ?? spout.availability, 0)}</b> eficiência
-                    </span>
-                    <span>
-                      <b>{spout.pacePerHour == null ? '—' : integer(spout.pacePerHour)}</b> sacos/h
-                    </span>
-                    <span>
-                      <b>{integer(spout.stops)}</b> paradas · {duration(spout.stopSeconds)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-        <section className="card mp-card">
-          <div className="mp-card-head">
-            <strong>Eficiência dos bicos</strong>
-            <small>disponível × desempenho, período a período</small>
-          </div>
-          <div className="mp-chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={data.series.map((slot, at) => ({
-                  label: slotLabel(slot.slot, data.group),
-                  ...Object.fromEntries(
-                    data.spouts.map((spout) => {
-                      const point = spout.series[at];
-                      const value = point?.effectiveness ?? point?.availability;
-                      return [spout.id, value == null ? null : Math.round(value * 1000) / 10];
-                    }),
-                  ),
-                }))}
-                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid stroke="#e6eef0" strokeDasharray="3 5" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={AXIS}
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={12}
-                />
-                <YAxis
-                  tick={AXIS}
-                  width={40}
-                  tickLine={false}
-                  axisLine={false}
-                  domain={['auto', 'auto']}
-                  tickFormatter={(v: number) => `${v}%`}
-                />
-                <Tooltip
-                  formatter={(value, name) => [
-                    `${Number(value).toLocaleString('pt-BR')}%`,
-                    data.spouts.find((spout) => spout.id === name)?.name ?? '',
-                  ]}
-                />
-                {data.spouts.map((spout, index) => (
-                  <Line
-                    key={spout.id}
-                    dataKey={spout.id}
-                    stroke={color(SPOUT_COLORS, index)}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      </div>
-
-      <section className="card mp-card">
-        <div className="mp-card-head">
-          <strong>Quando a linha rende</strong>
-          <small>média de sacos em cada hora, por dia da semana, nos dias produzidos</small>
-        </div>
-        <WeekHeat cells={data.heatmap} />
-      </section>
-
-      <div className="mp-grid">
-        <section className="card mp-card">
-          <div className="mp-card-head">
-            <strong>Formação do estoque</strong>
-            <small>
-              saldo inicial + o que foi ensacado, por produto · saídas entram com a nota fiscal
-            </small>
-          </div>
+          <Head
+            title="Como o estoque foi formado"
+            hint="saldo inicial + o que foi ensacado · as saídas entram com a nota fiscal"
+            note={
+              <>
+                <b>{integer(stockTotal)}</b> sacos ao fim
+              </>
+            }
+          />
           <StockChart data={data} colorOf={colorOf} />
         </section>
         <section className="card mp-card">
-          <div className="mp-card-head">
-            <strong>Matéria-prima</strong>
-            <small>
-              {integer(totals.batches)} bateladas · {tons(totals.mixedKg)} t misturadas
-            </small>
-          </div>
+          <Head
+            title="Matéria-prima gasta"
+            hint={`${integer(totals.batches)} bateladas · ${tons(totals.mixedKg)} t misturadas`}
+            note={
+              totals.cost != null && (
+                <>
+                  <b>{money(totals.cost)}</b> no período
+                </>
+              )
+            }
+          />
           <div className="mp-materials">
             {data.materials.map((item, index) => {
               const top = Math.max(1, data.materials[0]?.kg ?? 1);
@@ -882,7 +1345,7 @@ function Overview({
                   </div>
                   <b>{tons(item.kg)} t</b>
                   <small>
-                    {item.perTonBagged != null ? `${integer(item.perTonBagged)} kg/t ensacada` : ''}
+                    {item.perTonBagged != null ? `${integer(item.perTonBagged)} kg por t ensacada` : ''}
                     {item.cost != null ? ` · ${money(item.cost)}` : ''}
                   </small>
                 </div>
@@ -978,7 +1441,7 @@ function CalendarHeat({
         <i className="l1" />
         <i className="l2" />
         <i className="l3" />
-        <i className="l4" /> mais · melhor dia: {integer(max)} sacos
+        <i className="l4" /> mais
       </div>
     </div>
   );

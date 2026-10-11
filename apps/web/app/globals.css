@@ -7745,169 +7745,135 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   gap: 4px;
 }
 
-/* ---------- The panel's own tabs ----------
-   These were built out of the filter pills, and they read as filters: a pill says "narrow
-   what is on screen", a tab says "this is another section". The convention that separates
-   them is a baseline under the whole strip with the open tab marked on it -- Material calls
-   it the active indicator -- so the strip is a bar, not a row of buttons. Nothing else on
-   the page looks like this, which is the point. */
-/*
- * The surface the open tab opens into.
- *
- * Without it the tab was a white shape floating over the page, and a shape floating over a
- * page is a button. A folder reads as a folder because the sheet in front and the pocket
- * behind it are the same surface, interrupted only where the open one stands.
- */
-.dashboard-sheet {
-  padding: 18px;
-  border: 1px solid #ccdadd;
-  border-radius: 0 14px 14px 14px;
-  background: #f8fafb;
-}
+/* ---------- Section tabs: the panel's own tabs and the sections of a page ----------
+   Two designs came before this one. Pills read as filters ("narrow what is on screen"); the
+   folder tab that replaced them was small, its closed tabs read as loose text and the frame
+   around the cards weighed on the page. A section is a place you go to, so each tab is a
+   tile with an icon, a name and a line saying what is in it, all of them always in view on
+   one bar: the open one is lit in the page accent, the others wait beside it. Nothing else
+   on the page looks like this, which is the point. */
 .dashboard-tabs {
   position: sticky;
   top: 0;
   z-index: 30;
   display: flex;
-  align-items: flex-end;
-  gap: 1px;
-  /* Room above for the open tab to stand taller than the closed ones. */
-  padding-top: 8px;
-  margin: 0;
-  /* No edge of its own: the surface below draws the one line, and the open tab breaks it.
-     Two lines a pixel apart read as a seam, not as a folder. */
-  background: #f2f5f6;
+  align-items: stretch;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 6px;
+  border: 1px solid #dfe8ea;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 6px 14px -12px #0b202840;
 }
 .dashboard-tabs:empty {
   display: none;
 }
 .dashboard-tab {
   position: relative;
-  display: inline-flex;
-  align-items: stretch;
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 280px;
   border: 1px solid transparent;
-  border-radius: 10px 10px 0 0;
+  border-radius: 10px;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-/* A closed tab is separated from its neighbour by a hairline, the way a stack of folders is. */
-.dashboard-tab:not(.active) + .dashboard-tab:not(.active)::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 25%;
-  bottom: 25%;
-  width: 1px;
-  background: #dde7e9;
+.dashboard-tab:not(.active):hover {
+  border-color: var(--brand-accent, #12b8a6);
 }
-/*
- * The open tab is a sheet that BREAKS the content edge.
- *
- * Sitting on the line with a coloured bar under it was still read as a filter, because the
- * line ran straight through: everything in the row looked equally closed. A folder reads as
- * open because the edge stops where the open one is -- three sides drawn, the fourth erased
- * by a one-pixel overlap over the line. That single missing pixel is the whole signal.
- */
 .dashboard-tab.active {
-  z-index: 1;
-  margin-bottom: -1px;
-  padding-bottom: 1px;
-  border-color: #ccdadd;
-  /* Three sides drawn, the fourth erased: the missing pixel is the whole signal. */
-  border-bottom-color: transparent;
-  background: #f8fafb;
-  box-shadow: 0 -2px 8px #0b202810;
+  border-color: color-mix(in srgb, var(--brand-accent, #12b8a6) 45%, #fff);
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 8%, #fff);
 }
-/* A stripe along the top of the open sheet, the way a browser marks the tab in front. */
+/* The bar under the open tile: the same mark a browser puts on the page in front. */
 .dashboard-tab.active::after {
   content: '';
   position: absolute;
-  left: -1px;
-  right: -1px;
-  top: -1px;
+  left: 14px;
+  right: 14px;
+  bottom: -1px;
   height: 3px;
-  border-radius: 10px 10px 0 0;
-  background: #0b2028;
+  border-radius: 3px 3px 0 0;
+  background: var(--brand-accent, #12b8a6);
 }
 .dashboard-tab > button {
-  position: relative;
-  display: inline-flex;
+  display: flex;
+  flex: 1;
   align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 10px 18px;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 12px;
   border: 0;
-  border-radius: 8px 8px 0 0;
+  border-radius: 10px;
   background: transparent;
-  color: #6d8087;
+  color: #3d5a62;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dashboard-tab-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: #eef3f4;
+  color: #71868d;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.dashboard-tab-icon svg {
+  width: 17px;
+  height: 17px;
+}
+.dashboard-tab.active .dashboard-tab-icon {
+  background: var(--brand-accent, #12b8a6);
+  color: #fff;
+}
+.dashboard-tab-text {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+.dashboard-tab-text b {
+  overflow: hidden;
+  color: #3d5a62;
   font-size: 13.5px;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-/* The indicator, drawn over the baseline so it reads as the tab owning that stretch of it. */
-.dashboard-tab > button::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: transparent;
-  transition: background 0.15s ease;
+.dashboard-tab-text small {
+  overflow: hidden;
+  color: #8a9ca2;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.dashboard-tab:not(.active) > button:hover {
-  color: #0b2028;
-  background: #e7edee;
-  border-radius: 10px 10px 0 0;
-}
-.dashboard-tab > button:hover::after {
-  background: #c3d3d7;
-}
-.dashboard-tab.active > button {
+.dashboard-tab.active .dashboard-tab-text b {
   color: #0b2028;
   font-weight: 700;
 }
-.dashboard-tab.active > button::after {
-  background: transparent;
-}
-.dashboard-tab.active > button {
-  color: #0b2028;
-}
-.dashboard-tab > button em {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: #e4ecee;
-  color: #6d8087;
-  font-size: 10.5px;
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-.dashboard-tab.active > button em {
-  background: #0b2028;
-  color: #fff;
+.dashboard-tab.active .dashboard-tab-text small {
+  color: #4f6a71;
 }
 .dashboard-tab.dragging {
   opacity: 0.45;
 }
-/* A card is being carried: the tab it would land on says so, on the same indicator. */
-.dashboard-tab.over > button {
-  background: #e7f7f5;
-  color: #0b6b62;
-}
-.dashboard-tab.over > button::after {
-  background: #12b8a6;
-  height: 3px;
+/* A card is being carried: the tile it would land on says so. */
+.dashboard-tab.over {
+  border-color: var(--brand-accent, #12b8a6);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 12%, #fff);
 }
 /* The pencil and the cross belong to the open tab, quiet until wanted. */
 .dashboard-tab-tools {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin: 0 6px 0 -8px;
+  margin-right: 6px;
   align-self: center;
 }
 .dashboard-tab-tools button {
@@ -7933,24 +7899,23 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .dashboard-tab-rename {
   min-width: 0;
-  width: 160px;
+  width: 100%;
   min-height: 34px;
-  margin: 4px 6px;
+  margin: 6px;
   padding: 6px 10px;
-  border: 1px solid #0b2028;
+  border: 1px solid var(--brand-accent, #12b8a6);
   border-radius: 8px;
   font-size: 13.5px;
   font-weight: 600;
 }
-/* Adding a tab is an action, not a tab: it stands off the baseline. */
+/* Adding a tab is an action, not a tab: a narrow dashed tile at the end. */
 .dashboard-tab-add {
+  flex: none;
   align-self: center;
-  margin-bottom: 5px;
-  min-height: 30px;
-  margin-left: 8px;
-  padding: 5px 12px;
+  min-height: 36px;
+  padding: 6px 14px;
   border: 1px dashed #c3d3d7;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: #7f959b;
   font-size: 12px;
@@ -7959,26 +7924,34 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .dashboard-tab-add:hover {
   border-style: solid;
-  border-color: #0b2028;
+  border-color: var(--brand-accent, #12b8a6);
   color: #0b2028;
 }
 .dashboard-tab-hint {
   align-self: center;
   margin-left: auto;
-  padding-right: 4px;
-  color: #12b8a6;
+  padding: 0 8px;
+  color: var(--brand-accent, #12b8a6);
   font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
+}
+/* The cards under the tabs sit on the page itself: the lit tile is the whole signal. */
+.dashboard-sheet {
+  padding: 0;
 }
 .modal-note {
   margin: 16px 0 0;
   color: #536d76;
   font-size: 13px;
 }
-/* On a phone the strip scrolls sideways instead of stacking into a wall. */
+/* On a phone the bar scrolls sideways: tiles keep their size and the description goes, so
+   the next tab always peeks in at the edge and says there is more. */
 @media (max-width: 760px) {
   .dashboard-tabs {
-    gap: 0;
+    gap: 4px;
+    margin-bottom: 12px;
+    padding: 4px;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -7988,11 +7961,18 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   .dashboard-tab,
   .dashboard-tab-add {
     flex: none;
+    max-width: none;
   }
   .dashboard-tab > button {
-    padding: 10px 13px;
-    font-size: 13px;
+    min-height: 42px;
+    gap: 8px;
+    padding: 5px 12px 5px 6px;
   }
+  .dashboard-tab-icon {
+    width: 28px;
+    height: 28px;
+  }
+  .dashboard-tab-text small,
   .dashboard-tab-hint {
     display: none;
   }
@@ -11995,6 +11975,7 @@ button.mortar-spout:hover .mortar-spout-open {
 
 /* Mortar production page: filters, the three tabs, and the overview's cards. */
 .mp-filters {
+  margin-bottom: 14px;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -12009,50 +11990,6 @@ button.mortar-spout:hover .mortar-spout-open {
 .mp-dates {
   display: flex;
   gap: 10px;
-}
-.mp-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 4px 18px;
-  margin: 6px 0 14px;
-  border-bottom: 1px solid #dfe8ea;
-}
-.mp-tabs > button {
-  position: relative;
-  padding: 10px 2px 11px;
-  border: 0;
-  background: transparent;
-  color: #71868d;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.mp-tabs > button.active {
-  color: #0b2028;
-}
-.mp-tabs > button.active::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
-  background: var(--brand-accent, #12b8a6);
-}
-.mp-tabs > button:hover {
-  color: #0b2028;
-}
-.mp-tabs-period {
-  margin-left: auto;
-  padding-bottom: 11px;
-  color: #71868d;
-  font-size: 12px;
-}
-.mp-tabs-period small {
-  color: #8f63a8;
 }
 .mp-overview {
   display: grid;
@@ -12436,11 +12373,6 @@ button.mortar-spout:hover .mortar-spout-open {
   .mp-kpis .shift-kpi.hero {
     grid-column: 1 / -1;
   }
-  .mp-tabs-period {
-    width: 100%;
-    margin-left: 0;
-    padding-bottom: 6px;
-  }
   .mp-filters .widget-period {
     display: flex;
     flex-wrap: nowrap;
@@ -12493,5 +12425,128 @@ button.mortar-spout:hover .mortar-spout-open {
   max-width: 90px;
 }
 .mp-target span {
+  white-space: nowrap;
+}
+/* What the page is showing, under the section tabs: one quiet line. */
+.mp-period {
+  margin: -6px 0 12px 4px;
+  color: #71868d;
+  font-size: 12px;
+}
+.mp-period b {
+  color: #20353d;
+  font-weight: 600;
+}
+/* The period in one sentence, before any chart. */
+.mp-headline {
+  margin: 0;
+  padding: 14px 18px;
+  border: 1px solid #dfe8ea;
+  border-left: 4px solid var(--brand-accent, #12b8a6);
+  border-radius: 12px;
+  background: #fff;
+  color: #3d5a62;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.mp-headline b {
+  color: #0b2028;
+  font-weight: 700;
+}
+.mp-headline b.up,
+.mp-note b.up {
+  color: #148a55;
+}
+.mp-headline b.down,
+.mp-note b.down {
+  color: #c2421f;
+}
+/* The one figure a card is about, at the end of its title row. */
+.mp-note {
+  margin-left: auto;
+  color: #5d747b;
+  font-size: 12px;
+}
+.mp-note b {
+  color: #0b2028;
+  font-weight: 700;
+}
+.mp-switch {
+  margin-left: auto;
+}
+.mp-switch button {
+  min-height: 28px;
+  padding: 3px 11px;
+  font-size: 12px;
+}
+.mp-grid.wide {
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+}
+/* A ranked list: name, a bar from the same zero, the bags, the share. */
+.mp-bars {
+  display: grid;
+  gap: 11px;
+}
+.mp-bars > div {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) 64px 38px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.2;
+}
+.mp-bars > div > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: #20353d;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mp-bars > div > span i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.mp-bars > div > b {
+  color: #0b2028;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mp-bars > div > small {
+  color: #71868d;
+  text-align: right;
+}
+.mp-bars .mp-spout-bar {
+  height: 10px;
+}
+@media (max-width: 1100px) {
+  .mp-grid.wide {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .mp-headline {
+    padding: 12px 14px;
+    font-size: 13.5px;
+  }
+  .mp-note {
+    width: 100%;
+    margin-left: 0;
+  }
+  .mp-switch {
+    margin-left: 0;
+  }
+  .mp-bars > div {
+    grid-template-columns: 96px minmax(0, 1fr) 54px 34px;
+    gap: 8px;
+  }
+}
+
+/* The minutes beside a count stay on its line: one row per period, never two. */
+.mp-card .stops-table td small {
+  display: inline;
   white-space: nowrap;
 }
