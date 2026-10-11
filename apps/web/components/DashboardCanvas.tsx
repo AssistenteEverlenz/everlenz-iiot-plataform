@@ -44,7 +44,7 @@ import {
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
-import { DashboardTabs } from './DashboardTabs';
+import { DashboardTabs, TabsModal } from './DashboardTabs';
 import { Section } from './Section';
 import type { DashboardTab } from './data';
 import { ShiftBoard } from './ShiftBoard';
@@ -1135,6 +1135,7 @@ export function DashboardCanvas({ id }: { id: string }) {
   const [savingRefresh, setSavingRefresh] = useState(false);
   const [removingWidget, setRemovingWidget] = useState<DashboardWidget | null>(null);
   const [removingTab, setRemovingTab] = useState<string | null>(null);
+  const [managingTabs, setManagingTabs] = useState(false);
   const [printing, setPrinting] = useState(false);
   async function printEverything() {
     setPrinting(true);
@@ -1207,9 +1208,9 @@ export function DashboardCanvas({ id }: { id: string }) {
     return counts;
   }, [widgets, tabs, firstTab]);
 
-  async function createTab(name: string) {
+  async function createTab(name: string, icon: string) {
     try {
-      const made = (await mutate(`/dashboards/${id}/tabs`, 'POST', { name })) as {
+      const made = (await mutate(`/dashboards/${id}/tabs`, 'POST', { name, icon })) as {
         id: string;
       };
       await dashboard.refresh();
@@ -1218,9 +1219,9 @@ export function DashboardCanvas({ id }: { id: string }) {
       setError(reason instanceof Error ? reason.message : 'Falha ao criar a aba.');
     }
   }
-  async function renameTab(tabId: string, name: string) {
+  async function updateTab(tabId: string, name: string, icon: string) {
     try {
-      await mutate(`/dashboards/${id}/tabs/${tabId}`, 'PATCH', { name });
+      await mutate(`/dashboards/${id}/tabs/${tabId}`, 'PATCH', { name, icon });
       await dashboard.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao renomear a aba.');
@@ -1235,9 +1236,16 @@ export function DashboardCanvas({ id }: { id: string }) {
       setError(reason instanceof Error ? reason.message : 'Falha ao excluir a aba.');
     }
   }
+  /** Moves a tab to a place and writes the whole order, so no two tabs share a position. */
   async function reorderTab(tabId: string, position: number) {
+    const order = tabs.filter((tab) => tab.id !== tabId);
+    const moving = tabs.find((tab) => tab.id === tabId);
+    if (!moving) return;
+    order.splice(Math.max(0, Math.min(position, order.length)), 0, moving);
     try {
-      await mutate(`/dashboards/${id}/tabs/${tabId}`, 'PATCH', { position });
+      for (const [index, tab] of order.entries())
+        if (tab.position !== index)
+          await mutate(`/dashboards/${id}/tabs/${tab.id}`, 'PATCH', { position: index });
       await dashboard.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao reordenar as abas.');
@@ -1777,10 +1785,7 @@ export function DashboardCanvas({ id }: { id: string }) {
         editable={user.role === 'master'}
         carrying={Boolean(draggedId)}
         counts={tabCounts}
-        onCreate={createTab}
-        onRename={renameTab}
-        onReorder={reorderTab}
-        onRemove={(tabId) => setRemovingTab(tabId)}
+        onManage={() => setManagingTabs(true)}
         onDropWidget={(tabId) => {
           if (draggedId) void moveWidgetToTab(draggedId, tabId);
           setDraggedId(null);
@@ -3024,6 +3029,17 @@ export function DashboardCanvas({ id }: { id: string }) {
       )}
       {showingVariables && (
         <VariablesModal options={variableOptions} onClose={() => setShowingVariables(false)} />
+      )}
+      {managingTabs && !removingTab && (
+        <TabsModal
+          tabs={tabs}
+          counts={tabCounts}
+          onClose={() => setManagingTabs(false)}
+          onCreate={createTab}
+          onUpdate={updateTab}
+          onReorder={reorderTab}
+          onRemove={(tabId) => setRemovingTab(tabId)}
+        />
       )}
       {removingTab && (
         <RemoveTabModal

@@ -20,6 +20,7 @@ import { registerMortarBoardRoutes } from './mortar-board.js';
 import { registerMortarHistoryRoutes } from './mortar-history.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
+import { TAB_ICON_SELECT, tabIconColumn } from './dashboard-tab-icon.js';
 import { registerTvRoutes } from './tv-screens.js';
 import { registerOperationTvRoutes } from './operation-tv.js';
 const uuid = z.uuid();
@@ -2188,15 +2189,18 @@ export async function createApp(
   app.post('/api/dashboards/:id/tabs', async (req, reply) => {
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
-    const body = z.object({ name: z.string().trim().min(1).max(40) }).parse(req.body);
+    const body = z
+      .object({ name: z.string().trim().min(1).max(40), icon: z.string().trim().regex(/^[a-z0-9-]{1,40}$/).nullable().optional() })
+      .parse(req.body);
     if (!access.requireMaster(req, reply)) return;
     const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
     if (!view) return reply.code(404).send({ error: 'Dashboard not found' });
+    const withIcon = await tabIconColumn(db);
     const created = await db.query<{ id: string; name: string; position: number }>(
-      `INSERT INTO dashboard_tabs(tenant_id,dashboard_id,name,position)
-       VALUES($1,$2,$3,(SELECT COALESCE(max(position)+1,0) FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2))
-       RETURNING id,name,position`,
-      [current.tenantId, id, body.name],
+      `INSERT INTO dashboard_tabs(tenant_id,dashboard_id,name,position${withIcon ? ',icon' : ''})
+       VALUES($1,$2,$3,(SELECT COALESCE(max(position)+1,0) FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2)${withIcon ? ',$4' : ''})
+       RETURNING id,name,position,${TAB_ICON_SELECT}`,
+      withIcon ? [current.tenantId, id, body.name, body.icon ?? null] : [current.tenantId, id, body.name],
     );
     await recordAudit(db, req, current, {
       action: 'dashboard_tab.created',
@@ -2214,14 +2218,24 @@ export async function createApp(
       .object({
         name: z.string().trim().min(1).max(40).optional(),
         position: z.coerce.number().int().min(0).max(200).optional(),
+        icon: z.string().trim().regex(/^[a-z0-9-]{1,40}$/).nullable().optional(),
       })
       .parse(req.body);
     if (!access.requireMaster(req, reply)) return;
+    // The icon is only touched when sent: a rename alone keeps the one the tab has.
+    const withIcon = body.icon !== undefined && (await tabIconColumn(db));
     const updated = await db.query<{ id: string; name: string; position: number }>(
-      `UPDATE dashboard_tabs SET name=COALESCE($4,name),position=COALESCE($5,position)
+      `UPDATE dashboard_tabs SET name=COALESCE($4,name),position=COALESCE($5,position)${withIcon ? ',icon=$6' : ''}
        WHERE tenant_id=$1 AND dashboard_id=$2 AND id=$3
-       RETURNING id,name,position`,
-      [current.tenantId, dashboardId, tabId, body.name ?? null, body.position ?? null],
+       RETURNING id,name,position,${TAB_ICON_SELECT}`,
+      [
+        current.tenantId,
+        dashboardId,
+        tabId,
+        body.name ?? null,
+        body.position ?? null,
+        ...(withIcon ? [body.icon ?? null] : []),
+      ],
     );
     if (!updated.rows.length) return reply.code(404).send({ error: 'Tab not found' });
     await recordAudit(db, req, current, {
@@ -2487,11 +2501,11 @@ async function dashboardView(
    * table does. A panel without its tabs for a few minutes is a small thing; every panel in
    * every plant answering 500 over one missing table is not.
    */
-  let tabs: Array<{ id: string; name: string; position: number }> = [];
+  let tabs: Array<{ id: string; name: string; position: number; icon: string | null }> = [];
   try {
     tabs = (
-      await db.query<{ id: string; name: string; position: number }>(
-        `SELECT id,name,position FROM dashboard_tabs
+      await db.query<{ id: string; name: string; position: number; icon: string | null }>(
+        `SELECT id,name,position,${TAB_ICON_SELECT} FROM dashboard_tabs
          WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
         [current.tenantId, dashboardId],
       )
@@ -2503,5 +2517,7 @@ async function dashboardView(
     string,
     unknown
   > &
-    DashboardViewSettings & { tabs: Array<{ id: string; name: string; position: number }> };
+    DashboardViewSettings & {
+      tabs: Array<{ id: string; name: string; position: number; icon: string | null }>;
+    };
 }

@@ -208,6 +208,8 @@ export interface DashboardTab {
   id: string;
   name: string;
   position: number;
+  /** One of TAB_ICONS (migration 044); null draws the panel grid. */
+  icon?: string | null;
 }
 /*
  * The first answers a screen is still waiting for. Each usePoll counts here until its first

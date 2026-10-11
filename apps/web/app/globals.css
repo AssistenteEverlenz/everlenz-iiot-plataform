@@ -7868,55 +7868,26 @@ main {
   outline-offset: -3px;
   background: color-mix(in srgb, var(--brand-accent, #12b8a6) 12%, #fff);
 }
-/* The pencil and the cross belong to the open tab, quiet until wanted. */
-.dashboard-tab-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-right: 10px;
-  align-self: center;
-}
-.dashboard-tab-tools button {
-  width: 26px;
-  height: 26px;
-  min-height: 26px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #ffffffb3;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-.dashboard-tab-tools button:hover {
-  background: #ffffff2e;
-  color: #fff;
-}
-.dashboard-tab-rename {
-  min-width: 0;
-  width: 100%;
-  min-height: 36px;
-  margin: 12px;
-  padding: 6px 10px;
-  border: 1px solid #fff;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-}
-/* Adding a tab is an action, not a tab: a narrow cell at the end of the band. */
+/* The pencil at the end of the band: tabs are created, edited and deleted in one window. */
 .dashboard-tab-add {
+  display: flex;
   flex: none;
+  align-items: center;
+  gap: 8px;
   min-height: 60px;
   padding: 0 22px;
   border: 0;
   border-left: 1px solid #c9d7db;
   border-radius: 0;
   background: transparent;
-  color: #7f959b;
+  color: #5d747b;
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+}
+.dashboard-tab-add svg {
+  width: 18px;
+  height: 18px;
 }
 .dashboard-tab-add:hover {
   outline: 2px solid var(--brand-accent, #12b8a6);
@@ -7940,36 +7911,159 @@ main {
   color: #536d76;
   font-size: 13px;
 }
-/* On a phone the band scrolls sideways: tabs keep their size and the description goes, so
-   the next tab always peeks in at the edge and says there is more. */
+/* The tabs window: the list of tabs, and the name and icon of the one being made. */
+.tabs-modal {
+  width: min(660px, calc(100vw - 32px));
+}
+.tabs-list {
+  display: grid;
+  gap: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #e3eaec;
+}
+.tabs-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  border-bottom: 1px solid #e3eaec;
+}
+.tabs-list-name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.tabs-list-name b {
+  overflow: hidden;
+  color: #0b2028;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabs-list-name small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+}
+.tabs-list-tools {
+  display: flex;
+  gap: 6px;
+}
+.tabs-list-tools button {
+  min-height: 32px;
+  padding: 4px 11px;
+  font-size: 12px;
+}
+.tabs-list-tools button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.tabs-list-tools button.danger {
+  color: #a3272f;
+}
+.tabs-list-tools button.danger:hover {
+  border-color: #a3272f;
+}
+.tabs-editor {
+  display: grid;
+  gap: 14px;
+}
+.tabs-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 6px;
+  max-height: 400px;
+  margin-top: 6px;
+  padding: 2px;
+  overflow-y: auto;
+}
+.tabs-icon-grid button {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  height: auto;
+  max-height: none;
+  min-height: 66px;
+  padding: 10px 4px 8px;
+  border: 1px solid #e0e8ea;
+  border-radius: 0;
+  background: #fff;
+  color: #3d5a62;
+  cursor: pointer;
+}
+.tabs-icon-grid button svg {
+  width: 22px;
+  height: 22px;
+}
+.tabs-icon-grid button small {
+  overflow: hidden;
+  max-width: 100%;
+  color: #71868d;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tabs-icon-grid button:hover {
+  border-color: var(--brand-accent, #12b8a6);
+}
+.tabs-icon-grid button.active {
+  border-color: var(--brand-accent, #12b8a6);
+  background: var(--brand-accent, #12b8a6);
+  color: #fff;
+}
+.tabs-icon-grid button.active small {
+  color: #fff;
+}
+
+/* On a phone nothing scrolls sideways: the open tab shows its icon and name and takes the
+   room left, the others shrink to their icon, and a tap swaps them. */
 @media (max-width: 760px) {
   .dashboard-tabs {
     margin-bottom: 12px;
-    overflow-x: auto;
-    scrollbar-width: none;
   }
-  .dashboard-tabs::-webkit-scrollbar {
-    display: none;
+  .dashboard-tab {
+    flex: 0 0 auto;
   }
-  .dashboard-tab,
-  .dashboard-tab-add {
-    flex: none;
+  .dashboard-tab.active {
+    flex: 1 1 auto;
   }
   .dashboard-tab > button,
   .dashboard-tab-add {
-    min-height: 50px;
+    min-height: 52px;
   }
   .dashboard-tab > button {
+    justify-content: center;
     gap: 9px;
-    padding: 8px 14px 8px 12px;
+    padding: 8px 10px;
+  }
+  .dashboard-tab.active > button {
+    justify-content: flex-start;
+    padding: 8px 12px;
   }
   .dashboard-tab-icon {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
   }
+  .dashboard-tab:not(.active) .dashboard-tab-text,
   .dashboard-tab-text small,
+  .dashboard-tab-add span,
   .dashboard-tab-hint {
     display: none;
+  }
+  .dashboard-tab-add {
+    padding: 0 14px;
+  }
+  .tabs-list li {
+    flex-wrap: wrap;
+  }
+  .tabs-list-tools {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .tabs-icon-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 /* On paper every tab is printed, one page each: a report with a third of the panel is not

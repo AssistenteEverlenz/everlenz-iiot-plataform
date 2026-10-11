@@ -2341,23 +2341,11 @@
     outline: 2px dashed var(--brand-accent, #12b8a6);
     background: color-mix(in srgb, var(--brand-accent, #12b8a6) 12%, #12191c);
   }
-  :root[data-theme='dark'] .dashboard-tab-tools button {
-    border: 0;
-    background: transparent;
-    color: #ffffffb3;
-  }
-  :root[data-theme='dark'] .dashboard-tab-tools button:hover {
-    background: #ffffff2e;
-    color: #fff;
-  }
-  :root[data-theme='dark'] .dashboard-tab-rename {
-    border: 1px solid #12191c;
-  }
   :root[data-theme='dark'] .dashboard-tab-add {
     border: 0;
     border-left: 1px solid #2d4047;
     background: transparent;
-    color: #80959c;
+    color: #9aadb3;
   }
   :root[data-theme='dark'] .dashboard-tab-add:hover {
     outline: 2px solid var(--brand-accent, #12b8a6);
@@ -2368,6 +2356,43 @@
   }
   :root[data-theme='dark'] .modal-note {
     color: #a0b2b8;
+  }
+  :root[data-theme='dark'] .tabs-list {
+    border-top: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .tabs-list li {
+    border-bottom: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .tabs-list-name b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .tabs-list-name small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .tabs-list-tools button.danger {
+    color: #da8b90;
+  }
+  :root[data-theme='dark'] .tabs-list-tools button.danger:hover {
+    border-color: #a3272f;
+  }
+  :root[data-theme='dark'] .tabs-icon-grid button {
+    border: 1px solid #223035;
+    background: #12191c;
+    color: #b2c1c6;
+  }
+  :root[data-theme='dark'] .tabs-icon-grid button small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .tabs-icon-grid button:hover {
+    border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .tabs-icon-grid button.active {
+    border-color: var(--brand-accent, #12b8a6);
+    background: var(--brand-accent, #12b8a6);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .tabs-icon-grid button.active small {
+    color: #fff;
   }
   :root[data-theme='dark'] .form-section {
     border: 1px solid #202d32;

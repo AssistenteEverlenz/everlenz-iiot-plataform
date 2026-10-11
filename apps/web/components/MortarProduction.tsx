@@ -472,7 +472,14 @@ function SectionTabs({ tab, onPick }: { tab: Tab; onPick: (tab: Tab) => void }) 
     <div className="dashboard-tabs" role="tablist" aria-label="Seções da produção">
       {TABS.map(([id, name, hint]) => (
         <div key={id} className={`dashboard-tab${tab === id ? ' active' : ''}`}>
-          <button type="button" role="tab" aria-selected={tab === id} onClick={() => onPick(id)}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            aria-label={name}
+            title={hint}
+            onClick={() => onPick(id)}
+          >
             <span className="dashboard-tab-icon" aria-hidden="true">
               <svg
                 viewBox="0 0 24 24"

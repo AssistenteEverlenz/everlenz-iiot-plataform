@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { Database } from '@iiot/database';
 import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
+import { TAB_ICON_SELECT, tabIconColumn } from './dashboard-tab-icon.js';
 import { scheduleProductionRebuild } from './shift-production.js';
 import { loadTv, saveTv, type TvScreen } from './tv-screens.js';
 
@@ -37,6 +38,8 @@ interface SnapshotTab {
   id: string;
   name: string;
   position: number;
+  /** Migration 044; absent in snapshots taken before tabs had icons. */
+  icon?: string | null;
 }
 interface SnapshotContent {
   version: 1;
@@ -68,11 +71,16 @@ async function replaceTabs(
     dashboardId,
   ]);
   const tabFor = new Map<string, string>();
+  const withIcon = await tabIconColumn(sql);
   for (const tab of [...tabs].sort((a, b) => a.position - b.position)) {
     const id = randomUUID();
     await sql.query(
-      'INSERT INTO dashboard_tabs(id,tenant_id,dashboard_id,name,position) VALUES($1,$2,$3,$4,$5)',
-      [id, tenantId, dashboardId, tab.name, tab.position],
+      withIcon
+        ? 'INSERT INTO dashboard_tabs(id,tenant_id,dashboard_id,name,position,icon) VALUES($1,$2,$3,$4,$5,$6)'
+        : 'INSERT INTO dashboard_tabs(id,tenant_id,dashboard_id,name,position) VALUES($1,$2,$3,$4,$5)',
+      withIcon
+        ? [id, tenantId, dashboardId, tab.name, tab.position, tab.icon ?? null]
+        : [id, tenantId, dashboardId, tab.name, tab.position],
     );
     tabFor.set(tab.id, id);
   }
@@ -111,7 +119,7 @@ async function capture(
     [tenantId, dashboardId],
   );
   const tabs = await sql.query<SnapshotTab>(
-    `SELECT id,name,position FROM dashboard_tabs
+    `SELECT id,name,position,${TAB_ICON_SELECT} FROM dashboard_tabs
      WHERE tenant_id=$1 AND dashboard_id=$2 ORDER BY position,created_at`,
     [tenantId, dashboardId],
   );
