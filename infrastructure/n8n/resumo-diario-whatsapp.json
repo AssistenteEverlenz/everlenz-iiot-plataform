@@ -8,7 +8,7 @@
         "width": 520,
         "color": 5
       },
-      "id": "1024dde5-bff9-4aed-a917-377776c123d2",
+      "id": "7eabf03a-2c8a-4e29-a504-28eaa4149c5b",
       "name": "Nota",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -28,7 +28,7 @@
           ]
         }
       },
-      "id": "b1b9b941-3339-4992-9cdf-31631fde4b8a",
+      "id": "f4001353-0f3c-46ed-8d52-aea292d6ba86",
       "name": "A cada 3 minutos",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -42,31 +42,31 @@
         "assignments": {
           "assignments": [
             {
-              "id": "ee92544b-615c-4c6a-beb2-aea3336b9f03",
+              "id": "03cfb13e-3838-4393-906e-87ab7f4232ba",
               "name": "PLATAFORMA_URL",
               "value": "https://iotplataform.everlenz.com.br",
               "type": "string"
             },
             {
-              "id": "5f7c39ad-b694-4bd2-8e3e-daebddadcc60",
+              "id": "1d639ead-c70e-4bdd-9ee0-abf165361cd8",
               "name": "PLATAFORMA_CHAVE",
               "value": "COLE_AQUI_A_N8N_API_KEY",
               "type": "string"
             },
             {
-              "id": "2172375c-715b-49c1-ba65-8a4ebcfbcac0",
+              "id": "eca8b42b-1a32-4077-bec1-9a72300ec0e7",
               "name": "EVOLUTION_URL",
               "value": "https://evolutionapi.assistentedrfin.com.br",
               "type": "string"
             },
             {
-              "id": "be0d1d7c-3d8d-4862-ad6d-9de3bc36d401",
+              "id": "d2446805-bc7f-4822-ba37-2f42b2eac38b",
               "name": "EVOLUTION_INSTANCIA",
               "value": "NOME_DA_INSTANCIA",
               "type": "string"
             },
             {
-              "id": "44aa8078-c6b8-4fb2-b9f8-7db4d83d4f2b",
+              "id": "dafd3c52-2a8f-4294-b42e-0516699b3055",
               "name": "EVOLUTION_APIKEY",
               "value": "COLE_AQUI_A_APIKEY_DA_EVOLUTION",
               "type": "string"
@@ -75,7 +75,7 @@
         },
         "options": {}
       },
-      "id": "5c8b6116-40d9-4752-98f3-6c09ef817f09",
+      "id": "e1ae470c-a00c-47f3-814d-35ba154b1e8f",
       "name": "Configuração",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -100,7 +100,7 @@
           "timeout": 30000
         }
       },
-      "id": "6bc182f1-77ad-4de1-bdbd-5c033e505294",
+      "id": "8cee8f36-4dd3-4762-b471-6078cc634abe",
       "name": "Buscar próxima mensagem",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -120,7 +120,7 @@
           },
           "conditions": [
             {
-              "id": "50a19a03-b56f-4c21-b224-4d939d50b167",
+              "id": "a7c90909-3f9b-4881-a037-17e811b1569e",
               "leftValue": "={{ $json.message?.id }}",
               "rightValue": "",
               "operator": {
@@ -134,7 +134,7 @@
         },
         "options": {}
       },
-      "id": "f75e2b08-0536-4166-a244-f4639703d25a",
+      "id": "e7c5316d-ffd7-445f-84e2-30831c1f32f9",
       "name": "Tem mensagem?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -145,7 +145,7 @@
     },
     {
       "parameters": {},
-      "id": "b71f7d6a-4bae-4dea-ae79-754d4790be45",
+      "id": "8829bc7a-9dbc-4af5-9f9e-d4e8749826f2",
       "name": "Nada para enviar",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
@@ -158,7 +158,7 @@
       "parameters": {
         "amount": "={{ $json.message.waitSeconds }}"
       },
-      "id": "2a09b1e8-fce1-466a-ad99-6c685878c001",
+      "id": "30e6cf12-883b-4d54-90fc-c1ef67897918",
       "name": "Espera aleatória",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -209,7 +209,7 @@
           "timeout": 60000
         }
       },
-      "id": "0def77e1-73eb-45fd-b658-be4a7d152ee7",
+      "id": "f5236afa-331c-4958-b67d-bab08445d415",
       "name": "Enviar WhatsApp (Evolution)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -237,7 +237,7 @@
         "jsonBody": "={{ { ok: true } }}",
         "options": {}
       },
-      "id": "5f18d11d-d567-4664-942e-dc75e8348f6c",
+      "id": "e9ffd856-695b-4dcc-8fef-f91feab196ad",
       "name": "Confirmar envio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -264,7 +264,7 @@
         "jsonBody": "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
         "options": {}
       },
-      "id": "31f8eddd-1847-4deb-9c5b-c0d47e043df5",
+      "id": "57fea105-80ee-4db1-a4b0-f7ab350938c7",
       "name": "Registrar falha",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,

@@ -148,3 +148,109 @@ writeFileSync(
   `${JSON.stringify(workflow, null, 2)}\n`,
 );
 console.log('resumo-diario-whatsapp.json written');
+
+// The automatic answer of the platform's WhatsApp number. The number only sends the daily
+// summary; a person who answers gets one sentence pointing to the panel, once per contact per 24
+// hours, so a "thanks" never turns into a conversation and the number never chats in a loop.
+// Evolution posts every event of the instance to this webhook (event "messages.upsert").
+const reply = {
+  name: 'IIoT - Resposta automática do WhatsApp',
+  nodes: [
+    node('Nota', 'n8n-nodes-base.stickyNote', 1, [-80, -260], {
+      content:
+        '## Resposta automática do número da plataforma\n\n' +
+        '1. Na Evolution, na instância da plataforma, configure o **webhook** com a URL de produção ' +
+        'do nó **Mensagem recebida** e o evento **MESSAGES_UPSERT**.\n' +
+        '2. Preencha **Configuração** (mesmos dados da Evolution do fluxo do resumo).\n\n' +
+        'Responde só a mensagens de pessoas (não grupos, não as próprias), **uma vez por contato a ' +
+        'cada 24 h**.',
+      height: 260,
+      width: 520,
+      color: 5,
+    }),
+    node(
+      'Mensagem recebida',
+      'n8n-nodes-base.webhook',
+      2,
+      [0, 100],
+      { httpMethod: 'POST', path: 'everlenz-iiot-whatsapp', options: {} },
+      { webhookId: randomUUID() },
+    ),
+    node('Configuração', 'n8n-nodes-base.set', 3.4, [220, 100], {
+      assignments: {
+        assignments: [
+          ['EVOLUTION_URL', 'https://evolutionapi.assistentedrfin.com.br'],
+          ['EVOLUTION_INSTANCIA', 'NOME_DA_INSTANCIA'],
+          ['EVOLUTION_APIKEY', 'COLE_AQUI_A_APIKEY_DA_EVOLUTION'],
+          [
+            'RESPOSTA',
+            'Olá! Este número só envia o resumo diário de produção da Everlenz IIoT. Para ver os detalhes e acompanhar em tempo real, acesse o painel: https://iotplataform.everlenz.com.br',
+          ],
+        ].map(([name, value]) => ({ id: randomUUID(), name, value, type: 'string' })),
+      },
+      options: {},
+    }),
+    node('Responder a este contato?', 'n8n-nodes-base.code', 2, [440, 100], {
+      mode: 'runOnceForAllItems',
+      jsCode: [
+        "const body = $('Mensagem recebida').first().json.body ?? {};",
+        'const data = Array.isArray(body.data) ? body.data[0] : body.data ?? {};',
+        "const jid = String(data?.key?.remoteJid ?? '');",
+        "const event = String(body.event ?? '').toLowerCase().replace('_', '.');",
+        '// Only a person writing to us: not our own sends, not groups, not status.',
+        "if (event !== 'messages.upsert' || data?.key?.fromMe || !jid.endsWith('@s.whatsapp.net')) return [];",
+        "const memory = $getWorkflowStaticData('global');",
+        'memory.answered = memory.answered ?? {};',
+        'const now = Date.now();',
+        '// Once per contact per day; old entries are forgotten so the memory stays small.',
+        'for (const [key, at] of Object.entries(memory.answered)) if (now - at > 86400000) delete memory.answered[key];',
+        'if (memory.answered[jid]) return [];',
+        'memory.answered[jid] = now;',
+        "return [{ json: { number: jid.split('@')[0], waitSeconds: 3 + Math.floor(Math.random() * 6) } }];",
+      ].join('\n'),
+    }),
+    node('Espera curta', 'n8n-nodes-base.wait', 1.1, [660, 100], {
+      amount: '={{ $json.waitSeconds }}',
+    }),
+    node(
+      'Enviar resposta',
+      'n8n-nodes-base.httpRequest',
+      4.2,
+      [880, 100],
+      {
+        method: 'POST',
+        url: `={{ ${config}.EVOLUTION_URL }}/message/sendText/{{ encodeURIComponent(${config}.EVOLUTION_INSTANCIA) }}`,
+        sendHeaders: true,
+        headerParameters: {
+          parameters: [{ name: 'apikey', value: `={{ ${config}.EVOLUTION_APIKEY }}` }],
+        },
+        sendBody: true,
+        bodyParameters: {
+          parameters: [
+            { name: 'number', value: "={{ $('Responder a este contato?').item.json.number }}" },
+            { name: 'text', value: `={{ ${config}.RESPOSTA }}` },
+            { name: 'delay', value: '={{ 1500 + Math.floor(Math.random() * 2000) }}' },
+            { name: 'presence', value: 'composing' },
+          ],
+        },
+        options: { timeout: 60000 },
+      },
+      { onError: 'continueRegularOutput' },
+    ),
+  ],
+  connections: {
+    'Mensagem recebida': { main: [to('Configuração')] },
+    Configuração: { main: [to('Responder a este contato?')] },
+    'Responder a este contato?': { main: [to('Espera curta')] },
+    'Espera curta': { main: [to('Enviar resposta')] },
+  },
+  active: false,
+  settings: { executionOrder: 'v1', saveDataSuccessExecution: 'none' },
+  pinData: {},
+  tags: [],
+};
+writeFileSync(
+  new URL('./resposta-automatica-whatsapp.json', import.meta.url),
+  `${JSON.stringify(reply, null, 2)}\n`,
+);
+console.log('resposta-automatica-whatsapp.json written');
