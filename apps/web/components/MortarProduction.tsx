@@ -253,6 +253,15 @@ export function MortarProduction({ initialLine }: { initialLine?: string }) {
         </div>
       </div>
 
+      <SectionTabs
+        tab={tab}
+        onPick={(next) => {
+          // Opening a week or a day belongs to the day-by-day tab: the others show the period.
+          setTab(next);
+          if (next !== 'days') setDrill(null);
+        }}
+      />
+
       <section className="card mp-filters">
         <label className="field">
           Linha
@@ -360,14 +369,6 @@ export function MortarProduction({ initialLine }: { initialLine?: string }) {
         </div>
       </section>
 
-      <SectionTabs
-        tab={tab}
-        onPick={(next) => {
-          // Opening a week or a day belongs to the day-by-day tab: the others show the period.
-          setTab(next);
-          if (next !== 'days') setDrill(null);
-        }}
-      />
       {tab !== 'compare' && (
         <div className="mp-period">
           Mostrando{' '}
