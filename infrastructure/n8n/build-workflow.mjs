@@ -30,7 +30,7 @@ const set = (pairs) => ({
 const embed = (file) => readFileSync(here(`./code/${file}`), 'utf8').replace(/^export /gm, '');
 const OPENAI = { openAiApi: { id: '4P77YeReej8UzYyK', name: 'OpenAI Dr Fin' } };
 const POSTGRES = { postgres: { id: 'cvdDsDiux61lnc1z', name: 'Postgres Credential' } };
-const MODEL = { __rl: true, value: 'gpt-5.4-nano', mode: 'list', cachedResultName: 'gpt-5.4-nano' };
+const MODEL = { __rl: true, value: 'gpt-6-luna', mode: 'list', cachedResultName: 'gpt-6-luna' };
 
 const CONFIG = [
   ['PLATAFORMA_URL', 'https://iotplataform.everlenz.com.br'],
