@@ -8,7 +8,7 @@
         "width": 560,
         "color": 5
       },
-      "id": "613afbdd-ad1d-4487-8d5f-419a227f14ba",
+      "id": "b6fbdcb3-f392-4789-a33f-a585c7787f0d",
       "name": "Nota",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -23,7 +23,7 @@
         "path": "everlenz-iiot-resumo",
         "options": {}
       },
-      "id": "0ffe20d4-843b-4a52-8ac8-4670209cb166",
+      "id": "4f40da4a-2586-4e80-91e9-34c3b9eab29b",
       "name": "Resumo recebido",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -31,38 +31,38 @@
         0,
         100
       ],
-      "webhookId": "2ec0d833-a1d2-41a9-8eba-b873a0903e68"
+      "webhookId": "98c16a8d-a66b-4b00-9d11-97087e568be0"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "a82785ae-a700-4584-b06f-ef529e8a3691",
+              "id": "40fc151e-f4f3-436c-9fc3-249c27a5c3d4",
               "name": "PLATAFORMA_URL",
               "value": "https://iotplataform.everlenz.com.br",
               "type": "string"
             },
             {
-              "id": "b88bafb0-2180-4ea6-9279-e62f1f07e4d7",
+              "id": "4ea91135-2d8c-4fc7-8370-487e31c1196c",
               "name": "PLATAFORMA_CHAVE",
               "value": "COLE_AQUI_A_N8N_API_KEY",
               "type": "string"
             },
             {
-              "id": "16f1bc9e-dd62-4ff1-b134-262d6ef98a31",
+              "id": "e23b0c06-f1e4-477d-8e29-4a5ed9630628",
               "name": "EVOLUTION_URL",
               "value": "https://evolutionapi.assistentedrfin.com.br",
               "type": "string"
             },
             {
-              "id": "f6d00360-0cbd-4d4d-b22b-87e2dc75d097",
+              "id": "d2c2cc14-4f1d-4dec-87ad-b73c5a6e7dac",
               "name": "EVOLUTION_INSTANCIA",
               "value": "NOME_DA_INSTANCIA",
               "type": "string"
             },
             {
-              "id": "0788af23-4e28-47e7-ac1a-51435f6f1049",
+              "id": "7f77f1b1-bd33-4b47-9b4a-ef2a87cf95e6",
               "name": "EVOLUTION_APIKEY",
               "value": "COLE_AQUI_A_APIKEY_DA_EVOLUTION",
               "type": "string"
@@ -71,7 +71,7 @@
         },
         "options": {}
       },
-      "id": "c319e20a-5c59-4d63-a50a-a3be25c22272",
+      "id": "4c2ec81d-dcb6-4432-ac1e-73aeeb537919",
       "name": "Configuração",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -91,7 +91,7 @@
           },
           "conditions": [
             {
-              "id": "c942b5a5-854d-4727-8c1b-1a1d6a2454bf",
+              "id": "2cff0c03-f131-4eeb-bad2-0a6c876cdff4",
               "leftValue": "={{ $('Resumo recebido').first().json.headers['x-n8n-key'] }}",
               "rightValue": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}",
               "operator": {
@@ -104,7 +104,7 @@
         },
         "options": {}
       },
-      "id": "8d597e2a-f9fe-4e9e-8860-b4c3f4647a92",
+      "id": "2d82124f-c497-4e0a-a327-d826d3fa582c",
       "name": "Chave válida?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -115,7 +115,7 @@
     },
     {
       "parameters": {},
-      "id": "0326861d-3bbb-40a5-b655-ace27c10298f",
+      "id": "6c393db5-80c3-494c-af0e-5c9dd2556a7c",
       "name": "Ignora",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
@@ -128,7 +128,7 @@
       "parameters": {
         "amount": "={{ $('Resumo recebido').first().json.body.waitSeconds || 10 }}"
       },
-      "id": "7e9b492d-a654-4c79-b065-5020b176cef2",
+      "id": "2ea14921-7c40-4f4c-8214-a9ccfef82a45",
       "name": "Espera aleatória",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -179,7 +179,7 @@
           "timeout": 60000
         }
       },
-      "id": "a69e45d0-7b54-46d5-aeaa-413ecd210020",
+      "id": "5f0cee85-b811-4987-8ccb-3785a408b84b",
       "name": "Envia resumo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -207,7 +207,7 @@
         "jsonBody": "={{ { ok: true } }}",
         "options": {}
       },
-      "id": "24746a0c-01b8-4b30-8f78-63d66a516715",
+      "id": "8de3430a-7a15-4fa1-9fa8-c2d98cbbecc3",
       "name": "Confirma envio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -234,7 +234,7 @@
         "jsonBody": "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
         "options": {}
       },
-      "id": "6ec913d0-6821-468e-a156-441b60e6b35d",
+      "id": "b733e202-7509-4043-a0b2-9603a7437b90",
       "name": "Registra falha",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,

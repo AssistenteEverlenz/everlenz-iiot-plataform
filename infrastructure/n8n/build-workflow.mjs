@@ -272,7 +272,16 @@ const PARSER_MENSAGEIRA = JSON.stringify(
 
 const NORMALIZA_ENTRADA = `// Aceita os dois formatos da Evolution: a integração "n8n" (body.chatInput, body.remoteJid — o mesmo
 // do DR Fin) e o webhook comum (event messages.upsert, data.key.remoteJid, data.message).
-const b = $('Mensagem recebida').first().json.body || {};
+// O nó de entrada pode ter sido trocado pelo webhook da Bell ("Webhook WhatsApp"): aceita os dois.
+let b = {};
+for (const nome of ['Mensagem recebida', 'Webhook WhatsApp']) {
+  try {
+    b = $(nome).first().json.body || {};
+    break;
+  } catch (e) {
+    // nó com outro nome neste fluxo
+  }
+}
 let jid = '', text = '', messageId = '', fromMe = false;
 if (b.remoteJid || b.chatInput != null) {
   jid = String(b.remoteJid || b.sessionId || '');
