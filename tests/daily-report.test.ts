@@ -48,15 +48,18 @@ const day = (overrides: Partial<DayFacts> = {}): DayFacts => ({
 
 describe('resumo diário em texto', () => {
   it('opens with the verdict the lock screen shows', () => {
-    expect(headline(day())).toBe('🟢 *Campo Forte bateu a meta: 224 paletes (112%)*');
-    expect(headline(day({ made: 164 }))).toBe('🔴 *Campo Forte fechou em 82% da meta: 164 de 200 paletes*');
+    expect(headline(day())).toBe('🟢 *Campo Forte · 224 paletes · 112%*');
+    expect(headline(day({ made: 164 }))).toBe('🔴 *Campo Forte · 164 de 200 · 82%*');
     expect(headline(day({ made: 185 }))).toMatch(/^🟡/);
-    expect(headline(day({ target: null }))).toBe('📦 *Campo Forte produziu 224 paletes*');
+    expect(headline(day({ target: null }))).toBe('📦 *Campo Forte · 224 paletes*');
+    expect(composeDevice(day(), null)).toContain('> 📅 _Sexta, 09/10_ · meta batida ✅');
+    expect(composeDevice(day({ made: 164 }), null)).toContain('· faltaram 36 paletes');
   });
 
   it('shows each shift and the day total only when there are two shifts', () => {
     const one = composeDevice(day(), null);
-    expect(one).not.toContain('Total do dia');
+    expect(one).not.toContain('Turno 1');
+    expect(one).toContain('*Total do dia* · `224` paletes');
     const two = composeDevice(
       day({
         shifts: '2 turnos · 02:00–18:00',
@@ -67,18 +70,21 @@ describe('resumo diário em texto', () => {
       }),
       null,
     );
-    expect(two).toContain('🕐 Turno 1 _(02:00–10:00)_: `121` paletes · 121%');
-    expect(two).toContain('🕐 Turno 2 _(10:00–18:00)_: `103` paletes · 103%');
+    expect(two).toContain('🔹 Turno 1 · `121` paletes · 121%');
+    expect(two).toContain('🔹 Turno 2 · `103` paletes · 103%');
     expect(two.indexOf('Total do dia')).toBeGreaterThan(two.indexOf('Turno 2'));
   });
 
   it('puts each machine figure against the recent average', () => {
     const text = composeDevice(day(), null);
     expect(text).toContain('🟡 Aproveitamento *69%* · média 72%');
-    expect(text).toContain('🟢 Ritmo *14 pal/h* · pico às *09h* (22)');
-    expect(text).toContain('🔴 *11 paradas* · 5h17 no turno · média 3h50');
+    expect(text).toContain('🟢 Ritmo *14 pal/h* · pico 09h (22)');
+    expect(text).toContain('🔴 Parada *5h17* · média 3h50');
+    expect(text).toContain('↳ 11 paradas · maior: 47 min (14:10)');
     expect(text).toContain('📈 +18% sobre quinta (190)');
-    expect(text).toContain('*sex █*');
+    expect(text).toContain('`ter ▇▇▇█ sex`');
+    // The hour-by-hour line covers the whole shift, hours with nothing recorded included.
+    expect(text).toContain('`06h ▇▁▁█▁▁▁▁▅▄▁▁ 17h`');
   });
 
   it('tells what made the day, by rule', () => {

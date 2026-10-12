@@ -30,7 +30,7 @@ export interface DayFacts {
   name: string;
   dashboardId: string | null;
   date: string;
-  /** "turno 06:00–17:30", or "2 turnos · 02:00–18:00". */
+  /** "turno · 06:00 às 17:30", or "2 turnos · 02:00 às 18:00". */
   shifts: string;
   /** First and last hour of the shifts, for the hour-by-hour line (hours with no record are 0). */
   firstHour: number;
@@ -208,7 +208,7 @@ export async function gatherDay(
     name: device.name,
     dashboardId: device.dashboard_id,
     date,
-    shifts: `${occurrences.length > 1 ? `${occurrences.length} turnos ·` : 'turno'} ${plantClock(start)}–${plantClock(end)}`,
+    shifts: `${occurrences.length > 1 ? `${occurrences.length} turnos` : 'turno'} · ${plantClock(start)} às ${plantClock(end)}`,
     firstHour: Number(plantClock(start).slice(0, 2)),
     lastHour: Number(plantClock(new Date(end.getTime() - 60_000)).slice(0, 2)),
     metric,
@@ -252,6 +252,10 @@ export async function gatherDay(
 // ---------------------------------------------------------------------------------------------
 // Writing (pure)
 // ---------------------------------------------------------------------------------------------
+//
+// Measured on a WhatsApp bubble 360 px wide (the narrowest common phone): every line fits on one
+// row, the small bars sit inside `code` so they draw in a monospace font that has them, and the
+// link stands alone on its line.
 
 const num = (value: number, decimals = 0) =>
   value.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -268,6 +272,7 @@ const bar = (share: number) => {
   const filled = Math.max(0, Math.min(10, Math.round(share * 10)));
   return '▰'.repeat(filled) + '▱'.repeat(10 - filled);
 };
+const hourLabel = (hour: number) => `${String(hour % 24).padStart(2, '0')}h`;
 /** Small bars ▁▂▃▄▅▆▇█, scaled to the largest value. */
 export function spark(values: number[]) {
   const top = Math.max(...values, 0);
@@ -307,19 +312,33 @@ export function highlight(f: DayFacts) {
     sentences.push(`A manhã concentrou as paradas: ${Math.round(((stopped - afternoon) / stopped) * 100)}% do tempo parado foi antes das 13h.`);
   if (!sentences.length && f.hours.length) {
     const best = [...f.hours].sort((a, b) => b.made - a.made)[0];
-    sentences.push(`O pico foi às ${String(best.hour).padStart(2, '0')}h, com ${num(best.made, units.decimals)} ${units.unit}.`);
+    sentences.push(`O pico foi às ${hourLabel(best.hour)}, com ${num(best.made, units.decimals)} ${units.unit}.`);
   }
   return sentences.join(' ');
 }
 
-/** The first line: the verdict, the only thing the lock screen shows. */
+/** The first line: the machine, what it made and the share of the target; the lock screen shows it. */
 export function headline(f: DayFacts) {
   const units = UNITS[f.metric] ?? UNITS.pallets;
-  const made = `${num(f.made, units.decimals)} ${units.unit}`;
-  if (!f.target) return `📦 *${short(f.name)} produziu ${made}*`;
+  const d = units.decimals;
+  if (!f.target) return `📦 *${short(f.name)} · ${num(f.made, d)} ${units.unit}*`;
   const share = f.made / f.target;
-  if (share >= 1) return `🟢 *${short(f.name)} bateu a meta: ${made} (${Math.round(share * 100)}%)*`;
-  return `${share >= 0.9 ? '🟡' : '🔴'} *${short(f.name)} fechou em ${Math.round(share * 100)}% da meta: ${num(f.made, units.decimals)} de ${num(f.target, units.decimals)} ${units.unit}*`;
+  const pct = Math.round(share * 100);
+  if (share >= 1) return `🟢 *${short(f.name)} · ${num(f.made, d)} ${units.unit} · ${pct}%*`;
+  return `${share >= 0.9 ? '🟡' : '🔴'} *${short(f.name)} · ${num(f.made, d)} de ${num(f.target, d)} · ${pct}%*`;
+}
+
+/** What the target came to, said in words under the headline. */
+function verdict(f: DayFacts) {
+  if (!f.target) return '';
+  const units = UNITS[f.metric] ?? UNITS.pallets;
+  if (f.made >= f.target) return ' · meta batida ✅';
+  return ` · faltaram ${num(f.target - f.made, units.decimals)} ${units.unit}`;
+}
+
+/** The short link to the machine's panel (apps/web/app/p/[code]). */
+export function panelLink(web: string, dashboardId: string | null) {
+  return dashboardId ? `${web.replace(/^https?:\/\//, '')}/p/${dashboardId.slice(0, 8)}` : null;
 }
 
 /** One machine's body, under the headline. */
@@ -327,20 +346,20 @@ export function composeDevice(f: DayFacts, link: string | null) {
   const units = UNITS[f.metric] ?? UNITS.pallets;
   const d = units.decimals;
   const lines: string[] = [];
-  lines.push(`> 📅 _${dayLabel(f.date)}_ · ${f.shifts}`, '');
+  lines.push(`> 📅 _${dayLabel(f.date)}_${verdict(f)}`, `> 🕐 ${f.shifts}`, '');
 
   lines.push('*PRODUÇÃO*');
   for (const shift of f.perShift) {
     const share = shift.target ? ` · ${Math.round((shift.made / shift.target) * 100)}%` : '';
-    lines.push(`🕐 ${shift.name} _(${shift.span})_: \`${num(shift.made, d)}\` ${units.unit}${share}`);
+    lines.push(`🔹 ${shift.name} · \`${num(shift.made, d)}\` ${units.unit}${share}`);
   }
-  if (f.perShift.length) lines.push('*Total do dia*');
+  lines.push(`*Total do dia* · \`${num(f.made, d)}\` ${units.unit}`);
   const also = [
     f.metric !== 'pallets' && f.pallets ? `\`${num(f.pallets)}\` paletes` : '',
     f.metric !== 'milheiros' && f.milheiros ? `\`${num(f.milheiros, 1)}\` milheiros` : '',
     f.metric !== 'tons' && f.tons ? `\`${num(f.tons, 1)}\` t` : '',
   ].filter(Boolean);
-  lines.push([`\`${num(f.made, d)}\` ${units.unit}`, ...also].join(' · '));
+  if (also.length) lines.push(also.join(' · '));
   if (f.target) lines.push(`🎯 Meta ${num(f.target, d)}   ${bar(f.made / f.target)}  *${Math.round((f.made / f.target) * 100)}%*`);
   if (f.previous && f.previous.made > 0) {
     const change = Math.round((f.made / f.previous.made - 1) * 100);
@@ -348,10 +367,11 @@ export function composeDevice(f: DayFacts, link: string | null) {
       `${change >= 0 ? '📈' : '📉'} ${change >= 0 ? '+' : '−'}${Math.abs(change)}% sobre ${WEEKDAYS[dayOfWeek(f.previous.date)]} (${num(f.previous.made, d)})`,
     );
   }
-  if (f.overtime > 0) lines.push(`➕ ${num(f.overtime, d)} ${units.unit} depois do turno`);
+  if (f.overtime > 0) lines.push(`➕ ${num(f.overtime, d)} ${units.unit} após o turno`);
   lines.push('');
 
-  lines.push(f.average ? '*MÁQUINA* · _contra a média dos últimos dias_' : '*MÁQUINA*');
+  lines.push('*MÁQUINA*');
+  if (f.average) lines.push('_comparada à média dos últimos dias_');
   const best = f.hours.length ? [...f.hours].sort((a, b) => b.made - a.made)[0] : null;
   if (f.utilization != null)
     lines.push(
@@ -361,15 +381,19 @@ export function composeDevice(f: DayFacts, link: string | null) {
     );
   lines.push(
     `${light(f.pacePerHour, f.average?.pacePerHour, true)} Ritmo *${num(f.pacePerHour, d)} ${units.per}*${
-      best && best.made > 0 ? ` · pico às *${String(best.hour).padStart(2, '0')}h* (${num(best.made, d)})` : ''
+      best && best.made > 0 ? ` · pico ${hourLabel(best.hour)} (${num(best.made, d)})` : ''
     }`,
   );
   lines.push(
-    `${light(f.stoppedSeconds, f.average?.stoppedSeconds, false)} *${f.stops} parada${f.stops === 1 ? '' : 's'}* · ${duration(f.stoppedSeconds)} no turno${
+    `${light(f.stoppedSeconds, f.average?.stoppedSeconds, false)} Parada *${duration(f.stoppedSeconds)}*${
       f.average ? ` · média ${duration(f.average.stoppedSeconds)}` : ''
     }`,
   );
-  if (f.longestStop) lines.push(`     ↳ a maior: ${duration(f.longestStop.seconds)} às ${f.longestStop.at}`);
+  lines.push(
+    `     ↳ ${f.stops} parada${f.stops === 1 ? '' : 's'}${
+      f.longestStop ? ` · maior: ${duration(f.longestStop.seconds)} (${f.longestStop.at})` : ''
+    }`,
+  );
 
   if (f.hours.length >= 3) {
     // The whole shift, hours with nothing recorded included: a stopped afternoon must show.
@@ -377,35 +401,26 @@ export function composeDevice(f: DayFacts, link: string | null) {
     const last = f.lastHour >= f.firstHour ? f.lastHour : f.lastHour + 24;
     const series: number[] = [];
     for (let hour = first; hour <= last; hour += 1) series.push(f.hours.find((h) => h.hour === hour % 24)?.made ?? 0);
-    lines.push('', '*AO LONGO DO DIA*', `${String(first).padStart(2, '0')}h ${spark(series)} ${String(last % 24).padStart(2, '0')}h`);
+    lines.push('', '*AO LONGO DO DIA*', `\`${hourLabel(first)} ${spark(series)} ${hourLabel(last)}\``);
   }
   if (f.week.length >= 2) {
-    const levels = spark(f.week.map((day) => day.made));
-    lines.push(
-      '',
-      '*SEMANA*',
-      f.week
-        .map((day, index) => {
-          const cell = `${SHORT[dayOfWeek(day.date)]} ${levels[index]}`;
-          return day.date === f.date ? `*${cell}*` : cell;
-        })
-        .join(' · '),
-    );
+    const firstDay = SHORT[dayOfWeek(f.week[0].date)];
+    const lastDay = SHORT[dayOfWeek(f.week.at(-1)!.date)];
+    lines.push('', '*SEMANA*', `\`${firstDay} ${spark(f.week.map((day) => day.made))} ${lastDay}\``);
   }
 
   const sentence = highlight(f);
   if (sentence) lines.push('', f.target && f.made < f.target ? '*ONDE PERDEU*' : '*DESTAQUE DO DIA*', `> ${sentence}`);
-  if (link) lines.push('', `🔗 ${link}`);
+  if (link) lines.push('', '🔗 Painel do dia:', link);
   return lines.join('\n');
 }
 
 /** The whole message: one machine, or a ranking and then each machine. */
 export function composeMessage(days: DayFacts[], web: string, kind: 'daily' | 'test') {
-  const link = (f: DayFacts) => (f.dashboardId ? `${web}/dashboards/${f.dashboardId}` : null);
   const parts: string[] = [];
   if (kind === 'test') parts.push('🔔 _Mensagem de teste · resumo do dia até agora_', '');
   if (days.length === 1) {
-    parts.push(headline(days[0]), '', composeDevice(days[0], link(days[0])));
+    parts.push(headline(days[0]), composeDevice(days[0], panelLink(web, days[0].dashboardId)));
     return parts.join('\n');
   }
   const ranked = [...days].sort((a, b) => (b.target ? b.made / b.target : 0) - (a.target ? a.made / a.target : 0));
@@ -416,6 +431,6 @@ export function composeMessage(days: DayFacts[], web: string, kind: 'daily' | 't
     const share = f.target ? ` · ${Math.round((f.made / f.target) * 100)}%` : '';
     parts.push(`${medals[index] ?? '▫️'} *${short(f.name)}* · ${num(f.made, units.decimals)} ${units.unit}${share}`);
   });
-  for (const f of days) parts.push('', '━━━━━━━━━━━━━━━', headline(f), '', composeDevice(f, link(f)));
+  for (const f of days) parts.push('', '━━━━━━━━━━━━━━━', headline(f), composeDevice(f, panelLink(web, f.dashboardId)));
   return parts.join('\n');
 }

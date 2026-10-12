@@ -90,9 +90,9 @@ describe('resumo diário no WhatsApp', () => {
     ).rows[0];
     expect(message.phone).toBe('5527999998888');
     // The verdict is the first line, what the lock screen shows.
-    expect(message.body.startsWith('🟢 *Haiwell A7 Teste bateu a meta: 120 paletes (120%)*')).toBe(true);
+    expect(message.body.startsWith('🟢 *Haiwell A7 Teste · 120 paletes · 120%*')).toBe(true);
     expect(message.body).toContain('🎯 Meta 100');
-    expect(message.body).toContain('➕ 12 paletes depois do turno');
+    expect(message.body).toContain('➕ 12 paletes após o turno');
     if (process.env.SHOW_MESSAGE) console.log(message.body);
   }, 30_000);
 
@@ -112,7 +112,7 @@ describe('resumo diário no WhatsApp', () => {
     const first = await claimNextMessage(db, at('2026-10-07T11:00:00Z'));
     expect(first.message?.kind).toBe('test');
     const secondPending = (await db.query<{ body: string }>("SELECT body FROM production_messages WHERE kind='daily'")).rows[0].body;
-    expect(secondPending).toContain('bateu a meta');
+    expect(secondPending).toContain('meta batida');
     // One minute later: too soon for the next one.
     expect((await claimNextMessage(db, at('2026-10-07T11:01:00Z'))).reason).toBe(
       'intervalo entre envios',
