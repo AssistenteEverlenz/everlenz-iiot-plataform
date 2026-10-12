@@ -8,7 +8,7 @@
         "width": 560,
         "color": 5
       },
-      "id": "624d7d1b-4fca-406b-82a0-7d3462833bbb",
+      "id": "56b80173-21b2-4009-a3a1-7437774c518f",
       "name": "Nota",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -23,7 +23,7 @@
         "path": "everlenz-iiot-resumo",
         "options": {}
       },
-      "id": "b4de8e32-8489-4f15-a0b8-cdc962c18992",
+      "id": "0b9d1351-70bd-406e-aef1-539c6c21ca73",
       "name": "Resumo recebido",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -31,38 +31,38 @@
         0,
         100
       ],
-      "webhookId": "ebada522-302c-460d-8b7b-93e221f28c1c"
+      "webhookId": "df665823-92b3-4afe-a8a2-3946137d042a"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "1470b0db-69b1-4356-95d6-66a65689ebed",
+              "id": "0d9cb0d7-9d35-42fc-8543-0c1dc2f62af2",
               "name": "PLATAFORMA_URL",
               "value": "https://iotplataform.everlenz.com.br",
               "type": "string"
             },
             {
-              "id": "f1b691ec-957d-477f-b121-6902a2e1fdd9",
+              "id": "45b73b6e-19cc-4e2d-b843-189a8023e271",
               "name": "PLATAFORMA_CHAVE",
               "value": "COLE_AQUI_A_N8N_API_KEY",
               "type": "string"
             },
             {
-              "id": "0c510f72-a077-4159-b285-7318db8890ba",
+              "id": "2e1dc174-471f-4319-9cc4-c9caa2831e35",
               "name": "EVOLUTION_URL",
               "value": "https://evolutionapi.assistentedrfin.com.br",
               "type": "string"
             },
             {
-              "id": "21c1eee1-b6bc-4f73-a89a-2723f7729928",
+              "id": "d3386a97-94f5-4f73-a099-5a01c412cd3e",
               "name": "EVOLUTION_INSTANCIA",
               "value": "NOME_DA_INSTANCIA",
               "type": "string"
             },
             {
-              "id": "2c1088dc-66c3-4532-b98b-5f7f8acb7476",
+              "id": "80a883da-ba14-4fa4-8b52-da7611b61f99",
               "name": "EVOLUTION_APIKEY",
               "value": "COLE_AQUI_A_APIKEY_DA_EVOLUTION",
               "type": "string"
@@ -71,7 +71,7 @@
         },
         "options": {}
       },
-      "id": "3bec3b24-c024-4eb3-8853-62543d5368ef",
+      "id": "5894623f-efe7-453a-a0df-2b6bd5960091",
       "name": "Configuração",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -91,7 +91,7 @@
           },
           "conditions": [
             {
-              "id": "a28b3438-95f2-4ad4-8dde-e8cf3db18f5a",
+              "id": "afa85ae8-97a0-4155-894a-e4dba31793ec",
               "leftValue": "={{ $('Resumo recebido').first().json.headers['x-n8n-key'] }}",
               "rightValue": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}",
               "operator": {
@@ -104,7 +104,7 @@
         },
         "options": {}
       },
-      "id": "7aac1ca9-729b-4e08-8feb-95faa86f3782",
+      "id": "10ff3e96-af58-4fa2-95a8-def9df58f640",
       "name": "Chave válida?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -115,7 +115,7 @@
     },
     {
       "parameters": {},
-      "id": "b9ed53db-0057-498a-947f-63316a80f0e8",
+      "id": "bbb4a1d3-76ff-4bf7-8670-80885d097c51",
       "name": "Ignora",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
@@ -128,7 +128,7 @@
       "parameters": {
         "amount": "={{ $('Resumo recebido').first().json.body.waitSeconds || 10 }}"
       },
-      "id": "e26be3d6-62f4-4329-92d6-ab8e9d4351b8",
+      "id": "d76d160b-5fab-4acb-ae0a-adaeb9ef8eaa",
       "name": "Espera aleatória",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -179,7 +179,7 @@
           "timeout": 60000
         }
       },
-      "id": "112b8c77-8f77-4b73-9881-a6fbc7c9e6f2",
+      "id": "8b82023e-ad5c-4625-80a7-8b266a0201b4",
       "name": "Envia resumo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -200,7 +200,7 @@
           },
           "conditions": [
             {
-              "id": "adcbf44a-56cb-4110-86d1-88c966ef294a",
+              "id": "de8a4e11-a0d1-4e14-b0b3-8767108f2bb4",
               "leftValue": "={{ ($('Resumo recebido').first().json.body.images || []).length }}",
               "rightValue": 0,
               "operator": {
@@ -213,7 +213,7 @@
         },
         "options": {}
       },
-      "id": "22c6f2c9-6be6-4fa8-9f5c-c2bbab0ee585",
+      "id": "0fddba32-35c8-4bcc-932a-28e2af628b37",
       "name": "Tem imagens?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -227,7 +227,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "// Produção e paradas de cada equipamento, na ordem em que a plataforma mandou.\nreturn ($('Resumo recebido').first().json.body.images || []).map((image) => ({ json: image }));"
       },
-      "id": "11519e86-8784-44d7-a05b-90bab684df82",
+      "id": "2e86b8df-283a-4cf1-aa9a-1453dede1fbc",
       "name": "Separa imagens",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -240,7 +240,7 @@
       "parameters": {
         "options": {}
       },
-      "id": "48573081-e156-4405-91cf-0f5c117e02ba",
+      "id": "4def1854-366e-4fdc-ae82-5195228ff833",
       "name": "Uma imagem por vez",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -253,7 +253,7 @@
       "parameters": {
         "amount": "={{ 3 + Math.floor(Math.random() * 4) }}"
       },
-      "id": "459a04f1-7560-435f-8f05-7f99e0fe0fde",
+      "id": "db3af6c8-f7b4-44b0-aa7a-79e2f6768796",
       "name": "Pausa entre imagens",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -282,7 +282,7 @@
           "timeout": 60000
         }
       },
-      "id": "d2b9f101-4ee7-4e20-8b3a-4ea021de8b2e",
+      "id": "d6274b4f-af3b-474a-b3a0-05a3697b542f",
       "name": "Envia imagem",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -310,14 +310,15 @@
         "jsonBody": "={{ { ok: true } }}",
         "options": {}
       },
-      "id": "6375c54f-b0b7-4658-94bf-6daaf82ab4ed",
+      "id": "68265624-1cc6-45cd-b14c-c2e22e51eb2c",
       "name": "Confirma envio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         1780,
         -320
-      ]
+      ],
+      "executeOnce": true
     },
     {
       "parameters": {
@@ -337,14 +338,15 @@
         "jsonBody": "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
         "options": {}
       },
-      "id": "342666ed-490a-428f-a2d9-a404a13eb039",
+      "id": "57771bdd-9ad6-4bbf-a23f-ac764f0734b4",
       "name": "Registra falha",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
         1120,
         120
-      ]
+      ],
+      "executeOnce": true
     }
   ],
   "connections": {

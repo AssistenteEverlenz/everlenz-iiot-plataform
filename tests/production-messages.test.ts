@@ -154,6 +154,14 @@ describe('resumo diário no WhatsApp', () => {
       )).rows[0];
       expect(row.status).toBe('sent');
       expect(row.sent_at).not.toBeNull();
+      // n8n repeats the confirmation once per image: the second one is not an error.
+      const again = await api.inject({
+        method: 'POST',
+        url: `/api/n8n/production-messages/${id}/result`,
+        headers: { 'x-n8n-key': 'chave-de-teste-123' },
+        payload: { ok: true },
+      });
+      expect(again.statusCode).toBe(200);
     } finally {
       await api.close();
       delete process.env.N8N_API_KEY;

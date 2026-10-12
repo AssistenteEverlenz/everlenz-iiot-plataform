@@ -197,7 +197,7 @@ return ($('Resumo recebido').first().json.body.images || []).map((image) => ({ j
       specifyBody: 'json',
       jsonBody: '={{ { ok: true } }}',
       options: {},
-    }),
+    }, { executeOnce: true }),
     node('Registra falha', 'n8n-nodes-base.httpRequest', 4.2, [1120, 120], {
       method: 'POST',
       url: `={{ ${body('resultUrl')} }}`,
@@ -207,7 +207,7 @@ return ($('Resumo recebido').first().json.body.images || []).map((image) => ({ j
       jsonBody:
         "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
       options: {},
-    }),
+    }, { executeOnce: true }),
   ],
   connections: {
     'Resumo recebido': { main: [[to('Configuração')]] },

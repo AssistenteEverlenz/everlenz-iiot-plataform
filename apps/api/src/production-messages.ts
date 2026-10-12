@@ -395,7 +395,12 @@ export function registerProductionMessageRoutes(app: FastifyInstance, db: Databa
            WHERE id=$1 AND status='sending'`,
       body.ok ? [id] : [id, body.error ?? 'falha no envio', MAX_ATTEMPTS],
     );
-    if (!updated.rowCount) return reply.code(409).send({ error: 'Mensagem não está em envio' });
+    if (!updated.rowCount) {
+      // The same confirmation twice (n8n repeats a node once per item) is not an error.
+      const sent = await db.query(`SELECT 1 FROM production_messages WHERE id=$1 AND status='sent'`, [id]);
+      if (body.ok && sent.rows.length) return { ok: true, already: true };
+      return reply.code(409).send({ error: 'Mensagem não está em envio' });
+    }
     return { ok: true };
   });
 
