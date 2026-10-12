@@ -89,8 +89,8 @@ describe('resumo diário no WhatsApp', () => {
       )
     ).rows[0];
     expect(message.phone).toBe('5527999998888');
-    // The verdict is the first line, what the lock screen shows.
-    expect(message.body.startsWith('🟢 *Haiwell A7 Teste · 120 paletes · 120%*')).toBe(true);
+    // The verdict comes right under the frame of #.
+    expect(message.body.split('\n')[1].startsWith('🟢 *Haiwell A7 Teste · 120 paletes · 120%*')).toBe(true);
     expect(message.body).toContain('🎯 Meta 100');
     expect(message.body).toContain('➕ 12 paletes após o turno');
     if (process.env.SHOW_MESSAGE) console.log(message.body);
@@ -125,8 +125,8 @@ describe('resumo diário no WhatsApp', () => {
     const second = await claimNextMessage(db, at('2026-10-07T11:04:00Z'));
     expect(second.message?.kind).toBe('daily');
     // 08:04 at the plant: the greeting is told at sending time.
-    // The verdict is the first line, what the lock screen shows.
-    expect(second.message?.text).toMatch(/^🟢 /);
+    // The verdict comes right under the frame of #.
+    expect(second.message?.text).toMatch(/^#+\n🟢 /);
   }, 30_000);
 
   it('n8n needs its key, and reports what happened', async () => {

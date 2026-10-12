@@ -22,7 +22,6 @@ const UNITS: Record<string, { unit: string; per: string; decimals: number }> = {
   pallets: { unit: 'paletes', per: 'pal/h', decimals: 0 },
 };
 const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-const SHORT = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const BARS = '▁▂▃▄▅▆▇█';
 /** Production days the averages are taken over. */
 const AVERAGE_DAYS = 7;
@@ -285,7 +284,7 @@ export async function gatherDay(
     reasons: { idle: board.time.idle, manual: board.time.manual, offline: board.time.offline },
     timelineStart: start.toISOString(),
     timeline,
-    topStops: counted.slice(0, 16).map((stop) => ({
+    topStops: counted.slice(0, 12).map((stop) => ({
       at: plantClock(stop.start),
       seconds: stop.seconds,
       state: stop.state,
@@ -404,51 +403,59 @@ export function panelLink(web: string, dashboardId: string | null) {
   return dashboardId ? `${web.replace(/^https?:\/\//, '')}/p/${dashboardId.slice(0, 8)}` : null;
 }
 
+/** Between the sections of a machine. */
+const RULE = '_'.repeat(52);
+/** Around each machine's headline. */
+const FRAME = '#'.repeat(37);
+
 /** One machine's body, under the headline. */
 export function composeDevice(f: DayFacts, link: string | null) {
   const units = UNITS[f.metric] ?? UNITS.pallets;
   const d = units.decimals;
   const lines: string[] = [];
-  lines.push(`> 📅 _${dayLabel(f.date)}_${verdict(f)}`, `> 🕐 ${f.shifts}`, '');
 
-  lines.push('*PRODUÇÃO*');
-  for (const shift of f.perShift) {
-    const share = shift.target ? ` · ${Math.round((shift.made / shift.target) * 100)}%` : '';
-    lines.push(`🔹 ${shift.name} · \`${num(shift.made, d)}\` ${units.unit}${share}`);
-  }
-  lines.push(`*Total do dia* · \`${num(f.made, d)}\` ${units.unit}`);
-  const also = [
-    f.metric !== 'pallets' && f.pallets ? `\`${num(f.pallets)}\` paletes` : '',
-    f.metric !== 'milheiros' && f.milheiros ? `\`${num(f.milheiros, 1)}\` milheiros` : '',
-    f.metric !== 'tons' && f.tons ? `\`${num(f.tons, 1)}\` t` : '',
-  ].filter(Boolean);
-  if (also.length) lines.push(also.join(' · '));
-  if (f.target) lines.push(`🎯 Meta ${num(f.target, d)}   ${bar(f.made / f.target)}  *${Math.round((f.made / f.target) * 100)}%*`);
+  lines.push('*RESUMO*', '', `> 📅 _${dayLabel(f.date)}_${verdict(f)}`);
+  if (f.target) lines.push(`> 🎯 Meta ${num(f.target, d)}   ${bar(f.made / f.target)}  *${Math.round((f.made / f.target) * 100)}%*`);
+  lines.push(`> 🕐 ${f.shifts}`);
   if (f.previous && f.previous.made > 0) {
     const change = Math.round((f.made / f.previous.made - 1) * 100);
     lines.push(
-      `${change >= 0 ? '📈' : '📉'} ${change >= 0 ? '+' : '−'}${Math.abs(change)}% sobre ${WEEKDAYS[dayOfWeek(f.previous.date)]} (${num(f.previous.made, d)})`,
+      `> ${change >= 0 ? '📈' : '📉'} ${change >= 0 ? '+' : '−'}${Math.abs(change)}% sobre ${WEEKDAYS[dayOfWeek(f.previous.date)]} (${num(f.previous.made, d)})`,
     );
   }
-  if (f.overtime > 0) lines.push(`➕ ${num(f.overtime, d)} ${units.unit} após o turno`);
-  lines.push('');
+  if (f.overtime > 0) lines.push(`> ➕ ${num(f.overtime, d)} ${units.unit} após o turno`);
+  lines.push('', RULE, '');
 
-  lines.push('*MÁQUINA*');
-  if (f.average) lines.push('_comparada à média dos últimos dias_');
+  lines.push('*PRODUÇÃO*', '');
+  for (const shift of f.perShift) {
+    const share = shift.target ? ` · ${Math.round((shift.made / shift.target) * 100)}%` : '';
+    // Padded so the dots line up with the total's under a proportional font, near enough.
+    lines.push(`🔹 ${shift.name.padEnd(16)}· *${num(shift.made, d)}* ${units.unit}${share}`);
+  }
+  lines.push(`📋 Total do dia  ·  *${num(f.made, d)} ${units.unit}*`);
+  const also = [
+    f.metric !== 'pallets' && f.pallets ? `*${num(f.pallets)}* paletes` : '',
+    f.metric !== 'milheiros' && f.milheiros ? `*${num(f.milheiros, 1)}* milheiros` : '',
+    f.metric !== 'tons' && f.tons ? `*${num(f.tons, 1)}* t` : '',
+  ].filter(Boolean);
+  if (also.length) lines.push(`        ↳ 🧱${also.join(' · ')}`);
+  lines.push('', RULE, '');
+
+  lines.push('*MÁQUINA*', '');
   const best = f.hours.length ? [...f.hours].sort((a, b) => b.made - a.made)[0] : null;
   if (f.utilization != null)
     lines.push(
-      `${light(f.utilization, f.average?.utilization, true)} Aproveitamento *${Math.round(f.utilization * 100)}%*${
+      `${light(f.utilization, f.average?.utilization, true)} Aproveitamento  - *${Math.round(f.utilization * 100)}%*${
         f.average?.utilization != null ? ` · média ${Math.round(f.average.utilization * 100)}%` : ''
       }`,
     );
   lines.push(
-    `${light(f.pacePerHour, f.average?.pacePerHour, true)} Ritmo *${num(f.pacePerHour, d)} ${units.per}*${
+    `${light(f.pacePerHour, f.average?.pacePerHour, true)} Ritmo - *${num(f.pacePerHour, d)} ${units.per}*${
       best && best.made > 0 ? ` · pico ${hourLabel(best.hour)} (${num(best.made, d)})` : ''
     }`,
   );
   lines.push(
-    `${light(f.stoppedSeconds, f.average?.stoppedSeconds, false)} Parada *${duration(f.stoppedSeconds)}*${
+    `${light(f.stoppedSeconds, f.average?.stoppedSeconds, false)} Parada - *${duration(f.stoppedSeconds)}*${
       f.average ? ` · média ${duration(f.average.stoppedSeconds)}` : ''
     }`,
   );
@@ -466,14 +473,8 @@ export function composeDevice(f: DayFacts, link: string | null) {
     const last = f.lastHour >= f.firstHour ? f.lastHour : f.lastHour + 24;
     const series: number[] = [];
     for (let hour = first; hour <= last; hour += 1) series.push(f.hours.find((h) => h.hour === hour % 24)?.made ?? 0);
-    lines.push('', '*AO LONGO DO DIA*', `\`${hourLabel(first)} ${spark(series)} ${hourLabel(last)}\``);
+    lines.push('', RULE, '', '*AO LONGO DO DIA*', `\`${hourLabel(first)} ${spark(series)} ${hourLabel(last)}\``);
   }
-  if (f.week.length >= 2) {
-    const firstDay = SHORT[dayOfWeek(f.week[0].date)];
-    const lastDay = SHORT[dayOfWeek(f.week.at(-1)!.date)];
-    lines.push('', '*SEMANA*', `\`${firstDay} ${spark(f.week.map((day) => day.made))} ${lastDay}\``);
-  }
-
   const sentence = highlight(f);
   if (sentence) lines.push('', f.target && f.made < f.target ? '*ONDE PERDEU*' : '*DESTAQUE DO DIA*', `> ${sentence}`);
   if (link) lines.push('', '🔗 Painel do dia:', link);
@@ -485,7 +486,7 @@ export function composeMessage(days: DayFacts[], web: string, kind: 'daily' | 't
   const parts: string[] = [];
   if (kind === 'test') parts.push('🔔 _Mensagem de teste_', '');
   if (days.length === 1) {
-    parts.push(headline(days[0]), composeDevice(days[0], panelLink(web, days[0].dashboardId)));
+    parts.push(FRAME, headline(days[0]), FRAME, '', composeDevice(days[0], panelLink(web, days[0].dashboardId)));
     return parts.join('\n');
   }
   const ranked = [...days].sort((a, b) => (b.target ? b.made / b.target : 0) - (a.target ? a.made / a.target : 0));
@@ -496,6 +497,6 @@ export function composeMessage(days: DayFacts[], web: string, kind: 'daily' | 't
     const share = f.target ? ` · ${Math.round((f.made / f.target) * 100)}%` : '';
     parts.push(`${medals[index] ?? '▫️'} *${short(f.name)}* · ${num(f.made, units.decimals)} ${units.unit}${share}`);
   });
-  for (const f of days) parts.push('', '━━━━━━━━━━━━━━━', headline(f), composeDevice(f, panelLink(web, f.dashboardId)));
+  for (const f of days) parts.push('', FRAME, headline(f), FRAME, '', composeDevice(f, panelLink(web, f.dashboardId)));
   return parts.join('\n');
 }

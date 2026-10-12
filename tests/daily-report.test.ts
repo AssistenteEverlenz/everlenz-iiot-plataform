@@ -69,7 +69,7 @@ describe('resumo diário em texto', () => {
   it('shows each shift and the day total only when there are two shifts', () => {
     const one = composeDevice(day(), null);
     expect(one).not.toContain('Turno 1');
-    expect(one).toContain('*Total do dia* · `224` paletes');
+    expect(one).toContain('📋 Total do dia  ·  *224 paletes*');
     const two = composeDevice(
       day({
         shifts: '2 turnos · 02:00–18:00',
@@ -80,19 +80,19 @@ describe('resumo diário em texto', () => {
       }),
       null,
     );
-    expect(two).toContain('🔹 Turno 1 · `121` paletes · 121%');
-    expect(two).toContain('🔹 Turno 2 · `103` paletes · 103%');
+    expect(two).toContain('🔹 Turno 1         · *121* paletes · 121%');
+    expect(two).toContain('🔹 Turno 2         · *103* paletes · 103%');
     expect(two.indexOf('Total do dia')).toBeGreaterThan(two.indexOf('Turno 2'));
   });
 
   it('puts each machine figure against the recent average', () => {
     const text = composeDevice(day(), null);
-    expect(text).toContain('🟡 Aproveitamento *69%* · média 72%');
-    expect(text).toContain('🟢 Ritmo *14 pal/h* · pico 09h (22)');
-    expect(text).toContain('🔴 Parada *5h17* · média 3h50');
+    expect(text).toContain('🟡 Aproveitamento  - *69%* · média 72%');
+    expect(text).toContain('🟢 Ritmo - *14 pal/h* · pico 09h (22)');
+    expect(text).toContain('🔴 Parada - *5h17* · média 3h50');
     expect(text).toContain('↳ 11 paradas · maior: 47 min (14:10)');
-    expect(text).toContain('📈 +18% sobre quinta (190)');
-    expect(text).toContain('`ter ▇▇▇█ sex`');
+    expect(text).toContain('> 📈 +18% sobre quinta (190)');
+    expect(text).not.toContain('*SEMANA*');
     // The hour-by-hour line covers the whole shift, hours with nothing recorded included.
     expect(text).toContain('`06h ▇▁▁█▁▁▁▁▅▄▁▁ 17h`');
   });
