@@ -143,10 +143,21 @@ export function registerWhatsappAssistantRoutes(app: FastifyInstance, db: Databa
       })
       .parse(req.body);
     const contact = await contactOf(db, body.jid);
+    const text = body.text.trim();
+    // Only the same id with the same text is a repeated delivery. The same id with another text
+    // is an execution replayed in the n8n editor with edited data: it counts as a new message.
+    let messageId = body.messageId ?? null;
+    if (messageId) {
+      const seen = await db.query<{ text: string }>(
+        'SELECT text FROM whatsapp_inbound WHERE jid=$1 AND message_id=$2',
+        [body.jid, messageId],
+      );
+      if (seen.rows[0] && seen.rows[0].text !== text) messageId = `${messageId}#${Date.now()}`;
+    }
     const inserted = await db.query<{ id: string }>(
       `INSERT INTO whatsapp_inbound(tenant_id,user_id,jid,message_id,text) VALUES($1,$2,$3,$4,$5)
        ON CONFLICT (jid,message_id) WHERE message_id IS NOT NULL DO NOTHING RETURNING id`,
-      [contact?.tenant_id ?? null, contact?.id ?? null, body.jid, body.messageId ?? null, body.text.trim()],
+      [contact?.tenant_id ?? null, contact?.id ?? null, body.jid, messageId, text],
     );
     // A repeated delivery of a message already in the inbox: nothing more to do for it.
     if (!inserted.rows[0]) return { token: null, duplicate: true, known: Boolean(contact) };

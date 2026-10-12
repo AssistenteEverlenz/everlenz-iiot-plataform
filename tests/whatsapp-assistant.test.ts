@@ -90,6 +90,9 @@ describe('assistente do WhatsApp', () => {
     expect(first.known).toBe(true);
     // Evolution delivering the same message twice keeps it once.
     expect((await send('produziu ontem?', 'm2')).duplicate).toBe(true);
+    // The same id with another text is a run replayed in the n8n editor: a new message.
+    const replay = await send('e hoje?', 'm2');
+    expect(replay.duplicate).toBe(false);
     const collect = async (token: string) =>
       (
         await api.inject({
@@ -100,11 +103,12 @@ describe('assistente do WhatsApp', () => {
         })
       ).json();
     expect((await collect(first.token)).process).toBe(false);
-    const last = await collect(second.token);
-    expect(last.process).toBe(true);
-    expect(last.text).toBe('quanto\nproduziu ontem?');
-    // Collected once: a second collect of the same burst gives nothing.
     expect((await collect(second.token)).process).toBe(false);
+    const last = await collect(replay.token);
+    expect(last.process).toBe(true);
+    expect(last.text).toBe('quanto\nproduziu ontem?\ne hoje?');
+    // Collected once: a second collect of the same burst gives nothing.
+    expect((await collect(replay.token)).process).toBe(false);
     await api.close();
   }, 30_000);
 
