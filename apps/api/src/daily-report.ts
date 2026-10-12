@@ -475,7 +475,7 @@ export function composeDevice(f: DayFacts, link: string | null) {
 /** The whole message: one machine, or a ranking and then each machine. */
 export function composeMessage(days: DayFacts[], web: string, kind: 'daily' | 'test') {
   const parts: string[] = [];
-  if (kind === 'test') parts.push('🔔 _Mensagem de teste · resumo do dia até agora_', '');
+  if (kind === 'test') parts.push('🔔 _Mensagem de teste_', '');
   if (days.length === 1) {
     parts.push(headline(days[0]), composeDevice(days[0], panelLink(web, days[0].dashboardId)));
     return parts.join('\n');

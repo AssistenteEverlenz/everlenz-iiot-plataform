@@ -402,16 +402,24 @@ export function registerProductionMessageRoutes(app: FastifyInstance, db: Databa
     ).rows[0];
     if (!user) return reply.code(404).send({ error: 'Usuário não encontrado' });
     if (!user.phone) return reply.code(400).send({ error: 'Cadastre o telefone do usuário primeiro.' });
-    const now = new Date();
-    const date = plantDate(now);
-    const days: DeviceDay[] = [];
-    for (const device of await devicesOf(db, user)) {
-      // A test reads the day so far, closed or not.
-      const day = await deviceDay(db, user.tenant_id, device, date, new Date(plantInstant(addDays(date, 1), '07:00')));
-      if (!day.noShift) days.push(day);
+    // Today so far, closed or not; on a day with no shift (a Sunday, a holiday), the last day
+    // that produced, up to two weeks back, so the test works at any hour of any day.
+    const devices = await devicesOf(db, user);
+    let date = plantDate(new Date());
+    let days: DeviceDay[] = [];
+    for (let back = 0; back <= 14 && !days.length; back += 1) {
+      date = addDays(plantDate(new Date()), -back);
+      const found: DeviceDay[] = [];
+      for (const device of devices) {
+        const day = await deviceDay(db, user.tenant_id, device, date, new Date(plantInstant(addDays(date, 1), '07:00')));
+        if (!day.noShift) found.push(day);
+      }
+      if (found.some((day) => (day.facts?.made ?? 0) > 0)) days = found;
     }
     if (!days.length)
-      return reply.code(400).send({ error: 'Nenhum equipamento com turno hoje para este usuário.' });
+      return reply
+        .code(400)
+        .send({ error: 'Nenhum dia com produção nas últimas duas semanas para os equipamentos deste usuário.' });
     await db.query(
       `INSERT INTO production_messages(tenant_id,user_id,kind,production_date,phone,body)
        VALUES($1,$2,'test',$3,$4,$5)`,
