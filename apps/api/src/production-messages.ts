@@ -5,7 +5,8 @@ import type { Database } from '@iiot/database';
 import { addDays, plantDate, plantInstant } from '@iiot/shared';
 import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
-import { loadConfig, loadShiftsFor, productionDetailData } from './shift-production.js';
+import { composeMessage, gatherDay, type DayFacts } from './daily-report.js';
+import { loadConfig, loadShiftsFor } from './shift-production.js';
 
 /**
  * The daily production summary on WhatsApp (migration 043).
@@ -50,38 +51,15 @@ function nextWindow(at: Date) {
   return plantInstant(hour < WINDOW_START ? date : addDays(date, 1), '07:00');
 }
 
-const UNITS: Record<string, [string, number]> = {
-  milheiros: ['milheiros', 1],
-  tons: ['t', 1],
-  blocks: ['peças', 0],
-  pallets: ['paletes', 0],
-};
-const number = (value: number, decimals = 0) =>
-  value.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-function duration(seconds: number) {
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
-}
-const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-function dateLabel(date: string) {
-  const [year, month, day] = date.split('-').map(Number);
-  return `${WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]}, ${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`;
-}
-
 interface DeviceDay {
   deviceId: string;
-  name: string;
-  dashboardId: string | null;
   closed: boolean;
-  /** No shift that day: the machine is left out of the message. */
+  /** No shift that day (or no counter): the machine is left out of the message. */
   noShift: boolean;
-  lines: string[];
+  facts: DayFacts | null;
 }
 
-/** One machine's day, read the way the production board reads it. */
+/** One machine's day: closed yet (overtime included), and its facts once it is. */
 async function deviceDay(
   db: Database,
   tenantId: string,
@@ -89,83 +67,23 @@ async function deviceDay(
   date: string,
   now: Date,
 ): Promise<DeviceDay> {
-  const base = { deviceId: device.id, name: device.name, dashboardId: device.dashboard_id };
+  const base = { deviceId: device.id };
   const config = await loadConfig(db, tenantId, device.id);
   if (!config || !(config.blocks_tag_id || config.pallets_tag_id))
-    return { ...base, closed: true, noShift: true, lines: [] };
+    return { ...base, closed: true, noShift: true, facts: null };
   const occurrences = (await loadShiftsFor(db, tenantId, config.site_id, date)).filter(
     (item) => item.productionDate === date,
   );
-  if (!occurrences.length) return { ...base, closed: true, noShift: true, lines: [] };
+  if (!occurrences.length) return { ...base, closed: true, noShift: true, facts: null };
   const lastEnd = Math.max(...occurrences.map((item) => item.end.getTime()));
   const quiet =
     !device.last_increment_at || now.getTime() - new Date(device.last_increment_at).getTime() >= QUIET_MS;
   const morningAfter = plantInstant(addDays(date, 1), '07:00').getTime();
   const closed =
     now.getTime() >= lastEnd + QUIET_MS && (quiet || now.getTime() >= morningAfter);
-  if (!closed) return { ...base, closed: false, noShift: false, lines: [] };
-
-  const detail = await productionDetailData(db, tenantId, device.id, config, { date, kind: 'day' });
-  const board = detail.board;
-  const [unit, decimals] = UNITS[board.metric] ?? ['', 0];
-  const made =
-    board.metric === 'blocks'
-      ? board.totals.pieces
-      : (board.totals as Record<string, number>)[board.metric] ?? 0;
-  // Production after the last shift (overtime) is in the buckets of the day but not in the
-  // shifts: it is told apart so the target line still compares like with like.
-  const extra = await db.query<{ pieces: string; pallets: string; tons: string }>(
-    `SELECT coalesce(sum(pieces),0) pieces,coalesce(sum(pallets),0) pallets,coalesce(sum(tons),0) tons
-     FROM production_buckets WHERE device_id=$1 AND bucket >= $2 AND bucket < $3`,
-    [device.id, new Date(lastEnd), plantInstant(addDays(date, 1), '00:00')],
-  );
-  const overtime = extra.rows[0];
-  const overtimeValue =
-    board.metric === 'pallets'
-      ? Number(overtime.pallets)
-      : board.metric === 'tons'
-        ? Number(overtime.tons)
-        : board.metric === 'blocks'
-          ? Number(overtime.pieces)
-          : Number(overtime.pieces) / 1000;
-  const stopped = await db.query<{ n: string }>(
-    `SELECT count(*) n FROM production_stops
-     WHERE device_id=$1 AND NOT during_pause AND started_at >= $2 AND started_at < $3`,
-    [device.id, occurrences[0].start, new Date(lastEnd)],
-  );
-
-  const lines: string[] = [];
-  const target = board.target;
-  if (target) {
-    const share = target.value > 0 ? made / target.value : 0;
-    const mark = share >= 1 ? '✅' : share >= 0.9 ? '🟡' : '🔴';
-    lines.push(
-      `${mark} *${number(made, decimals)} ${unit}* de ${number(target.value, decimals)} (${Math.round(share * 100)}% da meta)`,
-    );
-  } else lines.push(`📦 *${number(made, decimals)} ${unit}* produzidos`);
-  const others: string[] = [];
-  if (board.metric !== 'milheiros' && board.totals.pieces)
-    others.push(`${number(board.totals.milheiros, 1)} milheiros`);
-  if (board.metric !== 'pallets' && board.totals.pallets) others.push(`${number(board.totals.pallets)} paletes`);
-  if (board.metric !== 'tons' && board.totals.tons) others.push(`${number(board.totals.tons, 1)} t`);
-  if (others.length) lines.push(others.join(' · '));
-  if (overtimeValue > 0)
-    lines.push(`➕ ${number(overtimeValue, decimals)} ${unit} depois do turno`);
-  if (board.utilization != null)
-    lines.push(`⚙️ Aproveitamento da máquina: ${Math.round(board.utilization * 100)}%`);
-  const time = board.time;
-  const stopParts = [
-    time.idle >= 60 ? `${duration(time.idle)} ociosa` : '',
-    time.manual >= 60 ? `${duration(time.manual)} manual` : '',
-    time.offline >= 60 ? `${duration(time.offline)} sem comunicação` : '',
-  ].filter(Boolean);
-  const count = Number(stopped.rows[0]?.n ?? 0);
-  if (count || stopParts.length)
-    lines.push(`⛔ ${count} parada${count === 1 ? '' : 's'}${stopParts.length ? ` · ${stopParts.join(' · ')}` : ''}`);
-  else lines.push('⛔ Nenhuma parada no turno');
-  if (board.palletTiming?.averageSeconds)
-    lines.push(`🕒 Tempo médio por palete: ${duration(board.palletTiming.averageSeconds)}`);
-  return { ...base, closed: true, noShift: false, lines };
+  if (!closed) return { ...base, closed: false, noShift: false, facts: null };
+  const facts = await gatherDay(db, tenantId, device, date);
+  return { ...base, closed: true, noShift: !facts, facts };
 }
 
 function greeting(name: string, at: Date) {
@@ -186,16 +104,11 @@ const GREETING = '{{saudacao}}';
 
 function messageText(date: string, days: DeviceDay[], kind: 'daily' | 'test') {
   const web = (process.env.PUBLIC_WEB_URL ?? 'https://iotplataform.everlenz.com.br').replace(/\/$/, '');
-  const parts = [
-    kind === 'test'
-      ? `🔔 *Mensagem de teste* · resumo parcial de hoje (${dateLabel(date)})`
-      : `${GREETING} (${dateLabel(date)}):`,
-  ];
-  for (const day of days) {
-    parts.push('', `🏭 *${day.name}*`, ...day.lines);
-    if (day.dashboardId) parts.push(`${web}/dashboards/${day.dashboardId}`);
-  }
-  return parts.join('\n');
+  return composeMessage(
+    days.map((day) => day.facts).filter((facts): facts is DayFacts => facts != null),
+    web,
+    kind,
+  );
 }
 
 interface Recipient {

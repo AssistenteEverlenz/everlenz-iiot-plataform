@@ -89,9 +89,10 @@ describe('resumo diário no WhatsApp', () => {
       )
     ).rows[0];
     expect(message.phone).toBe('5527999998888');
-    expect(message.body).toContain('{{saudacao}}');
-    expect(message.body).toContain('120 paletes* de 100');
-    expect(message.body).toContain('depois do turno');
+    // The verdict is the first line, what the lock screen shows.
+    expect(message.body.startsWith('🟢 *Haiwell A7 Teste bateu a meta: 120 paletes (120%)*')).toBe(true);
+    expect(message.body).toContain('🎯 Meta 100');
+    expect(message.body).toContain('➕ 12 paletes depois do turno');
     if (process.env.SHOW_MESSAGE) console.log(message.body);
   }, 30_000);
 
@@ -111,7 +112,7 @@ describe('resumo diário no WhatsApp', () => {
     const first = await claimNextMessage(db, at('2026-10-07T11:00:00Z'));
     expect(first.message?.kind).toBe('test');
     const secondPending = (await db.query<{ body: string }>("SELECT body FROM production_messages WHERE kind='daily'")).rows[0].body;
-    expect(secondPending).toContain('{{saudacao}}');
+    expect(secondPending).toContain('bateu a meta');
     // One minute later: too soon for the next one.
     expect((await claimNextMessage(db, at('2026-10-07T11:01:00Z'))).reason).toBe(
       'intervalo entre envios',
@@ -119,7 +120,8 @@ describe('resumo diário no WhatsApp', () => {
     const second = await claimNextMessage(db, at('2026-10-07T11:04:00Z'));
     expect(second.message?.kind).toBe('daily');
     // 08:04 at the plant: the greeting is told at sending time.
-    expect(second.message?.text).toMatch(/^Bom dia, Ana/);
+    // The verdict is the first line, what the lock screen shows.
+    expect(second.message?.text).toMatch(/^🟢 /);
   }, 30_000);
 
   it('n8n needs its key, and reports what happened', async () => {
