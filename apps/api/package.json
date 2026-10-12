@@ -21,6 +21,7 @@
     "zod": "^4.1.12"
   },
   "files": [
-    "dist"
+    "dist",
+    "fonts"
   ]
 }

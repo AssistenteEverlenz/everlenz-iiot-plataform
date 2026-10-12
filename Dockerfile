@@ -25,13 +25,6 @@ ENV NODE_ENV=production
 USER node
 FROM runtime AS api
 ENV SERVICE_NAME=api API_HOST=0.0.0.0
-# Fonts for the daily report images (apps/api/src/daily-images.ts): SVG drawn to PNG on the server.
-USER root
-RUN apt-get update \
- && apt-get install -y --no-install-recommends fonts-dejavu-core \
- && (apt-get install -y --no-install-recommends fonts-inter || true) \
- && rm -rf /var/lib/apt/lists/*
-USER node
 COPY --from=service-build --chown=node:node /out/api ./
 EXPOSE 3001
 CMD ["node","dist/index.js"]

@@ -54,6 +54,11 @@ export interface DayFacts {
   /** Shorter ones, counted apart. */
   microStops: number;
   longestStop: { seconds: number; at: string } | null;
+  /**
+   * The production board's S curve: planned (the target spread over the productive time, flat in
+   * the breaks) and actual, both accumulated, every five minutes of the day.
+   */
+  curve: Array<{ t: string; planned: number | null; actual: number | null }>;
   /** Made and stopped seconds per hour of the shifts. */
   hours: Array<{ hour: number; made: number; stopped: number }>;
   /** The previous production day. */
@@ -286,6 +291,7 @@ export async function gatherDay(
     stops: counted.length,
     microStops: merged.length - counted.length,
     longestStop: counted[0] ? { seconds: counted[0].seconds, at: plantClock(counted[0].start) } : null,
+    curve: board.curve.map((point) => ({ t: point.t, planned: point.planned, actual: point.actual })),
     hours: hourly.rows.map((row) => ({
       hour: Number(row.hour_of_day),
       made: inMetric(metric, {

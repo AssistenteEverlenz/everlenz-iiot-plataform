@@ -45,6 +45,11 @@ const day = (overrides: Partial<DayFacts> = {}): DayFacts => ({
   ],
   average: { made: 196, pacePerHour: 12, utilization: 0.72, stoppedSeconds: 3 * 3600 + 50 * 60 },
   reasons: { idle: 3 * 3600, manual: 1800, offline: 3600 + 47 * 60 },
+  curve: [
+    { t: '2026-10-09T09:00:00.000Z', planned: 0, actual: 0 },
+    { t: '2026-10-09T14:00:00.000Z', planned: 50, actual: 40 },
+    { t: '2026-10-09T20:30:00.000Z', planned: 100, actual: 92 },
+  ],
   timeline: ['producing', 'producing', 'idle', 'manual', 'offline', 'producing'],
   topStops: [{ at: '14:10', seconds: 47 * 60, state: 'idle' }],
   ...overrides,

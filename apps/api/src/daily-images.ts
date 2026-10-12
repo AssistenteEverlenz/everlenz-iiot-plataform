@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import type { DayFacts } from './daily-report.js';
 
@@ -15,8 +17,25 @@ export interface Brand {
 
 const W = 1080;
 const H = 1350;
+/** The production image is taller: the S curve and the hour by hour both need the width of a phone. */
+const PRODUCTION_H = 1700;
 const PAD = 64;
-const FONT = "Inter, 'DejaVu Sans', 'Segoe UI', Arial, sans-serif";
+const FONT = 'Inter';
+/**
+ * The fonts travel with the API (apps/api/fonts, next to dist/ in the image): resvg reads the
+ * system's fonts through fontconfig, which the slim server image does not have, and drew every
+ * text as nothing. Loaded by path, the images look the same on every machine.
+ */
+const FONT_DIR = fileURLToPath(new URL('../fonts/', import.meta.url));
+const FONT_FILES = (() => {
+  try {
+    return readdirSync(FONT_DIR)
+      .filter((file) => file.endsWith('.ttf'))
+      .map((file) => `${FONT_DIR}${file}`);
+  } catch {
+    return [];
+  }
+})();
 const INK = '#0b2028';
 const MUTED = '#5f7880';
 const GRID = '#e3ebed';
@@ -70,10 +89,10 @@ function header(f: DayFacts, brand: Brand, title: string) {
   ].join('');
 }
 
-function footer(brand: Brand) {
+function footer(brand: Brand, height = H) {
   return [
-    `<line x1="${PAD}" y1="${H - 84}" x2="${W - PAD}" y2="${H - 84}" stroke="${GRID}" stroke-width="2"/>`,
-    text(PAD, H - 40, `Gerado automaticamente pela plataforma ${brand.name}`, 22, { fill: MUTED }),
+    `<line x1="${PAD}" y1="${height - 84}" x2="${W - PAD}" y2="${height - 84}" stroke="${GRID}" stroke-width="2"/>`,
+    text(PAD, height - 40, `Gerado automaticamente pela plataforma ${brand.name}`, 22, { fill: MUTED }),
   ].join('');
 }
 
@@ -96,7 +115,7 @@ export function productionSvg(f: DayFacts, brand: Brand) {
   const units = UNITS[f.metric] ?? UNITS.pallets;
   const d = units.decimals;
   const share = f.target ? f.made / f.target : null;
-  const parts: string[] = [`<rect width="${W}" height="${H}" fill="#ffffff"/>`, header(f, brand, 'PRODUÇÃO DO DIA')];
+  const parts: string[] = [`<rect width="${W}" height="${PRODUCTION_H}" fill="#ffffff"/>`, header(f, brand, 'PRODUÇÃO DO DIA')];
 
   // The figure of the day and the target.
   let y = 330;
@@ -144,7 +163,9 @@ export function productionSvg(f: DayFacts, brand: Brand) {
   tiles.forEach(([label, value, unit], index) => parts.push(tile(PAD + index * (tileWidth + 24), y, tileWidth, label, value, unit)));
   y += 180;
 
-  // Hour by hour: the bars, and the running total against the target.
+  y = sCurve(parts, f, brand, y, units.unit, d);
+
+  // Hour by hour.
   const first = f.firstHour;
   const last = f.lastHour >= f.firstHour ? f.lastHour : f.lastHour + 24;
   const hours: Array<{ hour: number; made: number }> = [];
@@ -153,7 +174,7 @@ export function productionSvg(f: DayFacts, brand: Brand) {
   parts.push(text(PAD, y, 'PRODUÇÃO HORA A HORA', 22, { weight: 600, fill: MUTED, spacing: 2 }));
   // Room above the bars for the best hour's figure, under the title.
   const chartTop = y + 64;
-  const chartHeight = H - 120 - chartTop - 60;
+  const chartHeight = PRODUCTION_H - 120 - chartTop - 60;
   const chartLeft = PAD;
   const chartWidth = W - PAD * 2;
   const top = Math.max(...hours.map((h) => h.made), 1);
@@ -162,7 +183,9 @@ export function productionSvg(f: DayFacts, brand: Brand) {
   for (const fraction of [0.5, 1]) {
     const gy = chartTop + chartHeight * (1 - fraction);
     parts.push(`<line x1="${chartLeft}" y1="${gy}" x2="${chartLeft + chartWidth}" y2="${gy}" stroke="${GRID}" stroke-width="2" stroke-dasharray="6 8"/>`);
-    parts.push(text(chartLeft + chartWidth, gy - 8, num(top * fraction, d), 18, { fill: MUTED, anchor: 'end' }));
+    // A small day rounds half and whole to the same figure: one label is enough.
+    if (fraction === 1 || num(top * fraction, d) !== num(top, d))
+      parts.push(text(chartLeft + chartWidth, gy - 8, num(top * fraction, d), 18, { fill: MUTED, anchor: 'end' }));
   }
   hours.forEach((h, index) => {
     const height = (h.made / top) * chartHeight;
@@ -176,8 +199,80 @@ export function productionSvg(f: DayFacts, brand: Brand) {
       parts.push(text(x + width / 2, chartTop + chartHeight + 32, `${String(h.hour).padStart(2, '0')}h`, 20, { fill: MUTED, anchor: 'middle' }));
   });
   parts.push(`<line x1="${chartLeft}" y1="${chartTop + chartHeight}" x2="${chartLeft + chartWidth}" y2="${chartTop + chartHeight}" stroke="#b7c6cb" stroke-width="2"/>`);
-  parts.push(footer(brand));
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}</svg>`;
+  parts.push(footer(brand, PRODUCTION_H));
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${PRODUCTION_H}" viewBox="0 0 ${W} ${PRODUCTION_H}">${parts.join('')}</svg>`;
+}
+
+/**
+ * The production board's S curve: the planned line (dashed) and the actual one over its area,
+ * both accumulated through the day, with where each ended. Returns where the next section starts.
+ */
+function sCurve(parts: string[], f: DayFacts, brand: Brand, y: number, unit: string, d: number) {
+  const points = f.curve;
+  if (points.length < 2) return y;
+  parts.push(text(PAD, y, `CURVA S · ${unit.toUpperCase()} ACUMULADOS`, 22, { weight: 600, fill: MUTED, spacing: 2 }));
+  const actual = points.filter((point) => point.actual != null);
+  const planned = points.filter((point) => point.planned != null);
+  // Legend on the title's line, at the right.
+  const legend: Array<[string, string, boolean]> = [['realizado', brand.color, false]];
+  if (planned.length > 1) legend.push(['planejado', MUTED, true]);
+  let lx = W - PAD;
+  for (const [label, color, dashed] of legend.reverse()) {
+    parts.push(text(lx, y, label, 20, { fill: MUTED, anchor: 'end' }));
+    lx -= label.length * 11 + 12;
+    parts.push(`<line x1="${lx - 34}" y1="${y - 7}" x2="${lx}" y2="${y - 7}" stroke="${color}" stroke-width="5" stroke-linecap="round"${dashed ? ' stroke-dasharray="8 8"' : ''}/>`);
+    lx -= 34 + 28;
+  }
+  const top = y + 48;
+  const height = 330;
+  const left = PAD;
+  // Room at the right for where the lines ended.
+  const width = W - PAD * 2 - 150;
+  const start = new Date(points[0].t).getTime();
+  const end = new Date(points.at(-1)!.t).getTime();
+  const highest = Math.max(1, ...points.map((point) => Math.max(point.planned ?? 0, point.actual ?? 0)));
+  const ceiling = highest * 1.08;
+  const px = (t: string) => left + ((new Date(t).getTime() - start) / Math.max(1, end - start)) * width;
+  const py = (value: number) => top + height - (value / ceiling) * height;
+  for (const fraction of [0.25, 0.5, 0.75, 1]) {
+    const gy = py(highest * fraction);
+    parts.push(`<line x1="${left}" y1="${gy}" x2="${left + width}" y2="${gy}" stroke="${GRID}" stroke-width="2" stroke-dasharray="6 8"/>`);
+  }
+  const path = (list: typeof points, key: 'planned' | 'actual') =>
+    list.map((point, index) => `${index ? 'L' : 'M'}${px(point.t).toFixed(1)},${py(point[key]!).toFixed(1)}`).join('');
+  if (actual.length > 1)
+    parts.push(`<path d="${path(actual, 'actual')}L${px(actual.at(-1)!.t).toFixed(1)},${top + height}L${px(actual[0].t).toFixed(1)},${top + height}Z" fill="${brand.color}" fill-opacity="0.12"/>`);
+  if (planned.length > 1)
+    parts.push(`<path d="${path(planned, 'planned')}" fill="none" stroke="${MUTED}" stroke-width="4" stroke-dasharray="10 10" stroke-linejoin="round"/>`);
+  if (actual.length > 1)
+    parts.push(`<path d="${path(actual, 'actual')}" fill="none" stroke="${brand.color}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>`);
+  parts.push(`<line x1="${left}" y1="${top + height}" x2="${left + width}" y2="${top + height}" stroke="#b7c6cb" stroke-width="2"/>`);
+  // Where each line ended, at the right; kept apart when they end close together.
+  const ends: Array<{ value: number; x: number; color: string; label: string }> = [];
+  if (actual.length) ends.push({ value: actual.at(-1)!.actual!, x: px(actual.at(-1)!.t), color: brand.color, label: 'realizado' });
+  if (planned.length > 1) ends.push({ value: planned.at(-1)!.planned!, x: px(planned.at(-1)!.t), color: MUTED, label: 'meta' });
+  const placed = ends.map((item) => ({ ...item, y: py(item.value) }));
+  if (placed.length === 2 && Math.abs(placed[0].y - placed[1].y) < 60) {
+    const middle = (placed[0].y + placed[1].y) / 2;
+    const upper = placed[0].value >= placed[1].value ? 0 : 1;
+    placed[upper].y = middle - 30;
+    placed[1 - upper].y = middle + 30;
+  }
+  for (const item of placed) {
+    parts.push(`<circle cx="${item.x}" cy="${py(item.value)}" r="8" fill="${item.color}"/>`);
+    parts.push(text(left + width + 20, item.y + 4, num(item.value, d), 28, { weight: 700, fill: item.color === MUTED ? INK : item.color }));
+    parts.push(text(left + width + 20, item.y + 28, item.label, 18, { fill: MUTED }));
+  }
+  // Hours along the bottom, plant time.
+  const span = (end - start) / 3600_000;
+  const every = span > 12 ? 3 : span > 6 ? 2 : 1;
+  const firstHour = Math.ceil(start / 3600_000) * 3600_000;
+  for (let at = firstHour; at <= end; at += 3600_000) {
+    if (Math.round((at - firstHour) / 3600_000) % every) continue;
+    const hour = new Date(at - 3 * 3600_000).getUTCHours();
+    parts.push(text(left + ((at - start) / Math.max(1, end - start)) * width, top + height + 32, `${String(hour).padStart(2, '0')}h`, 20, { fill: MUTED, anchor: 'middle' }));
+  }
+  return top + height + 100;
 }
 
 /** Image 2: why it did not produce more. */
@@ -271,11 +366,12 @@ export function stopsSvg(f: DayFacts, brand: Brand) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}</svg>`;
 }
 
-/** SVG to PNG, with the fonts of the system (the API image installs Inter and DejaVu). */
+/** SVG to PNG, with the fonts shipped with the API only (the same everywhere). */
 export function toPng(svg: string) {
+  if (!FONT_FILES.length) throw new Error(`Fontes das imagens não encontradas em ${FONT_DIR}`);
   return new Resvg(svg, {
     fitTo: { mode: 'width', value: W },
-    font: { loadSystemFonts: true, defaultFontFamily: 'DejaVu Sans' },
+    font: { loadSystemFonts: false, fontFiles: FONT_FILES, defaultFontFamily: 'Inter' },
   })
     .render()
     .asPng();
