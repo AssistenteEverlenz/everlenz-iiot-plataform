@@ -99,6 +99,10 @@ services:
       N8N_SUMMARY_WEBHOOK_URL: ${N8N_SUMMARY_WEBHOOK_URL:-}
       # Plant hours the summaries go out in, "start-end"; "0-24" sends at any hour (tests).
       WHATSAPP_SEND_WINDOW: ${WHATSAPP_SEND_WINDOW:-7-21}
+      # The Evolution instance the summaries go out through, sent to n8n with each message.
+      EVOLUTION_URL: ${EVOLUTION_URL:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-}
+      EVOLUTION_APIKEY: ${EVOLUTION_APIKEY:-}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://iotplataform.everlenz.com.br}
       MQTT_PROVISION_DIR: /mqtt-provision/requests
       # Equipment commands ("Zerar contador" on the PLC). Empty password = read-only platform.

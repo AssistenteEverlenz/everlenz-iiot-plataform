@@ -302,6 +302,14 @@ async function imagesFor(db: Database, person: Recipient, date: string) {
   }
 }
 
+/** The Evolution connection the summaries go out through, from the environment; null if unset. */
+function evolution() {
+  const url = (process.env.EVOLUTION_URL ?? '').trim().replace(/\/+$/, '');
+  const instance = (process.env.EVOLUTION_INSTANCE ?? '').trim();
+  const apikey = (process.env.EVOLUTION_APIKEY ?? '').trim();
+  return url && instance && apikey ? { url, instance, apikey } : null;
+}
+
 /**
  * Push instead of pull: when N8N_SUMMARY_WEBHOOK_URL is set, the platform posts the next message
  * to n8n itself, at the queue's own pace (window, gap, lease), so the plants that close at 17:00
@@ -338,6 +346,8 @@ export async function dispatchProductionMessages(db: Database, now = new Date())
         productionDate: person?.production_date ?? null,
         // Sent after the text, in this order: production, then stops, per machine.
         images,
+        // Where to send it from, so the n8n flow needs no copy of it (EVOLUTION_* in Coolify).
+        ...(evolution() ? { evolution: evolution() } : {}),
         resultUrl: `${web}/api/n8n/production-messages/${message.id}/result`,
       }),
       signal: AbortSignal.timeout(30000),

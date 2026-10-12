@@ -57,6 +57,9 @@ async function platform() {
 afterEach(() => {
   delete process.env.N8N_API_KEY;
   delete process.env.N8N_SUMMARY_WEBHOOK_URL;
+  delete process.env.EVOLUTION_URL;
+  delete process.env.EVOLUTION_INSTANCE;
+  delete process.env.EVOLUTION_APIKEY;
   vi.unstubAllGlobals();
 });
 
@@ -145,6 +148,9 @@ describe('assistente do WhatsApp', () => {
       [TENANT, user],
     );
     process.env.N8N_SUMMARY_WEBHOOK_URL = 'https://n8n.example/webhook/resumo';
+    process.env.EVOLUTION_URL = 'https://evo.example/';
+    process.env.EVOLUTION_INSTANCE = 'Bell IA';
+    process.env.EVOLUTION_APIKEY = 'chave-evo';
     const posted: Array<{ url: string; body: Record<string, unknown>; key: string | null }> = [];
     vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
       posted.push({
@@ -159,6 +165,8 @@ describe('assistente do WhatsApp', () => {
     expect(posted[0].url).toBe('https://n8n.example/webhook/resumo');
     expect(posted[0].key).toBe(KEY);
     expect(posted[0].body).toMatchObject({ number: '5527999998888', name: 'Ana Supervisora' });
+    // The Evolution connection goes with it, so the n8n flow needs no copy of it.
+    expect(posted[0].body.evolution).toEqual({ url: 'https://evo.example', instance: 'Bell IA', apikey: 'chave-evo' });
     expect(String(posted[0].body.text)).toMatch(/^Bom dia, Ana/);
     // The day's two images go with it, as PNG.
     const images = posted[0].body.images as Array<{ kind: string; base64: string; mimetype: string }>;

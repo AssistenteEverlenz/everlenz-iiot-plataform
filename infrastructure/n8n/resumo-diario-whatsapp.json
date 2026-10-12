@@ -8,7 +8,7 @@
         "width": 560,
         "color": 5
       },
-      "id": "061181b3-c779-46c6-934b-b03edb18653b",
+      "id": "624d7d1b-4fca-406b-82a0-7d3462833bbb",
       "name": "Nota",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -23,7 +23,7 @@
         "path": "everlenz-iiot-resumo",
         "options": {}
       },
-      "id": "a3913870-ca14-4d1f-94fd-de2754a20209",
+      "id": "b4de8e32-8489-4f15-a0b8-cdc962c18992",
       "name": "Resumo recebido",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -31,38 +31,38 @@
         0,
         100
       ],
-      "webhookId": "76ad9aff-cef8-4329-b3c5-30c1f33b010a"
+      "webhookId": "ebada522-302c-460d-8b7b-93e221f28c1c"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "78b6edd6-31da-4df7-955a-fdf709a7fdd8",
+              "id": "1470b0db-69b1-4356-95d6-66a65689ebed",
               "name": "PLATAFORMA_URL",
               "value": "https://iotplataform.everlenz.com.br",
               "type": "string"
             },
             {
-              "id": "4cb2171f-d663-4687-ba27-6a5a5d5d401a",
+              "id": "f1b691ec-957d-477f-b121-6902a2e1fdd9",
               "name": "PLATAFORMA_CHAVE",
               "value": "COLE_AQUI_A_N8N_API_KEY",
               "type": "string"
             },
             {
-              "id": "b9a7f429-4d6a-49c1-9c88-a65ca898ad8b",
+              "id": "0c510f72-a077-4159-b285-7318db8890ba",
               "name": "EVOLUTION_URL",
               "value": "https://evolutionapi.assistentedrfin.com.br",
               "type": "string"
             },
             {
-              "id": "32f3296f-8c4c-4968-b956-7a90c35b350c",
+              "id": "21c1eee1-b6bc-4f73-a89a-2723f7729928",
               "name": "EVOLUTION_INSTANCIA",
               "value": "NOME_DA_INSTANCIA",
               "type": "string"
             },
             {
-              "id": "68415858-7cdf-43e2-bf51-5019214c69fa",
+              "id": "2c1088dc-66c3-4532-b98b-5f7f8acb7476",
               "name": "EVOLUTION_APIKEY",
               "value": "COLE_AQUI_A_APIKEY_DA_EVOLUTION",
               "type": "string"
@@ -71,7 +71,7 @@
         },
         "options": {}
       },
-      "id": "414eda26-ef5d-44a4-b097-988dcd44d4b2",
+      "id": "3bec3b24-c024-4eb3-8853-62543d5368ef",
       "name": "Configuração",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -91,7 +91,7 @@
           },
           "conditions": [
             {
-              "id": "027746ea-0e66-4e6d-a049-33ce881d6d83",
+              "id": "a28b3438-95f2-4ad4-8dde-e8cf3db18f5a",
               "leftValue": "={{ $('Resumo recebido').first().json.headers['x-n8n-key'] }}",
               "rightValue": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}",
               "operator": {
@@ -104,7 +104,7 @@
         },
         "options": {}
       },
-      "id": "1412bf1a-55d9-4c70-b72b-31e8295a6798",
+      "id": "7aac1ca9-729b-4e08-8feb-95faa86f3782",
       "name": "Chave válida?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -115,7 +115,7 @@
     },
     {
       "parameters": {},
-      "id": "22b06412-1d38-4751-bd47-dddad0ff92e7",
+      "id": "b9ed53db-0057-498a-947f-63316a80f0e8",
       "name": "Ignora",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
@@ -128,7 +128,7 @@
       "parameters": {
         "amount": "={{ $('Resumo recebido').first().json.body.waitSeconds || 10 }}"
       },
-      "id": "7e8f7e2d-eb62-4b38-96b3-df6a51eb4463",
+      "id": "e26be3d6-62f4-4329-92d6-ab8e9d4351b8",
       "name": "Espera aleatória",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -140,13 +140,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Configuração').first().json.EVOLUTION_URL }}/message/sendText/{{ encodeURIComponent($('Configuração').first().json.EVOLUTION_INSTANCIA) }}",
+        "url": "={{ String(($('Resumo recebido').first().json.body.evolution?.url || $('Configuração').first().json.EVOLUTION_URL) || '').replace(/\\/+$/, '') }}/message/sendText/{{ encodeURIComponent(($('Resumo recebido').first().json.body.evolution?.instance || $('Configuração').first().json.EVOLUTION_INSTANCIA)) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Configuração').first().json.EVOLUTION_APIKEY }}"
+              "value": "={{ ($('Resumo recebido').first().json.body.evolution?.apikey || $('Configuração').first().json.EVOLUTION_APIKEY) }}"
             }
           ]
         },
@@ -179,7 +179,7 @@
           "timeout": 60000
         }
       },
-      "id": "da9646ed-0e37-47f4-a02b-4c5b7f71bf18",
+      "id": "112b8c77-8f77-4b73-9881-a6fbc7c9e6f2",
       "name": "Envia resumo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -200,7 +200,7 @@
           },
           "conditions": [
             {
-              "id": "c0a7774b-1c30-4a19-ab20-bcff89e227c0",
+              "id": "adcbf44a-56cb-4110-86d1-88c966ef294a",
               "leftValue": "={{ ($('Resumo recebido').first().json.body.images || []).length }}",
               "rightValue": 0,
               "operator": {
@@ -213,7 +213,7 @@
         },
         "options": {}
       },
-      "id": "cf26fbbc-2583-47bf-a324-cab883ce4a79",
+      "id": "22c6f2c9-6be6-4fa8-9f5c-c2bbab0ee585",
       "name": "Tem imagens?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -227,7 +227,7 @@
         "mode": "runOnceForAllItems",
         "jsCode": "// Produção e paradas de cada equipamento, na ordem em que a plataforma mandou.\nreturn ($('Resumo recebido').first().json.body.images || []).map((image) => ({ json: image }));"
       },
-      "id": "22d21be7-c8fb-4b87-8f21-20933d9af732",
+      "id": "11519e86-8784-44d7-a05b-90bab684df82",
       "name": "Separa imagens",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -240,7 +240,7 @@
       "parameters": {
         "options": {}
       },
-      "id": "81359d83-fad6-4845-a2ed-c83257543949",
+      "id": "48573081-e156-4405-91cf-0f5c117e02ba",
       "name": "Uma imagem por vez",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -253,7 +253,7 @@
       "parameters": {
         "amount": "={{ 3 + Math.floor(Math.random() * 4) }}"
       },
-      "id": "e424137c-70bf-4695-aada-26ed0c513511",
+      "id": "459a04f1-7560-435f-8f05-7f99e0fe0fde",
       "name": "Pausa entre imagens",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -265,13 +265,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('Configuração').first().json.EVOLUTION_URL }}/message/sendMedia/{{ encodeURIComponent($('Configuração').first().json.EVOLUTION_INSTANCIA) }}",
+        "url": "={{ String(($('Resumo recebido').first().json.body.evolution?.url || $('Configuração').first().json.EVOLUTION_URL) || '').replace(/\\/+$/, '') }}/message/sendMedia/{{ encodeURIComponent(($('Resumo recebido').first().json.body.evolution?.instance || $('Configuração').first().json.EVOLUTION_INSTANCIA)) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $('Configuração').first().json.EVOLUTION_APIKEY }}"
+              "value": "={{ ($('Resumo recebido').first().json.body.evolution?.apikey || $('Configuração').first().json.EVOLUTION_APIKEY) }}"
             }
           ]
         },
@@ -282,7 +282,7 @@
           "timeout": 60000
         }
       },
-      "id": "63d29df7-6962-4b6d-9df9-fad862d4ca1f",
+      "id": "d2b9f101-4ee7-4e20-8b3a-4ea021de8b2e",
       "name": "Envia imagem",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -310,7 +310,7 @@
         "jsonBody": "={{ { ok: true } }}",
         "options": {}
       },
-      "id": "7fa70dbd-6a24-474d-86ab-60a4713ec3ea",
+      "id": "6375c54f-b0b7-4658-94bf-6daaf82ab4ed",
       "name": "Confirma envio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -337,7 +337,7 @@
         "jsonBody": "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
         "options": {}
       },
-      "id": "6145fa11-9710-4c32-8365-05c514c69a8f",
+      "id": "342666ed-490a-428f-a2d9-a404a13eb039",
       "name": "Registra falha",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,

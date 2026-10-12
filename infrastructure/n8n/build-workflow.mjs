@@ -44,6 +44,16 @@ const platformHeaders = {
   sendHeaders: true,
   headerParameters: { parameters: [{ name: 'x-n8n-key', value: `={{ ${cfg('PLATAFORMA_CHAVE')} }}` }] },
 };
+/**
+ * Where a flow reaches Evolution: what came with the message first (the platform's payload, or
+ * the Evolution webhook's own serverUrl/instanceName/apiKey), the Configuração node otherwise.
+ */
+let evo = {
+  url: `${cfg('EVOLUTION_URL')}`,
+  instance: `${cfg('EVOLUTION_INSTANCIA')}`,
+  apikey: `${cfg('EVOLUTION_APIKEY')}`,
+};
+const evoUrl = () => `String(${evo.url} || '').replace(/\\/+$/, '')`;
 /** Evolution's sendText, the same call the DR Fin assistant uses. */
 const sendText = (name, position, number, text, extra = {}) =>
   node(
@@ -53,9 +63,9 @@ const sendText = (name, position, number, text, extra = {}) =>
     position,
     {
       method: 'POST',
-      url: `={{ ${cfg('EVOLUTION_URL')} }}/message/sendText/{{ encodeURIComponent(${cfg('EVOLUTION_INSTANCIA')}) }}`,
+      url: `={{ ${evoUrl()} }}/message/sendText/{{ encodeURIComponent(${evo.instance}) }}`,
       sendHeaders: true,
-      headerParameters: { parameters: [{ name: 'apikey', value: `={{ ${cfg('EVOLUTION_APIKEY')} }}` }] },
+      headerParameters: { parameters: [{ name: 'apikey', value: `={{ ${evo.apikey} }}` }] },
       sendBody: true,
       bodyParameters: {
         parameters: [
@@ -92,6 +102,11 @@ const ifEquals = (left, right, caseSensitive = true) => ({
 // from its own queue); this sends it and reports back.
 // ---------------------------------------------------------------------------------------------
 const body = (field) => `$('Resumo recebido').first().json.body.${field}`;
+evo = {
+  url: `(${body('evolution')}?.url || ${cfg('EVOLUTION_URL')})`,
+  instance: `(${body('evolution')}?.instance || ${cfg('EVOLUTION_INSTANCIA')})`,
+  apikey: `(${body('evolution')}?.apikey || ${cfg('EVOLUTION_APIKEY')})`,
+};
 write('resumo-diario-whatsapp.json', {
   name: 'IIoT - Resumo diário de produção no WhatsApp',
   nodes: [
@@ -163,9 +178,9 @@ return ($('Resumo recebido').first().json.body.images || []).map((image) => ({ j
       [2000, -120],
       {
         method: 'POST',
-        url: `={{ ${cfg('EVOLUTION_URL')} }}/message/sendMedia/{{ encodeURIComponent(${cfg('EVOLUTION_INSTANCIA')}) }}`,
+        url: `={{ ${evoUrl()} }}/message/sendMedia/{{ encodeURIComponent(${evo.instance}) }}`,
         sendHeaders: true,
-        headerParameters: { parameters: [{ name: 'apikey', value: `={{ ${cfg('EVOLUTION_APIKEY')} }}` }] },
+        headerParameters: { parameters: [{ name: 'apikey', value: `={{ ${evo.apikey} }}` }] },
         sendBody: true,
         specifyBody: 'json',
         // The same body the DR Fin flow uses for images.
@@ -218,6 +233,11 @@ return ($('Resumo recebido').first().json.body.images || []).map((image) => ({ j
 // writer (LLM), messages sent one by one.
 // ---------------------------------------------------------------------------------------------
 const entrada = (field) => `$('Normaliza entrada').first().json.${field}`;
+evo = {
+  url: `(${entrada('serverUrl')} || ${cfg('EVOLUTION_URL')})`,
+  instance: `(${entrada('instanceName')} || ${cfg('EVOLUTION_INSTANCIA')})`,
+  apikey: `(${entrada('apiKey')} || ${cfg('EVOLUTION_APIKEY')})`,
+};
 const contato = (field) => `$('Busca contato').first().json.${field}`;
 
 const ROTEADOR_SISTEMA = `Você é a ROTEADORA do assistente de produção da Everlenz IIoT no WhatsApp. Quem conversa com você são donos, gerentes e supervisores de cerâmicas que acompanham a produção das máquinas pela plataforma.
@@ -348,7 +368,11 @@ if (b.remoteJid || b.chatInput != null) {
 }
 // Só pessoas escrevendo para nós, com texto: nem grupos, nem status, nem as próprias mensagens.
 if (fromMe || !jid.endsWith('@s.whatsapp.net') || !text.trim()) return [];
-return [{ json: { jid, phone: jid.split('@')[0], text: text.trim(), messageId: messageId || null } }];`;
+// The Evolution webhook says where it came from: the answer goes back the same way.
+const serverUrl = String(b.serverUrl || b.server_url || '');
+const instanceName = String(b.instanceName || b.instance || '');
+const apiKey = String(b.apiKey || b.apikey || '');
+return [{ json: { jid, phone: jid.split('@')[0], text: text.trim(), messageId: messageId || null, serverUrl, instanceName, apiKey } }];`;
 
 const NORMALIZA_SAIDA = `${embed('normalizador.mjs')}
 const saida = $json.output || $json;
