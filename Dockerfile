@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 WORKDIR /app
 RUN npm install -g pnpm@10.28.2 && pnpm config set store-dir /pnpm/store
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -19,7 +19,7 @@ RUN pnpm --filter @iiot/api deploy --prod --offline /out/api \
  && pnpm --filter @iiot/ingestor deploy --prod --offline /out/ingestor \
  && pnpm --filter @iiot/database deploy --prod --offline /out/database
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 USER node
