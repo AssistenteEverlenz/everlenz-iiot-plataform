@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useUsageBeat } from './useUsageBeat';
 import { PageLoader } from './PageLoader';
+import { DialogHost } from './Dialogs';
 import { NavIcon, type NavIconName } from './NavIcon';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -270,6 +271,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
           {children}
           {/* Covers the page until its first numbers arrive (slow networks). */}
           <PageLoader pathname={pathname} branding={branding} />
+          {/* The platform's notices and confirmations (Dialogs.tsx), never the browser's. */}
+          <DialogHost />
         </main>
         <nav className="bottom-navigation">
           {bottomNavigation.map((item, index) => (

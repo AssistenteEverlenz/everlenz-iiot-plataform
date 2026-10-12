@@ -1,4 +1,5 @@
 'use client';
+import { confirmar } from './Dialogs';
 
 import { useState } from 'react';
 import { mutate, usePoll } from './data';
@@ -204,8 +205,15 @@ export function SnapshotModal({
             <button
               type="button"
               disabled={Boolean(busy)}
-              onClick={() => {
-                if (!window.confirm('Trocar os cards, as abas e a TV deste painel pelos do modelo?')) return;
+              onClick={async () => {
+                if (
+                  !(await confirmar({
+                    titulo: 'Carregar o modelo neste painel?',
+                    texto: 'Os cards, as abas e a TV deste painel passam a ser os do modelo. Um snapshot do painel é salvo antes, então dá para desfazer.',
+                    confirmar: 'Carregar modelo',
+                  }))
+                )
+                  return;
                 void run(
                   'load',
                   async () => {

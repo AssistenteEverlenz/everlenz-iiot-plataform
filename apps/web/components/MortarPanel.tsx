@@ -1,4 +1,5 @@
 'use client';
+import { confirmar } from './Dialogs';
 
 import { useEffect, useState, type MutableRefObject } from 'react';
 import { mutate, usePoll } from './data';
@@ -306,11 +307,14 @@ export function ProductsModal({ onClose }: { onClose: () => void }) {
                     </button>{' '}
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         if (
-                          window.confirm(
-                            `Excluir ${product.name}? As receitas voltam a contar sem produto.`,
-                          )
+                          await confirmar({
+                            titulo: `Excluir ${product.name}?`,
+                            texto: 'As receitas deste produto voltam a contar sem produto.',
+                            confirmar: 'Excluir',
+                            perigo: true,
+                          })
                         )
                           void run(() => mutate(`/mortar/products/${product.id}`, 'DELETE'));
                       }}
@@ -761,12 +765,15 @@ export function MortarCardSettings({
                         />
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
                             if (
                               !spout.id ||
-                              window.confirm(
-                                `Remover o bico ${spout.name}? A contagem dele é apagada junto.`,
-                              )
+                              (await confirmar({
+                                titulo: `Remover o bico ${spout.name}?`,
+                                texto: 'A contagem dele é apagada junto.',
+                                confirmar: 'Remover',
+                                perigo: true,
+                              }))
                             )
                               set({ spouts: form.spouts.filter((_, at) => at !== index) });
                           }}

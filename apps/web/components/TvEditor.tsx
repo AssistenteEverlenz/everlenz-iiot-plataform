@@ -1,4 +1,5 @@
 'use client';
+import { confirmar } from './Dialogs';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -164,9 +165,11 @@ export function TvEditor({ id }: { id: string }) {
   // snapshots the dashboard first, so Ações → Snapshot undoes it.
   async function applyModel() {
     if (
-      !window.confirm(
-        'Trocar a TV deste painel pela TV do modelo? Cards que faltarem no painel são criados. Um snapshot do painel é salvo antes.',
-      )
+      !(await confirmar({
+        titulo: 'Usar a TV do modelo?',
+        texto: 'A TV deste painel passa a ser a do modelo, e os cards que faltarem no painel são criados. Um snapshot do painel é salvo antes.',
+        confirmar: 'Usar a TV do modelo',
+      }))
     )
       return;
     setSaving(true);

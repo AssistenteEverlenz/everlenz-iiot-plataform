@@ -5,6 +5,7 @@ import { mutate, time, usePoll, type Device } from '../../components/data';
 import { ActionModal } from '../../components/ActionModal';
 import Link from 'next/link';
 import { ModalPortal } from '../../components/ModalPortal';
+import { avisar } from '../../components/Dialogs';
 import { UserUsageModal } from '../../components/UsageViews';
 
 interface ManagedUser {
@@ -303,11 +304,17 @@ export default function UsersPage() {
                       onClick={async () => {
                         try {
                           await mutate(`/users/${user.id}/whatsapp-test`, 'POST');
-                          window.alert(
-                            'Teste na fila. O n8n envia na próxima rodada (entre 07h e 21h, com intervalo mínimo de 3 min entre mensagens).',
-                          );
+                          void avisar({
+                            titulo: 'Teste na fila',
+                            texto: `O resumo vai para ${phoneLabel(user.phone)} na próxima rodada de envio, com o texto e as imagens do último dia de produção.`,
+                            tom: 'success',
+                          });
                         } catch (reason) {
-                          window.alert(reason instanceof Error ? reason.message : 'Não foi possível enviar o teste.');
+                          void avisar({
+                            titulo: 'Não foi possível enviar o teste',
+                            texto: reason instanceof Error ? reason.message : 'Tente de novo em instantes.',
+                            tom: 'error',
+                          });
                         }
                       }}
                     >
