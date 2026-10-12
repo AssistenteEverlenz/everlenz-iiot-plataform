@@ -50,6 +50,7 @@ const day = (overrides: Partial<DayFacts> = {}): DayFacts => ({
     { t: '2026-10-09T14:00:00.000Z', planned: 50, actual: 40 },
     { t: '2026-10-09T20:30:00.000Z', planned: 100, actual: 92 },
   ],
+  timelineStart: '2026-10-09T09:00:00.000Z',
   timeline: ['producing', 'producing', 'idle', 'manual', 'offline', 'producing'],
   topStops: [{ at: '14:10', seconds: 47 * 60, state: 'idle' }],
   ...overrides,

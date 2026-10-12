@@ -67,7 +67,8 @@ export interface DayFacts {
   week: Array<{ date: string; made: number }>;
   /** Time stopped by reason, in the shifts. */
   reasons: { idle: number; manual: number; offline: number };
-  /** The machine every five minutes of the shifts, for the stops image's strip. */
+  /** The machine every five minutes of the shifts, from timelineStart (the strip, the S curve's area). */
+  timelineStart: string;
   timeline: Array<'producing' | 'idle' | 'manual' | 'offline'>;
   /** The longest stops of the day, inside the shifts. */
   topStops: Array<{ at: string; seconds: number; state: string }>;
@@ -282,8 +283,9 @@ export async function gatherDay(
     pacePerHour: board.pacePerHour,
     stoppedSeconds: board.time.idle + board.time.manual + board.time.offline,
     reasons: { idle: board.time.idle, manual: board.time.manual, offline: board.time.offline },
+    timelineStart: start.toISOString(),
     timeline,
-    topStops: counted.slice(0, 5).map((stop) => ({
+    topStops: counted.slice(0, 16).map((stop) => ({
       at: plantClock(stop.start),
       seconds: stop.seconds,
       state: stop.state,

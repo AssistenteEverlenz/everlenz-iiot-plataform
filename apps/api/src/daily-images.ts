@@ -6,7 +6,7 @@ import type { DayFacts } from './daily-report.js';
 /**
  * The two images that follow the WhatsApp summary: what the day produced, and why it did not
  * produce more. Drawn as SVG from the same facts as the text, turned into PNG on the server
- * (no browser), 1080 x 1350 so WhatsApp shows them large on a phone. The states keep the colours
+ * (no browser), 1080 x 2340 so each fills a phone's screen when opened. The states keep the colours
  * of the production board; the header takes the white label's colour.
  */
 
@@ -16,9 +16,9 @@ export interface Brand {
 }
 
 const W = 1080;
-const H = 1350;
-/** The production image is taller: the S curve and the hour by hour both need the width of a phone. */
-const PRODUCTION_H = 1700;
+/** A phone's whole screen (19.5:9): opened in WhatsApp, the image fills it. */
+const H = 2340;
+const PRODUCTION_H = H;
 const PAD = 64;
 const FONT = 'Inter';
 /**
@@ -163,7 +163,7 @@ export function productionSvg(f: DayFacts, brand: Brand) {
   tiles.forEach(([label, value, unit], index) => parts.push(tile(PAD + index * (tileWidth + 24), y, tileWidth, label, value, unit)));
   y += 180;
 
-  y = sCurve(parts, f, brand, y, units.unit, d);
+  y = sCurve(parts, f, brand, y, units.unit, d, Math.round((PRODUCTION_H - 120 - y) * 0.48));
 
   // Hour by hour.
   const first = f.firstHour;
@@ -193,8 +193,8 @@ export function productionSvg(f: DayFacts, brand: Brand) {
     const width = slot * 0.64;
     const isBest = h === best && h.made > 0;
     parts.push(`<rect x="${x}" y="${chartTop + chartHeight - height}" width="${width}" height="${Math.max(height, 2)}" rx="6" fill="${isBest ? brand.color : '#9fc3d6'}"/>`);
-    if (isBest)
-      parts.push(text(x + width / 2, chartTop + chartHeight - height - 12, num(h.made, d), 22, { weight: 700, fill: brand.color, anchor: 'middle' }));
+    // Every hour's figure over its bar, the best one in the accent colour.
+    parts.push(text(x + width / 2, chartTop + chartHeight - Math.max(height, 2) - 12, num(h.made, d), hours.length > 18 ? 18 : 22, { weight: 700, fill: isBest ? brand.color : INK, anchor: 'middle' }));
     if (hours.length <= 12 || index % 2 === 0)
       parts.push(text(x + width / 2, chartTop + chartHeight + 32, `${String(h.hour).padStart(2, '0')}h`, 20, { fill: MUTED, anchor: 'middle' }));
   });
@@ -207,7 +207,7 @@ export function productionSvg(f: DayFacts, brand: Brand) {
  * The production board's S curve: the planned line (dashed) and the actual one over its area,
  * both accumulated through the day, with where each ended. Returns where the next section starts.
  */
-function sCurve(parts: string[], f: DayFacts, brand: Brand, y: number, unit: string, d: number) {
+function sCurve(parts: string[], f: DayFacts, brand: Brand, y: number, unit: string, d: number, room: number) {
   const points = f.curve;
   if (points.length < 2) return y;
   parts.push(text(PAD, y, `CURVA S · ${unit.toUpperCase()} ACUMULADOS`, 22, { weight: 600, fill: MUTED, spacing: 2 }));
@@ -224,7 +224,8 @@ function sCurve(parts: string[], f: DayFacts, brand: Brand, y: number, unit: str
     lx -= 34 + 28;
   }
   const top = y + 48;
-  const height = 330;
+  // Room under the chart for the hours and the states' legend.
+  const height = Math.max(330, room - 48 - 150);
   const left = PAD;
   // Room at the right for where the lines ended.
   const width = W - PAD * 2 - 150;
@@ -240,8 +241,25 @@ function sCurve(parts: string[], f: DayFacts, brand: Brand, y: number, unit: str
   }
   const path = (list: typeof points, key: 'planned' | 'actual') =>
     list.map((point, index) => `${index ? 'L' : 'M'}${px(point.t).toFixed(1)},${py(point[key]!).toFixed(1)}`).join('');
-  if (actual.length > 1)
-    parts.push(`<path d="${path(actual, 'actual')}L${px(actual.at(-1)!.t).toFixed(1)},${top + height}L${px(actual[0].t).toFixed(1)},${top + height}Z" fill="${brand.color}" fill-opacity="0.12"/>`);
+  // The area under the actual line takes the machine's state in each stretch, as on the board.
+  const timelineStart = new Date(f.timelineStart).getTime();
+  const stateAt = (at: number) => {
+    const index = Math.floor((at - timelineStart) / 300_000);
+    return index >= 0 && index < f.timeline.length ? f.timeline[index] : null;
+  };
+  // Stretches in the same state are one shape, so no seams show between the five minutes.
+  const stateOf = (index: number) => stateAt(new Date(actual[index].t).getTime() + 150_000);
+  let runStart = 0;
+  for (let index = 1; index < actual.length; index += 1) {
+    const state = stateOf(runStart);
+    if (index < actual.length - 1 && stateOf(index) === state) continue;
+    if (state) {
+      const run = actual.slice(runStart, index + 1);
+      const line = run.map((point, at) => `${at ? 'L' : 'M'}${px(point.t).toFixed(1)},${py(point.actual!).toFixed(1)}`).join('');
+      parts.push(`<path d="${line}L${px(run.at(-1)!.t).toFixed(1)},${top + height}L${px(run[0].t).toFixed(1)},${top + height}Z" fill="${STATES[state].color}" fill-opacity="0.55"/>`);
+    }
+    runStart = index;
+  }
   if (planned.length > 1)
     parts.push(`<path d="${path(planned, 'planned')}" fill="none" stroke="${MUTED}" stroke-width="4" stroke-dasharray="10 10" stroke-linejoin="round"/>`);
   if (actual.length > 1)
@@ -272,7 +290,14 @@ function sCurve(parts: string[], f: DayFacts, brand: Brand, y: number, unit: str
     const hour = new Date(at - 3 * 3600_000).getUTCHours();
     parts.push(text(left + ((at - start) / Math.max(1, end - start)) * width, top + height + 32, `${String(hour).padStart(2, '0')}h`, 20, { fill: MUTED, anchor: 'middle' }));
   }
-  return top + height + 100;
+  // What the area's colours mean.
+  let sx = PAD;
+  for (const key of ['producing', 'idle', 'manual', 'offline']) {
+    parts.push(`<rect x="${sx}" y="${top + height + 62}" width="22" height="22" rx="6" fill="${STATES[key].color}"/>`);
+    parts.push(text(sx + 32, top + height + 80, STATES[key].label, 22, { fill: MUTED }));
+    sx += 32 + STATES[key].label.length * 12 + 40;
+  }
+  return top + height + 170;
 }
 
 /** Image 2: why it did not produce more. */
@@ -301,24 +326,25 @@ export function stopsSvg(f: DayFacts, brand: Brand) {
   // The shift as a strip, five minutes per cell.
   parts.push(text(PAD, y, 'A MÁQUINA AO LONGO DO TURNO', 22, { weight: 600, fill: MUTED, spacing: 2 }));
   y += 26;
+  const STRIP = 96;
   const stripWidth = W - PAD * 2;
   const cell = stripWidth / Math.max(1, f.timeline.length);
-  parts.push(`<rect x="${PAD}" y="${y}" width="${stripWidth}" height="64" rx="12" fill="${GRID}"/>`);
+  parts.push(`<rect x="${PAD}" y="${y}" width="${stripWidth}" height="${STRIP}" rx="12" fill="${GRID}"/>`);
   // Runs of the same state drawn as one rectangle.
   let runStart = 0;
   f.timeline.forEach((state, index) => {
     const next = f.timeline[index + 1];
     if (next === state) return;
-    parts.push(`<rect x="${PAD + runStart * cell}" y="${y}" width="${(index - runStart + 1) * cell}" height="64" fill="${STATES[state]?.color ?? STATES.offline.color}"/>`);
+    parts.push(`<rect x="${PAD + runStart * cell}" y="${y}" width="${(index - runStart + 1) * cell}" height="${STRIP}" fill="${STATES[state]?.color ?? STATES.offline.color}"/>`);
     runStart = index + 1;
   });
   const span = f.lastHour >= f.firstHour ? f.lastHour - f.firstHour + 1 : f.lastHour + 25 - f.firstHour;
   const marks = span > 12 ? 4 : 2;
   for (let offset = 0; offset <= span; offset += marks) {
     const x = PAD + (offset / span) * stripWidth;
-    parts.push(text(Math.min(x, W - PAD), y + 100, `${String((f.firstHour + offset) % 24).padStart(2, '0')}h`, 20, { fill: MUTED, anchor: offset === 0 ? 'start' : offset >= span ? 'end' : 'middle' }));
+    parts.push(text(Math.min(x, W - PAD), y + STRIP + 36, `${String((f.firstHour + offset) % 24).padStart(2, '0')}h`, 20, { fill: MUTED, anchor: offset === 0 ? 'start' : offset >= span ? 'end' : 'middle' }));
   }
-  y += 140;
+  y += STRIP + 86;
   let lx = PAD;
   for (const key of ['producing', 'idle', 'manual', 'offline']) {
     parts.push(`<rect x="${lx}" y="${y - 18}" width="22" height="22" rx="6" fill="${STATES[key].color}"/>`);
@@ -344,23 +370,25 @@ export function stopsSvg(f: DayFacts, brand: Brand) {
     parts.push(`<rect x="${PAD + labelWidth}" y="${y + 16}" width="${barWidth}" height="30" rx="15" fill="${GRID}"/>`);
     parts.push(`<rect x="${PAD + labelWidth}" y="${y + 16}" width="${Math.max(seconds > 0 ? 30 : 0, (seconds / most) * barWidth)}" height="30" rx="15" fill="${STATES[key].color}"/>`);
     parts.push(text(W - PAD, y + 41, `${duration(seconds)} · ${Math.round((seconds / total) * 100)}%`, 26, { weight: 700, anchor: 'end' }));
-    y += 60;
+    y += 76;
   }
-  y += 30;
+  y += 50;
 
   // The longest stops.
   parts.push(text(PAD, y, 'MAIORES PARADAS', 22, { weight: 600, fill: MUTED, spacing: 2 }));
   y += 20;
   if (!f.topStops.length) parts.push(text(PAD, y + 50, 'Nenhuma parada no turno.', 28, { fill: MUTED }));
-  // As many of the longest stops as the page holds above the footer (three on a long day).
-  const room = Math.max(1, Math.floor((H - 110 - (y + 14)) / 76));
+  // As many of the longest stops as the screen holds above the footer.
+  const ROW = 84;
+  const room = Math.max(1, Math.floor((H - 110 - (y + 14)) / ROW));
   f.topStops.slice(0, room).forEach((stop, index) => {
-    const rowY = y + index * 76;
-    parts.push(`<rect x="${PAD}" y="${rowY + 14}" width="${W - PAD * 2}" height="64" rx="16" fill="${index % 2 ? '#ffffff' : '#f4f8f9'}"/>`);
-    parts.push(`<rect x="${PAD + 20}" y="${rowY + 36}" width="20" height="20" rx="5" fill="${STATES[stop.state]?.color ?? STATES.offline.color}"/>`);
-    parts.push(text(PAD + 56, rowY + 56, stop.at, 28, { weight: 700 }));
-    parts.push(text(PAD + 160, rowY + 56, STATES[stop.state]?.label ?? stop.state, 26, { fill: MUTED }));
-    parts.push(text(W - PAD - 24, rowY + 56, duration(stop.seconds), 30, { weight: 700, anchor: 'end' }));
+    const rowY = y + index * ROW;
+    parts.push(`<rect x="${PAD}" y="${rowY + 14}" width="${W - PAD * 2}" height="${ROW - 10}" rx="16" fill="${index % 2 ? '#ffffff' : '#f4f8f9'}"/>`);
+    parts.push(text(PAD + 22, rowY + 62, `${index + 1}º`, 24, { weight: 600, fill: MUTED }));
+    parts.push(`<rect x="${PAD + 76}" y="${rowY + 41}" width="22" height="22" rx="5" fill="${STATES[stop.state]?.color ?? STATES.offline.color}"/>`);
+    parts.push(text(PAD + 114, rowY + 62, stop.at, 30, { weight: 700 }));
+    parts.push(text(PAD + 222, rowY + 62, STATES[stop.state]?.label ?? stop.state, 28, { fill: MUTED }));
+    parts.push(text(W - PAD - 24, rowY + 62, duration(stop.seconds), 32, { weight: 700, anchor: 'end' }));
   });
   parts.push(footer(brand));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join('')}</svg>`;
