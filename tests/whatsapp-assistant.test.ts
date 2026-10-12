@@ -160,6 +160,11 @@ describe('assistente do WhatsApp', () => {
     expect(posted[0].key).toBe(KEY);
     expect(posted[0].body).toMatchObject({ number: '5527999998888', name: 'Ana Supervisora' });
     expect(String(posted[0].body.text)).toMatch(/^Bom dia, Ana/);
+    // The day's two images go with it, as PNG.
+    const images = posted[0].body.images as Array<{ kind: string; base64: string; mimetype: string }>;
+    expect(images.map((image) => image.kind)).toEqual(['producao', 'paradas']);
+    expect(images[0].mimetype).toBe('image/png');
+    expect(Buffer.from(images[0].base64, 'base64').subarray(1, 4).toString()).toBe('PNG');
     const back = (await db.query<{ status: string }>('SELECT status FROM production_messages')).rows[0];
     expect(back.status).toBe('pending');
     await api.close();

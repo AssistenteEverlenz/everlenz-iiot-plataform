@@ -56,6 +56,12 @@ export interface DayFacts {
   previous: { date: string; made: number } | null;
   /** Monday of this week up to this day, production days only. */
   week: Array<{ date: string; made: number }>;
+  /** Time stopped by reason, in the shifts. */
+  reasons: { idle: number; manual: number; offline: number };
+  /** The machine every five minutes of the shifts, for the stops image's strip. */
+  timeline: Array<'producing' | 'idle' | 'manual' | 'offline'>;
+  /** The longest stops of the day, inside the shifts. */
+  topStops: Array<{ at: string; seconds: number; state: string }>;
   /** Averages over the last production days before this one; null when there are none. */
   average: { made: number; pacePerHour: number; utilization: number | null; stoppedSeconds: number } | null;
 }
@@ -91,7 +97,7 @@ export async function gatherDay(
   const metric = board.metric;
   const made = inMetric(metric, board.totals);
 
-  const [extra, hourly, stops, longest, history] = await Promise.all([
+  const [extra, hourly, stops, longest, history, blocks, top] = await Promise.all([
     db.query<{ pieces: string; pallets: string; tons: string }>(
       `SELECT coalesce(sum(pieces),0) pieces,coalesce(sum(pallets),0) pallets,coalesce(sum(tons),0) tons
        FROM production_buckets WHERE device_id=$1 AND bucket >= $2 AND bucket < $3`,
@@ -137,7 +143,45 @@ export async function gatherDay(
        GROUP BY production_date ORDER BY production_date`,
       [device.id, date, addDays(date, -40)],
     ),
+    db.query<{ bucket: Date; producing: string; idle: string; manual: string }>(
+      `SELECT bucket,sum(producing_s) producing,sum(idle_s) idle,sum(manual_s) manual
+       FROM production_buckets WHERE device_id=$1 AND bucket >= $2 AND bucket < $3
+       GROUP BY bucket ORDER BY bucket`,
+      [device.id, start, end],
+    ),
+    db.query<{ seconds: number; started_at: Date; state: string }>(
+      `SELECT extract(epoch FROM least(coalesce(ended_at,now()),$3) - greatest(started_at,$2)) seconds,
+         greatest(started_at,$2) started_at,state
+       FROM production_stops
+       WHERE device_id=$1 AND NOT during_pause AND started_at < $3 AND coalesce(ended_at,now()) > $2
+       ORDER BY 1 DESC LIMIT 12`,
+      [device.id, start, end],
+    ),
   ]);
+  // Every five minutes of the shifts: the state that took most of it; no block at all is a
+  // machine that was not talking.
+  const byBucket = new Map(blocks.rows.map((row) => [new Date(row.bucket).getTime(), row]));
+  const timeline: DayFacts['timeline'] = [];
+  for (let at = start.getTime(); at < end.getTime(); at += 300_000) {
+    const row = byBucket.get(at);
+    if (!row) {
+      timeline.push('offline');
+      continue;
+    }
+    const producing = Number(row.producing);
+    const idle = Number(row.idle);
+    const manual = Number(row.manual);
+    const known = producing + idle + manual;
+    timeline.push(
+      known < 60
+        ? 'offline'
+        : producing >= idle && producing >= manual
+          ? 'producing'
+          : manual > idle
+            ? 'manual'
+            : 'idle',
+    );
+  }
 
   const days = history.rows
     .map((row) => ({
@@ -226,6 +270,24 @@ export async function gatherDay(
     utilization: board.utilization,
     pacePerHour: board.pacePerHour,
     stoppedSeconds: board.time.idle + board.time.manual + board.time.offline,
+    reasons: { idle: board.time.idle, manual: board.time.manual, offline: board.time.offline },
+    timeline,
+    // The recorder can leave two overlapping rows for one stop (seconds apart, two reasons):
+    // one stop per minute of start, the longest.
+    topStops: top.rows
+      .filter((row) => Number(row.seconds) >= 60)
+      .filter(
+        (row, index, rows) =>
+          rows.findIndex(
+            (other) => Math.abs(new Date(other.started_at).getTime() - new Date(row.started_at).getTime()) < 60_000,
+          ) === index,
+      )
+      .slice(0, 5)
+      .map((row) => ({
+        at: plantClock(new Date(row.started_at)),
+        seconds: Number(row.seconds),
+        state: row.state,
+      })),
     stops: Number(stops.rows[0]?.n ?? 0),
     longestStop:
       longestRow && Number(longestRow.seconds) >= 60

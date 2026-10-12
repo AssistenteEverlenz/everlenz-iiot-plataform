@@ -101,7 +101,8 @@ write('resumo-diario-whatsapp.json', {
         'A plataforma chama este webhook quando um dia de produção fecha (turnos encerrados e a ' +
         'máquina parada há 30 min, hora extra incluída) — **uma mensagem por vez**, das 07h às 21h ' +
         'e com no mínimo 3 min entre envios. Quem acumula os fechamentos das 17h e dá o ritmo é a ' +
-        'fila da plataforma; aqui só se envia.\n\n' +
+        'fila da plataforma; aqui só se envia: o texto e, em seguida, as imagens de produção e de ' +
+        'paradas de cada equipamento.\n\n' +
         '1. Preencha **Configuração**.\n2. Ative e copie a URL de produção do nó **Resumo recebido** ' +
         'para a variável **N8N_SUMMARY_WEBHOOK_URL** da plataforma (Coolify).',
       height: 300,
@@ -131,7 +132,49 @@ write('resumo-diario-whatsapp.json', {
     sendText('Envia resumo', [880, 0], `={{ ${body('number')} }}`, `={{ ${body('text')} }}`, {
       onError: 'continueErrorOutput',
     }),
-    node('Confirma envio', 'n8n-nodes-base.httpRequest', 4.2, [1120, -80], {
+    node('Tem imagens?', 'n8n-nodes-base.if', 2.2, [1120, -80], {
+      conditions: {
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 },
+        conditions: [
+          {
+            id: randomUUID(),
+            leftValue: `={{ (${body('images')} || []).length }}`,
+            rightValue: 0,
+            operator: { type: 'number', operation: 'gt' },
+          },
+        ],
+        combinator: 'and',
+      },
+      options: {},
+    }),
+    node('Separa imagens', 'n8n-nodes-base.code', 2, [1340, -200], {
+      mode: 'runOnceForAllItems',
+      jsCode: `// Produção e paradas de cada equipamento, na ordem em que a plataforma mandou.
+return ($('Resumo recebido').first().json.body.images || []).map((image) => ({ json: image }));`,
+    }),
+    node('Uma imagem por vez', 'n8n-nodes-base.splitInBatches', 3, [1560, -200], { options: {} }),
+    node('Pausa entre imagens', 'n8n-nodes-base.wait', 1.1, [1780, -120], {
+      amount: '={{ 3 + Math.floor(Math.random() * 4) }}',
+    }),
+    node(
+      'Envia imagem',
+      'n8n-nodes-base.httpRequest',
+      4.2,
+      [2000, -120],
+      {
+        method: 'POST',
+        url: `={{ ${cfg('EVOLUTION_URL')} }}/message/sendMedia/{{ encodeURIComponent(${cfg('EVOLUTION_INSTANCIA')}) }}`,
+        sendHeaders: true,
+        headerParameters: { parameters: [{ name: 'apikey', value: `={{ ${cfg('EVOLUTION_APIKEY')} }}` }] },
+        sendBody: true,
+        specifyBody: 'json',
+        // The same body the DR Fin flow uses for images.
+        jsonBody: `={{ { number: ${body('number')}, mediatype: 'image', mimetype: $json.mimetype, caption: $json.caption, media: $json.base64, fileName: $json.fileName } }}`,
+        options: { timeout: 60000 },
+      },
+      { onError: 'continueRegularOutput' },
+    ),
+    node('Confirma envio', 'n8n-nodes-base.httpRequest', 4.2, [1780, -320], {
       method: 'POST',
       url: `={{ ${body('resultUrl')} }}`,
       ...platformHeaders,
@@ -156,7 +199,12 @@ write('resumo-diario-whatsapp.json', {
     Configuração: { main: [[to('Chave válida?')]] },
     'Chave válida?': { main: [[to('Espera aleatória')], [to('Ignora')]] },
     'Espera aleatória': { main: [[to('Envia resumo')]] },
-    'Envia resumo': { main: [[to('Confirma envio')], [to('Registra falha')]] },
+    'Envia resumo': { main: [[to('Tem imagens?')], [to('Registra falha')]] },
+    'Tem imagens?': { main: [[to('Separa imagens')], [to('Confirma envio')]] },
+    'Separa imagens': { main: [[to('Uma imagem por vez')]] },
+    'Uma imagem por vez': { main: [[to('Confirma envio')], [to('Pausa entre imagens')]] },
+    'Pausa entre imagens': { main: [[to('Envia imagem')]] },
+    'Envia imagem': { main: [[to('Uma imagem por vez')]] },
   },
   active: false,
   settings,

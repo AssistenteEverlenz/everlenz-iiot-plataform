@@ -6,6 +6,7 @@ import { addDays, plantDate, plantInstant } from '@iiot/shared';
 import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
 import { composeMessage, gatherDay, type DayFacts } from './daily-report.js';
+import { dayImages } from './daily-images.js';
 import { loadConfig, loadShiftsFor } from './shift-production.js';
 
 /**
@@ -256,6 +257,41 @@ export async function claimNextMessage(db: Database, now: Date) {
 }
 
 /**
+ * The two images of each machine's day (production, stops) for a person, as base64 PNG. An image
+ * that cannot be drawn is left out: the text still goes.
+ */
+async function imagesFor(db: Database, person: Recipient, date: string) {
+  try {
+    const brand = (
+      await db.query<{ product_name: string; primary_color: string }>(
+        'SELECT product_name,primary_color FROM tenant_branding WHERE tenant_id=$1',
+        [person.tenant_id],
+      )
+    ).rows[0];
+    const images: Array<{ device: string; kind: string; caption: string; fileName: string; mimetype: string; base64: string }> = [];
+    for (const device of await devicesOf(db, person)) {
+      const facts = await gatherDay(db, person.tenant_id, device, date);
+      if (!facts) continue;
+      for (const image of dayImages(facts, {
+        name: brand?.product_name ?? 'Everlenz',
+        color: brand?.primary_color ?? '#185785',
+      }))
+        images.push({
+          device: device.name,
+          kind: image.name,
+          caption: `${image.name === 'producao' ? '📊 Produção' : '⛔ Paradas'} · ${device.name}`,
+          fileName: `${image.name}-${date}.png`,
+          mimetype: 'image/png',
+          base64: Buffer.from(image.png).toString('base64'),
+        });
+    }
+    return images;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Push instead of pull: when N8N_SUMMARY_WEBHOOK_URL is set, the platform posts the next message
  * to n8n itself, at the queue's own pace (window, gap, lease), so the plants that close at 17:00
  * go out one by one. n8n sends it and answers on the result route; a webhook that does not take
@@ -272,11 +308,14 @@ export async function dispatchProductionMessages(db: Database, now = new Date())
   }
   const message = next.message;
   if (!message) return 0;
-  const details = await db.query<{ full_name: string; production_date: string }>(
-    `SELECT u.full_name,m.production_date::text production_date FROM production_messages m
-     JOIN app_users u ON u.id=m.user_id WHERE m.id=$1`,
+  const details = await db.query<Recipient & { production_date: string }>(
+    `SELECT u.id,u.tenant_id,u.full_name,u.role,u.phone,u.whatsapp_since,
+       m.production_date::text production_date
+     FROM production_messages m JOIN app_users u ON u.id=m.user_id WHERE m.id=$1`,
     [message.id],
   );
+  const person = details.rows[0];
+  const images = person ? await imagesFor(db, person, person.production_date) : [];
   const web = (process.env.PUBLIC_WEB_URL ?? 'https://iotplataform.everlenz.com.br').replace(/\/$/, '');
   try {
     const response = await fetch(url, {
@@ -284,11 +323,13 @@ export async function dispatchProductionMessages(db: Database, now = new Date())
       headers: { 'content-type': 'application/json', 'x-n8n-key': process.env.N8N_API_KEY },
       body: JSON.stringify({
         ...message,
-        name: details.rows[0]?.full_name ?? '',
-        productionDate: details.rows[0]?.production_date ?? null,
+        name: person?.full_name ?? '',
+        productionDate: person?.production_date ?? null,
+        // Sent after the text, in this order: production, then stops, per machine.
+        images,
         resultUrl: `${web}/api/n8n/production-messages/${message.id}/result`,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(30000),
     });
     if (!response.ok) throw new Error(`webhook respondeu HTTP ${response.status}`);
     return 1;

@@ -3,12 +3,12 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## Resumo diário de produção\n\nA plataforma chama este webhook quando um dia de produção fecha (turnos encerrados e a máquina parada há 30 min, hora extra incluída) — **uma mensagem por vez**, das 07h às 21h e com no mínimo 3 min entre envios. Quem acumula os fechamentos das 17h e dá o ritmo é a fila da plataforma; aqui só se envia.\n\n1. Preencha **Configuração**.\n2. Ative e copie a URL de produção do nó **Resumo recebido** para a variável **N8N_SUMMARY_WEBHOOK_URL** da plataforma (Coolify).",
+        "content": "## Resumo diário de produção\n\nA plataforma chama este webhook quando um dia de produção fecha (turnos encerrados e a máquina parada há 30 min, hora extra incluída) — **uma mensagem por vez**, das 07h às 21h e com no mínimo 3 min entre envios. Quem acumula os fechamentos das 17h e dá o ritmo é a fila da plataforma; aqui só se envia: o texto e, em seguida, as imagens de produção e de paradas de cada equipamento.\n\n1. Preencha **Configuração**.\n2. Ative e copie a URL de produção do nó **Resumo recebido** para a variável **N8N_SUMMARY_WEBHOOK_URL** da plataforma (Coolify).",
         "height": 300,
         "width": 560,
         "color": 5
       },
-      "id": "b6fbdcb3-f392-4789-a33f-a585c7787f0d",
+      "id": "061181b3-c779-46c6-934b-b03edb18653b",
       "name": "Nota",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -23,7 +23,7 @@
         "path": "everlenz-iiot-resumo",
         "options": {}
       },
-      "id": "4f40da4a-2586-4e80-91e9-34c3b9eab29b",
+      "id": "a3913870-ca14-4d1f-94fd-de2754a20209",
       "name": "Resumo recebido",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -31,38 +31,38 @@
         0,
         100
       ],
-      "webhookId": "98c16a8d-a66b-4b00-9d11-97087e568be0"
+      "webhookId": "76ad9aff-cef8-4329-b3c5-30c1f33b010a"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "40fc151e-f4f3-436c-9fc3-249c27a5c3d4",
+              "id": "78b6edd6-31da-4df7-955a-fdf709a7fdd8",
               "name": "PLATAFORMA_URL",
               "value": "https://iotplataform.everlenz.com.br",
               "type": "string"
             },
             {
-              "id": "4ea91135-2d8c-4fc7-8370-487e31c1196c",
+              "id": "4cb2171f-d663-4687-ba27-6a5a5d5d401a",
               "name": "PLATAFORMA_CHAVE",
               "value": "COLE_AQUI_A_N8N_API_KEY",
               "type": "string"
             },
             {
-              "id": "e23b0c06-f1e4-477d-8e29-4a5ed9630628",
+              "id": "b9a7f429-4d6a-49c1-9c88-a65ca898ad8b",
               "name": "EVOLUTION_URL",
               "value": "https://evolutionapi.assistentedrfin.com.br",
               "type": "string"
             },
             {
-              "id": "d2c2cc14-4f1d-4dec-87ad-b73c5a6e7dac",
+              "id": "32f3296f-8c4c-4968-b956-7a90c35b350c",
               "name": "EVOLUTION_INSTANCIA",
               "value": "NOME_DA_INSTANCIA",
               "type": "string"
             },
             {
-              "id": "7f77f1b1-bd33-4b47-9b4a-ef2a87cf95e6",
+              "id": "68415858-7cdf-43e2-bf51-5019214c69fa",
               "name": "EVOLUTION_APIKEY",
               "value": "COLE_AQUI_A_APIKEY_DA_EVOLUTION",
               "type": "string"
@@ -71,7 +71,7 @@
         },
         "options": {}
       },
-      "id": "4c2ec81d-dcb6-4432-ac1e-73aeeb537919",
+      "id": "414eda26-ef5d-44a4-b097-988dcd44d4b2",
       "name": "Configuração",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -91,7 +91,7 @@
           },
           "conditions": [
             {
-              "id": "2cff0c03-f131-4eeb-bad2-0a6c876cdff4",
+              "id": "027746ea-0e66-4e6d-a049-33ce881d6d83",
               "leftValue": "={{ $('Resumo recebido').first().json.headers['x-n8n-key'] }}",
               "rightValue": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}",
               "operator": {
@@ -104,7 +104,7 @@
         },
         "options": {}
       },
-      "id": "2d82124f-c497-4e0a-a327-d826d3fa582c",
+      "id": "1412bf1a-55d9-4c70-b72b-31e8295a6798",
       "name": "Chave válida?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -115,7 +115,7 @@
     },
     {
       "parameters": {},
-      "id": "6c393db5-80c3-494c-af0e-5c9dd2556a7c",
+      "id": "22b06412-1d38-4751-bd47-dddad0ff92e7",
       "name": "Ignora",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
@@ -128,7 +128,7 @@
       "parameters": {
         "amount": "={{ $('Resumo recebido').first().json.body.waitSeconds || 10 }}"
       },
-      "id": "2ea14921-7c40-4f4c-8214-a9ccfef82a45",
+      "id": "7e8f7e2d-eb62-4b38-96b3-df6a51eb4463",
       "name": "Espera aleatória",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -179,7 +179,7 @@
           "timeout": 60000
         }
       },
-      "id": "5f0cee85-b811-4987-8ccb-3785a408b84b",
+      "id": "da9646ed-0e37-47f4-a02b-4c5b7f71bf18",
       "name": "Envia resumo",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -188,6 +188,109 @@
         0
       ],
       "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c0a7774b-1c30-4a19-ab20-bcff89e227c0",
+              "leftValue": "={{ ($('Resumo recebido').first().json.body.images || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cf26fbbc-2583-47bf-a324-cab883ce4a79",
+      "name": "Tem imagens?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Produção e paradas de cada equipamento, na ordem em que a plataforma mandou.\nreturn ($('Resumo recebido').first().json.body.images || []).map((image) => ({ json: image }));"
+      },
+      "id": "22d21be7-c8fb-4b87-8f21-20933d9af732",
+      "name": "Separa imagens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "81359d83-fad6-4845-a2ed-c83257543949",
+      "name": "Uma imagem por vez",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1560,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ 3 + Math.floor(Math.random() * 4) }}"
+      },
+      "id": "e424137c-70bf-4695-aada-26ed0c513511",
+      "name": "Pausa entre imagens",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1780,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').first().json.EVOLUTION_URL }}/message/sendMedia/{{ encodeURIComponent($('Configuração').first().json.EVOLUTION_INSTANCIA) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Configuração').first().json.EVOLUTION_APIKEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number: $('Resumo recebido').first().json.body.number, mediatype: 'image', mimetype: $json.mimetype, caption: $json.caption, media: $json.base64, fileName: $json.fileName } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "63d29df7-6962-4b6d-9df9-fad862d4ca1f",
+      "name": "Envia imagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        -120
+      ],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -207,13 +310,13 @@
         "jsonBody": "={{ { ok: true } }}",
         "options": {}
       },
-      "id": "8de3430a-7a15-4fa1-9fa8-c2d98cbbecc3",
+      "id": "7fa70dbd-6a24-474d-86ab-60a4713ec3ea",
       "name": "Confirma envio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1120,
-        -80
+        1780,
+        -320
       ]
     },
     {
@@ -234,7 +337,7 @@
         "jsonBody": "={{ { ok: false, error: String($json.error?.message ?? $json.message ?? 'falha na Evolution').slice(0, 400) } }}",
         "options": {}
       },
-      "id": "b733e202-7509-4043-a0b2-9603a7437b90",
+      "id": "6145fa11-9710-4c32-8365-05c514c69a8f",
       "name": "Registra falha",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -300,7 +403,7 @@
       "main": [
         [
           {
-            "node": "Confirma envio",
+            "node": "Tem imagens?",
             "type": "main",
             "index": 0
           }
@@ -308,6 +411,75 @@
         [
           {
             "node": "Registra falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem imagens?": {
+      "main": [
+        [
+          {
+            "node": "Separa imagens",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirma envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separa imagens": {
+      "main": [
+        [
+          {
+            "node": "Uma imagem por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Uma imagem por vez": {
+      "main": [
+        [
+          {
+            "node": "Confirma envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pausa entre imagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pausa entre imagens": {
+      "main": [
+        [
+          {
+            "node": "Envia imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envia imagem": {
+      "main": [
+        [
+          {
+            "node": "Uma imagem por vez",
             "type": "main",
             "index": 0
           }
