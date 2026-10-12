@@ -28,6 +28,7 @@ const day = (overrides: Partial<DayFacts> = {}): DayFacts => ({
   pacePerHour: 14,
   stoppedSeconds: 5 * 3600 + 17 * 60,
   stops: 11,
+  microStops: 25,
   longestStop: { seconds: 47 * 60, at: '14:10' },
   hours: [
     { hour: 6, made: 18, stopped: 300 },

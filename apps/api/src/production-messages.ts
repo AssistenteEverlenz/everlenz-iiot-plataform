@@ -22,8 +22,17 @@ import { loadConfig, loadShiftsFor } from './shift-production.js';
  * the number never sends in bursts and does not read as spam.
  */
 const QUIET_MS = 30 * 60_000;
-const WINDOW_START = 7;
-const WINDOW_END = 21;
+/**
+ * The sending window, plant hours [start, end): WHATSAPP_SEND_WINDOW="7-21" by default, read on
+ * every call so it can be opened ("0-24", for a test at night) and closed again from the
+ * environment alone.
+ */
+export function sendWindow() {
+  const match = String(process.env.WHATSAPP_SEND_WINDOW ?? '').match(/^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*$/);
+  const start = match ? Math.min(23, Number(match[1])) : 7;
+  const end = match ? Math.max(start + 1, Math.min(24, Number(match[2]))) : 21;
+  return { start, end };
+}
 const MIN_GAP_MS = 3 * 60_000;
 const LEASE_MS = 15 * 60_000;
 const MAX_ATTEMPTS = 3;
@@ -46,10 +55,11 @@ function plantHour(at: Date) {
 
 /** The first moment, from `at` on, inside the sending window. */
 function nextWindow(at: Date) {
+  const { start, end } = sendWindow();
   const hour = plantHour(at);
-  if (hour >= WINDOW_START && hour < WINDOW_END) return at;
+  if (hour >= start && hour < end) return at;
   const date = plantDate(at);
-  return plantInstant(hour < WINDOW_START ? date : addDays(date, 1), '07:00');
+  return plantInstant(hour < start ? date : addDays(date, 1), `${String(start).padStart(2, '0')}:00`);
 }
 
 interface DeviceDay {
@@ -215,7 +225,8 @@ export function n8nAllowed(req: FastifyRequest, reply: FastifyReply) {
  */
 export async function claimNextMessage(db: Database, now: Date) {
   const hour = plantHour(now);
-  if (hour < WINDOW_START || hour >= WINDOW_END)
+  const window = sendWindow();
+  if (hour < window.start || hour >= window.end)
     return { message: null, reason: 'fora da janela de envio' };
   // A day older than yesterday is no news anymore: it is dropped, not sent late.
   await db.query(

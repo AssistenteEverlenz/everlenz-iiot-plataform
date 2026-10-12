@@ -1,7 +1,8 @@
 import type { Database } from '@iiot/database';
-import { addDays, plantInstant } from '@iiot/shared';
+import { addDays, plantInstant, productiveSecondsIn, productiveWindows } from '@iiot/shared';
 import { utilizationFrom } from '../../web/components/utilizationFormula.js';
-import { loadConfig, loadShiftsFor, productionDetailData } from './shift-production.js';
+import { productionDetailData, loadConfig, loadShiftsFor } from './shift-production.js';
+import { MINIMUM_SECONDS, mergeStops } from './stop-consolidation.js';
 
 /**
  * The daily summary sent on WhatsApp, as text.
@@ -48,7 +49,10 @@ export interface DayFacts {
   utilization: number | null;
   pacePerHour: number;
   stoppedSeconds: number;
+  /** Stops of three minutes or more, consolidated (stop-consolidation.ts). */
   stops: number;
+  /** Shorter ones, counted apart. */
+  microStops: number;
   longestStop: { seconds: number; at: string } | null;
   /** Made and stopped seconds per hour of the shifts. */
   hours: Array<{ hour: number; made: number; stopped: number }>;
@@ -97,7 +101,7 @@ export async function gatherDay(
   const metric = board.metric;
   const made = inMetric(metric, board.totals);
 
-  const [extra, hourly, stops, longest, history, blocks, top] = await Promise.all([
+  const [extra, hourly, history, blocks, rows] = await Promise.all([
     db.query<{ pieces: string; pallets: string; tons: string }>(
       `SELECT coalesce(sum(pieces),0) pieces,coalesce(sum(pallets),0) pallets,coalesce(sum(tons),0) tons
        FROM production_buckets WHERE device_id=$1 AND bucket >= $2 AND bucket < $3`,
@@ -108,20 +112,6 @@ export async function gatherDay(
          sum(pieces) pieces,sum(pallets) pallets,sum(tons) tons,sum(idle_s+manual_s) stopped
        FROM production_buckets WHERE device_id=$1 AND bucket >= $2 AND bucket < $3
        GROUP BY 1 ORDER BY 1`,
-      [device.id, start, end],
-    ),
-    db.query<{ n: string }>(
-      `SELECT count(*) n FROM production_stops
-       WHERE device_id=$1 AND NOT during_pause AND started_at < $3 AND coalesce(ended_at,now()) > $2`,
-      [device.id, start, end],
-    ),
-    // The longest stop, counted only inside the shifts.
-    db.query<{ seconds: number; started_at: Date }>(
-      `SELECT extract(epoch FROM least(coalesce(ended_at,now()),$3) - greatest(started_at,$2)) seconds,
-         greatest(started_at,$2) started_at
-       FROM production_stops
-       WHERE device_id=$1 AND NOT during_pause AND started_at < $3 AND coalesce(ended_at,now()) > $2
-       ORDER BY 1 DESC LIMIT 1`,
       [device.id, start, end],
     ),
     // The closed shifts of the days before: fast, and kept forever.
@@ -149,15 +139,32 @@ export async function gatherDay(
        GROUP BY bucket ORDER BY bucket`,
       [device.id, start, end],
     ),
-    db.query<{ seconds: number; started_at: Date; state: string }>(
-      `SELECT extract(epoch FROM least(coalesce(ended_at,now()),$3) - greatest(started_at,$2)) seconds,
-         greatest(started_at,$2) started_at,state
-       FROM production_stops
+    // Every stop row of the shifts, consolidated below into stops as the ceramist counts them.
+    db.query<{ started_at: Date; ended_at: Date | null; state: string }>(
+      `SELECT started_at,ended_at,state FROM production_stops
        WHERE device_id=$1 AND NOT during_pause AND started_at < $3 AND coalesce(ended_at,now()) > $2
-       ORDER BY 1 DESC LIMIT 12`,
+       ORDER BY started_at`,
       [device.id, start, end],
     ),
   ]);
+  // Rows that overlap or are a moment of production apart are one stop; under three minutes it
+  // is a micro-stop. Each counted only inside the shifts' productive time.
+  const windows = occurrences.flatMap(productiveWindows);
+  const merged = mergeStops(
+    rows.rows.map((row) => ({
+      start: new Date(row.started_at),
+      end: row.ended_at ? new Date(row.ended_at) : new Date(Math.min(Date.now(), end.getTime())),
+      state: row.state,
+    })),
+  )
+    .map((stop) => ({
+      start: new Date(Math.max(stop.start.getTime(), start.getTime())),
+      state: stop.state,
+      seconds: stop.covered.reduce((sum, part) => sum + productiveSecondsIn(windows, part.start, part.end), 0),
+    }))
+    .filter((stop) => stop.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds);
+  const counted = merged.filter((stop) => stop.seconds >= MINIMUM_SECONDS);
   // Every five minutes of the shifts: the state that took most of it; no block at all is a
   // machine that was not talking.
   const byBucket = new Map(blocks.rows.map((row) => [new Date(row.bucket).getTime(), row]));
@@ -246,7 +253,6 @@ export async function gatherDay(
       : [];
   // Monday of this week.
   const monday = addDays(date, -((dayOfWeek(date) + 6) % 7));
-  const longestRow = longest.rows[0];
   const overtimeRow = extra.rows[0];
   return {
     name: device.name,
@@ -272,27 +278,14 @@ export async function gatherDay(
     stoppedSeconds: board.time.idle + board.time.manual + board.time.offline,
     reasons: { idle: board.time.idle, manual: board.time.manual, offline: board.time.offline },
     timeline,
-    // The recorder can leave two overlapping rows for one stop (seconds apart, two reasons):
-    // one stop per minute of start, the longest.
-    topStops: top.rows
-      .filter((row) => Number(row.seconds) >= 60)
-      .filter(
-        (row, index, rows) =>
-          rows.findIndex(
-            (other) => Math.abs(new Date(other.started_at).getTime() - new Date(row.started_at).getTime()) < 60_000,
-          ) === index,
-      )
-      .slice(0, 5)
-      .map((row) => ({
-        at: plantClock(new Date(row.started_at)),
-        seconds: Number(row.seconds),
-        state: row.state,
-      })),
-    stops: Number(stops.rows[0]?.n ?? 0),
-    longestStop:
-      longestRow && Number(longestRow.seconds) >= 60
-        ? { seconds: Number(longestRow.seconds), at: plantClock(new Date(longestRow.started_at)) }
-        : null,
+    topStops: counted.slice(0, 5).map((stop) => ({
+      at: plantClock(stop.start),
+      seconds: stop.seconds,
+      state: stop.state,
+    })),
+    stops: counted.length,
+    microStops: merged.length - counted.length,
+    longestStop: counted[0] ? { seconds: counted[0].seconds, at: plantClock(counted[0].start) } : null,
     hours: hourly.rows.map((row) => ({
       hour: Number(row.hour_of_day),
       made: inMetric(metric, {
@@ -456,6 +449,8 @@ export function composeDevice(f: DayFacts, link: string | null) {
       f.longestStop ? ` · maior: ${duration(f.longestStop.seconds)} (${f.longestStop.at})` : ''
     }`,
   );
+  if (f.microStops > 0)
+    lines.push(`     ↳ +${f.microStops} microparada${f.microStops === 1 ? '' : 's'} (menos de 3 min)`);
 
   if (f.hours.length >= 3) {
     // The whole shift, hours with nothing recorded included: a stopped afternoon must show.

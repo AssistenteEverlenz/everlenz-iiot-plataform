@@ -108,6 +108,11 @@ describe('resumo diário no WhatsApp', () => {
     );
     // 23:00 at the plant: outside the window.
     expect((await claimNextMessage(db, at('2026-10-07T02:00:00Z'))).message).toBeNull();
+    // Opened from the environment for a test at night.
+    process.env.WHATSAPP_SEND_WINDOW = '0-24';
+    expect((await claimNextMessage(db, at('2026-10-07T02:00:00Z'))).message?.kind).toBe('test');
+    delete process.env.WHATSAPP_SEND_WINDOW;
+    await db.query("UPDATE production_messages SET status='pending',claimed_at=NULL,attempts=0");
     // 08:00 the next morning.
     const first = await claimNextMessage(db, at('2026-10-07T11:00:00Z'));
     expect(first.message?.kind).toBe('test');

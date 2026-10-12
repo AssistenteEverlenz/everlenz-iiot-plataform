@@ -28,6 +28,7 @@ import {
   utilizationFrom,
 } from '../../web/components/utilizationFormula.js';
 import { recordAudit } from './audit.js';
+import { MINIMUM_SECONDS, mergeStops } from './stop-consolidation.js';
 
 // Production by shift (migration 018): the plant's shift calendar, the device's production
 // configuration, the live shift board and the shift history. Everything reads the 5-minute
@@ -2516,35 +2517,77 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         occurrences.at(-1)?.end ?? plantInstant(addDays(to, 1), '00:00'),
       ],
     );
-    // Each stop with the seconds it took inside the shifts (or inside a scheduled pause, for a
-    // stop that happened during one); the ones that leave nothing are not stops of the line.
-    const stops = raw.rows
-      .map((row) => {
-        const start = new Date(row.started_at);
-        const end = row.ended_at ? new Date(row.ended_at) : now;
-        const seconds = productiveSecondsIn(row.during_pause ? pauses : productive, start, end);
-        // Its day is the day of the shift it falls in, as on the board.
-        const shift = occurrences.find((item) => item.start < end && start < item.end);
-        return {
-          start,
-          end: row.ended_at ? end : null,
-          seconds: Math.round(seconds),
-          state: row.state,
-          product: row.product_code,
-          planned: row.during_pause,
-          date: shift?.productionDate ?? plantDate(start),
-        };
-      })
-      .filter((stop) => stop.seconds > 0 && stop.date >= from && stop.date <= to);
-    const failures = stops.filter((stop) => !stop.planned);
+    /*
+     * Each stop with the seconds it took inside the shifts (or inside a scheduled pause, for a
+     * stop that happened during one); the ones that leave nothing are not stops of the line.
+     * The rows are counted the way the ceramist counts stops (stop-consolidation.ts): rows that
+     * overlap or are a moment of production apart are one stop, and under three minutes it is a
+     * micro-stop, counted apart. The scheduled pauses are left as they are.
+     */
+    const parts = raw.rows.map((row) => ({
+      start: new Date(row.started_at),
+      end: row.ended_at ? new Date(row.ended_at) : now,
+      open: !row.ended_at,
+      state: row.state,
+      product: row.product_code,
+      planned: row.during_pause,
+    }));
+    const describe = (
+      start: Date,
+      end: Date,
+      open: boolean,
+      state: string,
+      product: string | null,
+      planned: boolean,
+      seconds: number,
+    ) => {
+      // Its day is the day of the shift it falls in, as on the board.
+      const shift = occurrences.find((item) => item.start < end && start < item.end);
+      return {
+        start,
+        end: open ? null : end,
+        seconds: Math.round(seconds),
+        state,
+        product,
+        planned,
+        micro: !planned && seconds < MINIMUM_SECONDS,
+        date: shift?.productionDate ?? plantDate(start),
+      };
+    };
+    const stops = [
+      ...parts
+        .filter((part) => part.planned)
+        .map((part) =>
+          describe(part.start, part.end, part.open, part.state, part.product, true, productiveSecondsIn(pauses, part.start, part.end)),
+        ),
+      ...mergeStops(parts.filter((part) => !part.planned)).map((stop) =>
+        describe(
+          stop.start,
+          stop.end,
+          stop.parts.some((part) => part.open),
+          stop.state,
+          stop.parts[0].product,
+          false,
+          stop.covered.reduce((sum, part) => sum + productiveSecondsIn(productive, part.start, part.end), 0),
+        ),
+      ),
+    ]
+      .filter((stop) => stop.seconds > 0 && stop.date >= from && stop.date <= to)
+      .sort((a, b) => b.start.getTime() - a.start.getTime());
+    const failures = stops.filter((stop) => !stop.planned && !stop.micro);
+    const micro = stops.filter((stop) => stop.micro);
 
-    const byDate = new Map<string, { stops: number; pauses: number; pauseSeconds: number; longest: number }>();
+    const byDate = new Map<
+      string,
+      { stops: number; micro: number; pauses: number; pauseSeconds: number; longest: number }
+    >();
     for (const stop of stops) {
-      const day = byDate.get(stop.date) ?? { stops: 0, pauses: 0, pauseSeconds: 0, longest: 0 };
+      const day = byDate.get(stop.date) ?? { stops: 0, micro: 0, pauses: 0, pauseSeconds: 0, longest: 0 };
       if (stop.planned) {
         day.pauses += 1;
         day.pauseSeconds += stop.seconds;
-      } else {
+      } else if (stop.micro) day.micro += 1;
+      else {
         day.stops += 1;
         day.longest = Math.max(day.longest, stop.seconds);
       }
@@ -2556,6 +2599,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       return {
         date,
         stops: counted?.stops ?? 0,
+        microStops: counted?.micro ?? 0,
         // The board's own stopped time of that day.
         seconds: Math.round((spent?.idle ?? 0) + (spent?.manual ?? 0) + (spent?.offline ?? 0)),
         pauses: counted?.pauses ?? 0,
@@ -2620,8 +2664,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         state: stop.state,
         product: stop.product,
         planned: stop.planned,
+        micro: stop.micro,
         date: stop.date,
       })),
+      // Stops under three minutes, counted apart from the stops.
+      micro: { stops: micro.length, seconds: micro.reduce((sum, stop) => sum + stop.seconds, 0) },
       days,
       reasons,
       longest: [...failures]

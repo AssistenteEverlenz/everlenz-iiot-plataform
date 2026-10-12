@@ -97,6 +97,8 @@ services:
       N8N_API_KEY: ${N8N_API_KEY:-}
       # n8n's webhook for the daily summary (push); empty = n8n pulls from /next instead.
       N8N_SUMMARY_WEBHOOK_URL: ${N8N_SUMMARY_WEBHOOK_URL:-}
+      # Plant hours the summaries go out in, "start-end"; "0-24" sends at any hour (tests).
+      WHATSAPP_SEND_WINDOW: ${WHATSAPP_SEND_WINDOW:-7-21}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://iotplataform.everlenz.com.br}
       MQTT_PROVISION_DIR: /mqtt-provision/requests
       # Equipment commands ("Zerar contador" on the PLC). Empty password = read-only platform.

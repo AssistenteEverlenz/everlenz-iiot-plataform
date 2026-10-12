@@ -197,8 +197,10 @@ export function stopsSvg(f: DayFacts, brand: Brand) {
       { weight: 700, anchor: 'end' },
     ),
   );
+  if (f.microStops > 0)
+    parts.push(text(W - PAD, y + 90, `+${f.microStops} microparadas (menos de 3 min)`, 22, { fill: MUTED, anchor: 'end' }));
   if (lost > 0)
-    parts.push(text(W - PAD, y + 96, `≈ ${num(lost, units.decimals)} ${units.unit} a menos`, 28, { weight: 600, fill: BAD, anchor: 'end' }));
+    parts.push(text(W - PAD, y + 132, `≈ ${num(lost, units.decimals)} ${units.unit} a menos`, 28, { weight: 600, fill: BAD, anchor: 'end' }));
   y += 170;
 
   // The shift as a strip, five minutes per cell.

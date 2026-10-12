@@ -28,6 +28,8 @@ type Stop = {
   state: string;
   product: string | null;
   planned: boolean;
+  /** Under three minutes: a micro-stop, counted apart (apps/api/src/stop-consolidation.ts). */
+  micro?: boolean;
   date: string;
 };
 type Stops = {
@@ -53,6 +55,7 @@ type Stops = {
   reasons: Array<{ state: string; stops: number; seconds: number }>;
   longest: Array<{ startedAt: string; seconds: number; state: string; product: string | null }>;
   all: Stop[];
+  micro?: { stops: number; seconds: number };
 };
 
 const REASONS: Record<string, { label: string; color: string }> = {
@@ -114,6 +117,8 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
     120000,
   );
 
+  // The micro-stops are counted apart, so the lists show the stops the count counts.
+  const listed = useMemo(() => (stops.data?.all ?? []).filter((stop) => !stop.micro), [stops.data]);
   const totals = useMemo(() => {
     const rows = stops.data?.days ?? [];
     const time = stops.data?.time;
@@ -234,6 +239,9 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
               <b>{totals.count}</b>
               <small>
                 {totals.perDay ? `${totals.perDay.toFixed(1)} por dia produzido` : 'nenhuma ainda'}
+                {stops.data.micro?.stops
+                  ? ` · +${stops.data.micro.stops} microparadas (< 3 min)`
+                  : ''}
               </small>
             </button>
             <button type="button" onClick={() => setOpening('time')}>
@@ -368,11 +376,11 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
       <div className="stops-list">
           {/* The list scrolls inside the card, so a hundred stops never stretch the card. */}
           <div className="stops-list-body">
-            <StopsTable rows={stops.data.all} limit={40} />
+            <StopsTable rows={listed} limit={40} />
           </div>
-          {stops.data.all.length > 40 && (
+          {listed.length > 40 && (
             <button type="button" className="stops-more" onClick={() => setOpening('all')}>
-              Ver as {stops.data.all.length} paradas do período
+              Ver as {listed.length} paradas do período
             </button>
           )}
         </div>
@@ -444,7 +452,7 @@ export function StopsPanel({ deviceId, days = 7 }: { deviceId: string; days?: nu
       {opening && (
         <ModalPortal>
           <StopsDetail
-            rows={stops.data.all}
+            rows={listed}
             focus={opening}
             from={stops.data.from}
             to={stops.data.to}

@@ -124,15 +124,20 @@ export async function recordStops(db: Database, now = new Date()) {
     // Still stopped. A state that changed (idle -> offline, say) closes one stop and opens the
     // next, so each row describes a single reason.
     if (current && current.state === state) continue;
-    const startedAt = since ?? now;
+    let startedAt = since ?? now;
     if (current) {
+      const closedAt = startedAt > new Date(current.started_at) ? startedAt : now;
       await db.query(
         `UPDATE production_stops
          SET ended_at=$2, seconds=greatest(EXTRACT(EPOCH FROM ($2::timestamptz - started_at)), 0)
          WHERE device_id=$1 AND ended_at IS NULL`,
-        [row.device_id, startedAt > new Date(current.started_at) ? startedAt : now],
+        [row.device_id, closedAt],
       );
       closed += 1;
+      // The next reason starts where the last one ended, never before: "idle since" is worked out
+      // from the last piece and can lie before a manual stop that was already open, which wrote
+      // two overlapping stops for one (99 pairs in a week).
+      startedAt = closedAt;
     }
     await db.query(
       `INSERT INTO production_stops(tenant_id,device_id,state,started_at,during_pause,product_code,production_date)
