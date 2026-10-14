@@ -60,6 +60,10 @@ describe('turno previsto × real', () => {
     );
     const by = Object.fromEntries(rows.map((row: { label: string }) => [row.label, row]));
     expect(by['Início']).toMatchObject({ planned: '06:00', real: '06:12', shift: 12, effect: -12 });
+    // Times only in the time columns: a pause ahead is its two rows with a dash for the real one.
+    const ahead = rowsOf(adherenceOf(occurrences, [stop('02:00', '06:00')], at('09:00')));
+    expect(ahead.map((row: { label: string }) => row.label)).toEqual(['Início', 'Pausa · saída', 'Pausa · volta', 'Fim']);
+    expect(ahead.slice(1).every((row: { real: string | null }) => row.real === null)).toBe(true);
     expect(by['Pausa · saída']).toMatchObject({ shift: -1, effect: -1 });
     expect(by['Pausa · volta']).toMatchObject({ shift: 19, effect: -19 });
     expect(by['Fim']).toMatchObject({ planned: '17:30', real: '17:01', shift: -29, effect: -29 });

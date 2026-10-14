@@ -31,14 +31,16 @@ interface Adherence {
 interface Row {
   key: string;
   label: string;
+  /** Always a time: the registered one. */
   planned: string;
-  /** The real time, or a word for what is happening instead. */
-  real: string;
-  realIsTime: boolean;
+  /** The real time; null while it has not happened. */
+  real: string | null;
   /** Minutes the shift gained (+) or lost (−) at this event; null when not known yet. */
   effect: number | null;
   /** Minutes away from the registered time, as a clock reads it (later is +). */
   shift: number | null;
+  /** A word for the difference column when there is no time to compare (a pause run through). */
+  note?: string;
 }
 
 const clock = (iso: string) =>
@@ -49,68 +51,51 @@ const signed = (minutes: number) => (minutes === 0 ? '0 min' : `${minutes > 0 ? 
 const hours = (minutes: number) =>
   minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}` : `${minutes} min`;
 
+/**
+ * One row per event, every cell in its place: the registered time, the real time (a dash until
+ * it happens) and the difference. A pause is always two rows, leaving and coming back, so the
+ * columns hold times only and line up.
+ */
 export function rowsOf(data: Adherence): Row[] {
   const rows: Row[] = [];
   const several = data.blocks.length > 1;
   data.blocks.forEach((block, index) => {
     const tag = several ? ` ${index + 1}` : '';
     const late = block.start ? minutesBetween(block.start, block.planned.start) : null;
-    rows.push({
-      key: `start-${index}`,
-      label: `Início${tag}`,
-      planned: clock(block.planned.start),
-      real: block.start ? clock(block.start) : 'aguardando',
-      realIsTime: Boolean(block.start),
-      // Starting late loses the shift time; starting early gains it.
-      effect: late == null ? null : -late,
-      shift: late,
-    });
+    // Starting late loses shift time; starting early gains it.
+    rows.push({ key: `start-${index}`, label: `Início${tag}`, planned: clock(block.planned.start), real: block.start ? clock(block.start) : null, effect: late == null ? null : -late, shift: late });
     const pauses = data.pauses.filter(
       (pause) => pause.planned.start >= block.planned.start && pause.planned.end <= block.planned.end,
     );
     pauses.forEach((pause, at) => {
       const name = pauses.length > 1 ? `Pausa ${at + 1}` : 'Pausa';
-      if (pause.ahead) {
-        rows.push({ key: `p${index}-${at}`, label: name, planned: `${clock(pause.planned.start)}–${clock(pause.planned.end)}`, real: 'a seguir', realIsTime: false, effect: null, shift: null });
-        return;
-      }
-      if (!pause.start) {
-        rows.push({ key: `p${index}-${at}`, label: name, planned: `${clock(pause.planned.start)}–${clock(pause.planned.end)}`, real: 'produziu direto', realIsTime: false, effect: null, shift: null });
-        return;
-      }
-      const leave = minutesBetween(pause.start, pause.planned.start);
+      // The line ran through the pause: there is no leaving or coming back to compare.
+      const through = !pause.ahead && !pause.start;
+      const leave = pause.start ? minutesBetween(pause.start, pause.planned.start) : null;
+      const back = pause.end ? minutesBetween(pause.end, pause.planned.end) : null;
       rows.push({
         key: `p${index}-${at}-out`,
         label: `${name} · saída`,
         planned: clock(pause.planned.start),
-        real: clock(pause.start),
-        realIsTime: true,
+        real: pause.start ? clock(pause.start) : null,
         // Leaving for it later keeps the line running longer.
         effect: leave,
         shift: leave,
+        note: through ? 'sem parar' : undefined,
       });
-      const back = pause.end ? minutesBetween(pause.end, pause.planned.end) : null;
       rows.push({
         key: `p${index}-${at}-in`,
         label: `${name} · volta`,
         planned: clock(pause.planned.end),
-        real: pause.end ? clock(pause.end) : 'em pausa',
-        realIsTime: Boolean(pause.end),
+        real: pause.end ? clock(pause.end) : null,
         effect: back == null ? null : -back,
         shift: back,
+        note: through ? 'sem parar' : undefined,
       });
     });
     const early = block.end ? minutesBetween(block.end, block.planned.end) : null;
-    rows.push({
-      key: `end-${index}`,
-      label: `Fim${tag}`,
-      planned: clock(block.planned.end),
-      real: block.end ? clock(block.end) : block.running ? 'produzindo' : 'aguardando',
-      realIsTime: Boolean(block.end),
-      // Stopping before the end loses time; running past it is extra time.
-      effect: early,
-      shift: early,
-    });
+    // Stopping before the end loses time; running past it is extra time.
+    rows.push({ key: `end-${index}`, label: `Fim${tag}`, planned: clock(block.planned.end), real: block.end ? clock(block.end) : null, effect: early, shift: early });
   });
   return rows;
 }
@@ -136,19 +121,18 @@ export function ShiftAdherence({
   const gained = rows.reduce((sum, row) => sum + Math.max(0, row.effect ?? 0), 0);
   return (
     <div className="shift-adherence">
-      <div className="shift-adherence-title">Turno previsto × real</div>
-      <div className="shift-adherence-table" role="table" aria-label="Horários previstos e reais do turno">
+      <div className="shift-adherence-table" role="table" aria-label="Turno previsto × real">
         <div className="shift-adherence-head" role="row">
-          <span role="columnheader">Evento</span>
+          <span role="columnheader">Turno</span>
           <span role="columnheader">Previsto</span>
           <span role="columnheader">Real</span>
-          <span role="columnheader">Diferença</span>
+          <span role="columnheader">Dif.</span>
         </div>
         {rows.map((row) => (
           <div key={row.key} className="shift-adherence-row" role="row">
             <span role="cell">{row.label}</span>
             <span role="cell" className="planned">{row.planned}</span>
-            <b role="cell" className={row.realIsTime ? 'real' : 'real pending'}>{row.real}</b>
+            <b role="cell" className={row.real ? 'real' : 'real pending'}>{row.real ?? '—'}</b>
             <em
               role="cell"
               className={row.effect == null || row.effect === 0 ? 'even' : row.effect < 0 ? 'lost' : 'gained'}
@@ -162,7 +146,7 @@ export function ShiftAdherence({
                       : 'No horário'
               }
             >
-              {row.shift == null ? '—' : signed(row.shift)}
+              {row.note ?? (row.shift == null ? '—' : signed(row.shift))}
             </em>
           </div>
         ))}

@@ -8,7 +8,9 @@ import { mergeStops } from './stop-consolidation.js';
  *
  * Read from the stop recorder (production-stops.ts), which runs around the clock and writes the
  * instant the counter goes quiet and the instant it moves again, so the times are exact, not
- * rounded to the five-minute blocks. Stops a moment of production apart are one (the same rule
+ * rounded to the five-minute blocks. The counter is the blocks one wherever it is configured (all
+ * the ceramics, 2026-10-14; production-attribution.ts), so the start is the first block through
+ * the machine, as the plant counts it, not the first pallet. Stops a moment of production apart are one (the same rule
  * as the stop count, stop-consolidation.ts): a pallet counted in passing does not start a shift.
  *
  * No tolerance on purpose (the user, 2026-10-14): the real time is shown with its difference,
