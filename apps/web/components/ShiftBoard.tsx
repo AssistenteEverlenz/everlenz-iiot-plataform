@@ -15,6 +15,7 @@ import {
 import { usePoll } from './data';
 import { DayCalendar, dayLabel } from './DayCalendar';
 import { ModalPortal } from './ModalPortal';
+import { ShiftAdherence } from './ShiftAdherence';
 import { TargetModal } from './TargetModal';
 import { UtilizationModal, utilizationCaption } from './UtilizationModal';
 import {
@@ -928,9 +929,12 @@ function Availability({
   board,
   label,
   onEdit,
+  children,
 }: {
   board: BoardData;
   label?: string;
+  /** Drawn under the states: the shift as registered against the shift as it happened. */
+  children?: React.ReactNode;
   /** Opens the choice of formula; absent on history and compared days. */
   onEdit?: () => void;
 }) {
@@ -991,6 +995,7 @@ function Availability({
             );
           })}
       </ul>
+      {children}
     </div>
   );
 }
@@ -1404,7 +1409,9 @@ export function ShiftBoardView({
             <Availability
               board={board}
               onEdit={historical ? undefined : () => setEditingUtilization(true)}
-            />
+            >
+              <ShiftAdherence deviceId={deviceId} date={data.productionDate} span={board.span} />
+            </Availability>
           </div>
 
           <div className="shift-timeline" aria-label="Linha do tempo">

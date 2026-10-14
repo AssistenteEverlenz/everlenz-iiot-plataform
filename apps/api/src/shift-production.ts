@@ -29,6 +29,7 @@ import {
 } from '../../web/components/utilizationFormula.js';
 import { recordAudit } from './audit.js';
 import { MINIMUM_SECONDS, mergeStops } from './stop-consolidation.js';
+import { loadAdherence } from './shift-adherence.js';
 
 // Production by shift (migration 018): the plant's shift calendar, the device's production
 // configuration, the live shift board and the shift history. Everything reads the 5-minute
@@ -2818,6 +2819,28 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       available: available.map(occurrenceJson),
       board,
     };
+  });
+
+  /**
+   * The shift as it happened against the shift as registered (shift-adherence.ts): real start,
+   * pauses and end, read from the stop recorder for any day, today or past, so the board shows it
+   * for days photographed before it existed too. start/end narrow it to one shift of the day.
+   */
+  app.get('/api/devices/:id/shift-adherence', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = z
+      .object({ date: z.iso.date(), start: z.iso.datetime().optional(), end: z.iso.datetime().optional() })
+      .parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const config = await loadConfig(db, tenantId, id);
+    if (!config) return reply.code(404).send({ error: 'Device not found' });
+    const from = query.start ? new Date(query.start).getTime() : Number.NEGATIVE_INFINITY;
+    const to = query.end ? new Date(query.end).getTime() : Number.POSITIVE_INFINITY;
+    const occurrences = (await loadShiftsFor(db, tenantId, config.site_id, query.date)).filter(
+      (item) => item.productionDate === query.date && item.start.getTime() < to && item.end.getTime() > from,
+    );
+    return { adherence: await loadAdherence(db, id, occurrences, new Date()) };
   });
 
   // The photo of one history row, when it has one: the history reads it instead of the readings.

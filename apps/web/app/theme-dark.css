@@ -1619,6 +1619,41 @@
   :root[data-theme='dark'] .shift-states em {
     color: #798e95;
   }
+  :root[data-theme='dark'] .shift-adherence {
+    border-top: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .shift-adherence-title {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .shift-adherence-head {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-adherence-row span:first-child {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .shift-adherence-row .planned {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-adherence-row .real {
+    color: var(--brand-accent, #e0e6e8);
+  }
+  :root[data-theme='dark'] .shift-adherence-row .real.pending {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-adherence-row em.lost,
+  :root[data-theme='dark'] .shift-adherence-total .lost b {
+    color: #e38f77;
+  }
+  :root[data-theme='dark'] .shift-adherence-row em.gained,
+  :root[data-theme='dark'] .shift-adherence-total .gained b {
+    color: #88ddbb;
+  }
+  :root[data-theme='dark'] .shift-adherence-row em.even {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-adherence-total {
+    color: #a5b6bc;
+  }
   :root[data-theme='dark'] .shift-timeline {
     background: #1b262a;
   }

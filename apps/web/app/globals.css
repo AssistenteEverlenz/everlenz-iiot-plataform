@@ -5543,16 +5543,25 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   letter-spacing: 0;
 }
 .shift-availability {
-  display: grid;
-  align-content: start;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 6px;
+  min-height: 0;
   padding: 10px 12px;
   border: 1px solid #e3ebed;
   border-radius: 11px;
+  /* A card sized short in the panel: the column scrolls on its own (the shift as registered ×
+     real sits at its foot) instead of running over the timeline below. */
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+/* Nothing in the column shrinks when it scrolls: the gauge kept its row and covered the list. */
+.shift-availability > * {
+  flex-shrink: 0;
 }
 .shift-availability .shift-section-title {
-  justify-self: stretch;
+  align-self: stretch;
 }
 .shift-gauge {
   width: 150px;
@@ -5607,6 +5616,85 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   color: #8a9ca2;
   font-style: normal;
   text-align: right;
+}
+/* Turno previsto × real (ShiftAdherence.tsx): the registered time, the real one in the page's
+   accent, and the difference red when the shift lost time, green when it gained. */
+.shift-adherence {
+  align-self: stretch;
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e3ebed;
+}
+.shift-adherence-title {
+  color: #4d6770;
+  font-size: 12px;
+  font-weight: 700;
+}
+.shift-adherence-table {
+  display: grid;
+  gap: 3px;
+}
+.shift-adherence-head,
+.shift-adherence-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px 64px 56px;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.shift-adherence-head {
+  color: #8a9ca2;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.shift-adherence-head span:not(:first-child),
+.shift-adherence-row > :not(:first-child) {
+  text-align: right;
+}
+.shift-adherence-row span:first-child {
+  overflow: hidden;
+  color: #4d6770;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shift-adherence-row .planned {
+  color: #8a9ca2;
+}
+.shift-adherence-row .real {
+  color: var(--brand-accent, #0b2028);
+  font-weight: 700;
+}
+.shift-adherence-row .real.pending {
+  color: #8a9ca2;
+  font-weight: 400;
+  font-style: italic;
+}
+.shift-adherence-row em {
+  font-style: normal;
+  font-weight: 600;
+}
+.shift-adherence-row em.lost,
+.shift-adherence-total .lost b {
+  color: #e4572e;
+}
+.shift-adherence-row em.gained,
+.shift-adherence-total .gained b {
+  color: #1d8a5f;
+}
+.shift-adherence-row em.even {
+  color: #8a9ca2;
+  font-weight: 400;
+}
+.shift-adherence-total {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: #4d6770;
+  font-size: 11px;
 }
 .shift-timeline {
   display: flex;
