@@ -31,6 +31,12 @@ const embed = (file) => readFileSync(here(`./code/${file}`), 'utf8').replace(/^e
 const OPENAI = { openAiApi: { id: '4P77YeReej8UzYyK', name: 'OpenAI Dr Fin' } };
 const POSTGRES = { postgres: { id: 'cvdDsDiux61lnc1z', name: 'Postgres Credential' } };
 const MODEL = { __rl: true, value: 'gpt-6-luna', mode: 'list', cachedResultName: 'gpt-6-luna' };
+/**
+ * gpt-6-luna takes tools (the agents' output parser is one) only through /v1/responses: on
+ * /v1/chat/completions it refuses them alongside the reasoning effort n8n sends. Reasoning
+ * models also refuse a temperature, so none is set.
+ */
+const RESPONSES = { responsesApiEnabled: true };
 
 const CONFIG = [
   ['PLATAFORMA_URL', 'https://iotplataform.everlenz.com.br'],
@@ -471,9 +477,9 @@ write('orquestrador-whatsapp.json', {
     node(
       'Modelo Roteador',
       '@n8n/n8n-nodes-langchain.lmChatOpenAi',
-      1.2,
+      1.3,
       [1960, 320],
-      { model: MODEL, options: {} },
+      { model: MODEL, ...RESPONSES, options: {} },
       { credentials: OPENAI },
     ),
     node(
@@ -548,9 +554,9 @@ write('orquestrador-whatsapp.json', {
     node(
       'Modelo Mensageira',
       '@n8n/n8n-nodes-langchain.lmChatOpenAi',
-      1.2,
+      1.3,
       [3200, 320],
-      { model: MODEL, options: { temperature: 0.4 } },
+      { model: MODEL, ...RESPONSES, options: {} },
       { credentials: OPENAI },
     ),
     node('Parser Mensageira', '@n8n/n8n-nodes-langchain.outputParserStructured', 1.3, [3340, 320], {
