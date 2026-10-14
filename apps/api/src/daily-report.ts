@@ -421,9 +421,11 @@ export function panelLink(web: string, dashboardId: string | null) {
 }
 
 /** Between the sections of a machine. */
-export const RULE = '_'.repeat(52);
+// Measured on an iPhone (2026-10-14): 37 # and 52 _ wrapped after 30 and 45; Android bubbles are
+// about 10% narrower, so both lines are cut to fit there too.
+export const RULE = '_'.repeat(38);
 /** Around each machine's headline. */
-export const FRAME = '#'.repeat(37);
+export const FRAME = '#'.repeat(26);
 
 /** One machine's whole day, framed: what the summary sends for one machine, and the assistant for a day. */
 export function composeDay(f: DayFacts, link: string | null) {

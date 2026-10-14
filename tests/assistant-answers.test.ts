@@ -11,8 +11,8 @@ import {
 import type { DayFacts } from '../apps/api/src/daily-report.js';
 
 /** The WhatsApp assistant's answers: written by rule, in the daily summary's layout. */
-const FRAME = '#'.repeat(37);
-const RULE = '_'.repeat(52);
+const FRAME = '#'.repeat(26);
+const RULE = '_'.repeat(38);
 
 const now = (overrides: Partial<NowFacts> = {}): NowFacts => ({
   name: 'Cerâmica Oliveira',

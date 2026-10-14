@@ -77,7 +77,7 @@ export function composeNow(n: NowFacts, today: DayFacts | null) {
   }
   if (n.yesterday > 0) {
     const change = Math.round((n.made / n.yesterday - 1) * 100);
-    lines.push(`> ${change >= 0 ? '📈' : '📉'} ${signed(change)}% sobre ontem a esta hora (${num(n.yesterday, d)})`);
+    lines.push(`> ${change >= 0 ? '📈' : '📉'} ${signed(change)}% sobre ontem (${num(n.yesterday, d)})`);
   }
 
   if (n.target && n.shiftStatus === 'running') {
@@ -130,7 +130,7 @@ export function composeStops(f: DayFacts, isToday: boolean) {
   const lines = frame(`⛔ *${short(f.name)} · paradas de ${when}*`);
 
   lines.push('*RESUMO*', '');
-  lines.push(`> ⏱️ *${duration(f.stoppedSeconds)}* parada no turno${isToday ? ' até agora' : ''}`);
+  lines.push(`> ⏱️ *${duration(f.stoppedSeconds)}* parada${isToday ? ' até agora' : ' no turno'}`);
   lines.push(
     `> 🔢 *${f.stops} parada${f.stops === 1 ? '' : 's'}*${f.microStops > 0 ? ` · +${f.microStops} microparadas` : ''}`,
   );
@@ -205,7 +205,10 @@ export function composePeriod(
     lines.push(`> 📊 Média *${num(made / days.length, d)}* por dia`);
   }
   if (running) lines.push(`> ⏳ Hoje até agora: *${num(running.made, d)}* ${units.unit}`);
-  if (days.length > 1) lines.push(`> 🏆 Melhor: ${br(best.date)} (${num(best.made, d)}) · menor: ${br(worst.date)} (${num(worst.made, d)})`);
+  if (days.length > 1) {
+    lines.push(`> 🏆 Melhor dia: ${br(best.date)} · ${num(best.made, d)}`);
+    lines.push(`> 🔻 Menor dia: ${br(worst.date)} · ${num(worst.made, d)}`);
+  }
 
   if (days.length) {
     lines.push('', RULE, '', '*MÁQUINA*', '');
