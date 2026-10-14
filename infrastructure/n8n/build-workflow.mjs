@@ -468,7 +468,7 @@ write('orquestrador-whatsapp.json', {
       `={{ ${entrada('jid')} }}`,
       '=Olá! Este número é o assistente de produção da Everlenz IIoT. Seu telefone ainda não está cadastrado na plataforma — peça ao administrador para incluí-lo no seu usuário. Para acompanhar agora, acesse: https://iotplataform.everlenz.com.br',
     ),
-    node('AI Roteador', '@n8n/n8n-nodes-langchain.agent', 2.2, [2060, 100], {
+    node('AI Roteador', '@n8n/n8n-nodes-langchain.agent', 3.1, [2060, 100], {
       promptType: 'define',
       text: ROTEADOR_ENTRADA,
       hasOutputParser: true,
@@ -545,7 +545,7 @@ write('orquestrador-whatsapp.json', {
       [3040, 240],
       set([['instrucao', '={{ $json.instrucao }}']]),
     ),
-    node('Mensageira', '@n8n/n8n-nodes-langchain.agent', 2.2, [3260, 100], {
+    node('Mensageira', '@n8n/n8n-nodes-langchain.agent', 3.1, [3260, 100], {
       promptType: 'define',
       text: `=INSTRUÇÃO:\n{{ $json.instrucao }}\n\nNOME DA PESSOA: {{ ${contato('name')} }}`,
       hasOutputParser: true,
