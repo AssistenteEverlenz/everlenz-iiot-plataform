@@ -19,6 +19,18 @@ import { mergeStops } from './stop-consolidation.js';
 
 /** How far before the planned start, and after the planned end, the line is looked for. */
 const REACH_MS = 3 * 3600_000;
+/**
+ * A start (or a return from a pause) is production that holds: at least two thirds of the next
+ * fifteen minutes producing. Blocks counted while the line is being adjusted, the machine going
+ * in and out of manual, are not the start: at Oliveira on 2026-10-14 the first blocks passed at
+ * 05:55, a few minutes at a time between manual stops (5–15 % of the normal pace), and the line
+ * really ran from 06:25. The end is read the same way backwards: a few blocks while cleaning up
+ * after the shift do not move it.
+ */
+const HOLD_MS = 15 * 60_000;
+const HOLD_SHARE = 2 / 3;
+/** Under this much time watched, a start just begun is not called yet. */
+const MIN_WATCH_MS = 3 * 60_000;
 
 export interface Window {
   start: Date;
@@ -29,10 +41,14 @@ export interface Adherence {
   /** Contiguous shifts read as one: the line runs through the change of shift. */
   blocks: Array<{
     planned: { start: string; end: string };
-    /** First production; null when the line has not produced yet. */
+    /** Production that held (HOLD_MS); null when the line has not started yet. */
     start: string | null;
-    /** Last production; null while it still produces (or has not started). */
+    /** The first blocks, when they passed before the start (adjusting the line). */
+    firstBlocks: string | null;
+    /** Production held until; null while it still produces (or has not started). */
     end: string | null;
+    /** The last blocks, when a few passed after the end (emptying, cleaning). */
+    lastBlocks: string | null;
     /** Still producing now, so the end is not known yet. */
     running: boolean;
   }>;
@@ -40,7 +56,10 @@ export interface Adherence {
     planned: { start: string; end: string };
     /** The stop that covered the pause; null when the line ran through it. */
     start: string | null;
+    /** Back when production held again. */
     end: string | null;
+    /** The first blocks after the pause, when they came before production held. */
+    firstBlocks: string | null;
     /** The pause has not ended yet (the line is still stopped in it). */
     open: boolean;
     /** The pause is still ahead. */
@@ -78,10 +97,37 @@ function producingIn(stops: Window[], from: Date, to: Date) {
   return runs;
 }
 
-/**
- * Pure: the registered shifts, the stops (any order, open ones ending now) and the instant now.
- * `known` is when the recorder has readings from: before it, nothing can be said.
- */
+/** Milliseconds of production inside [from, to]. */
+function producedIn(runs: Window[], from: number, to: number) {
+  let total = 0;
+  for (const run of runs) total += Math.max(0, Math.min(run.end.getTime(), to) - Math.max(run.start.getTime(), from));
+  return total;
+}
+
+/** The first moment from `after` on where production holds; null when it has not yet. */
+function heldFrom(runs: Window[], after: number, horizon: number) {
+  for (const run of runs) {
+    if (run.end.getTime() <= after) continue;
+    const at = Math.max(run.start.getTime(), after);
+    const until = Math.min(at + HOLD_MS, horizon);
+    if (until - at < Math.min(MIN_WATCH_MS, HOLD_MS)) return null;
+    if (producedIn(runs, at, until) >= HOLD_SHARE * (until - at)) return at;
+  }
+  return null;
+}
+
+/** The last moment production held up to (read backwards), not before `floor`. */
+function heldUntil(runs: Window[], floor: number) {
+  for (const run of [...runs].reverse()) {
+    const at = run.end.getTime();
+    if (at <= floor) return null;
+    const from = Math.max(at - HOLD_MS, floor);
+    if (producedIn(runs, from, at) >= HOLD_SHARE * (at - from)) return at;
+  }
+  return null;
+}
+
+/** Pure: the registered shifts, the stops (any order, open ones ending now) and the instant now. */
 export function adherenceOf(occurrences: ShiftOccurrence[], parts: Array<Window & { state: string }>, now: Date): Adherence {
   const stops = mergeStops(parts).map((stop) => ({ start: stop.start, end: stop.end }));
   const blocks = blocksOf(occurrences);
@@ -97,11 +143,18 @@ export function adherenceOf(occurrences: ShiftOccurrence[], parts: Array<Window 
     // A run that is still going at "now" has no end yet.
     const lastRun = runs.at(-1);
     const running = Boolean(lastRun && lastRun.end.getTime() >= now.getTime() - 1000 && to.getTime() >= now.getTime() - 1000);
+    const start = heldFrom(runs, from.getTime(), to.getTime());
+    const end = start == null ? null : heldUntil(runs, start);
     result.blocks.push({
       planned: { start: block.start.toISOString(), end: block.end.toISOString() },
-      start: runs[0]?.start.toISOString() ?? null,
+      start: start == null ? null : new Date(start).toISOString(),
+      firstBlocks: runs[0] && (start == null || runs[0].start.getTime() < start) ? runs[0].start.toISOString() : null,
       // Before the planned end, a quiet line is a stop or a pause, not the end of the day.
-      end: lastRun && !running && now.getTime() >= block.end.getTime() ? lastRun.end.toISOString() : null,
+      end: end != null && !running && now.getTime() >= block.end.getTime() ? new Date(end).toISOString() : null,
+      lastBlocks:
+        end != null && lastRun && !running && now.getTime() >= block.end.getTime() && lastRun.end.getTime() > end
+          ? lastRun.end.toISOString()
+          : null,
       running,
     });
     for (const pause of block.breaks) {
@@ -111,12 +164,15 @@ export function adherenceOf(occurrences: ShiftOccurrence[], parts: Array<Window 
         (stop) => stop.start.getTime() < pause.end.getTime() && stop.end.getTime() > pause.start.getTime(),
       );
       const first = touching[0];
-      const last = touching.at(-1);
-      const open = Boolean(last && last.end.getTime() >= now.getTime() - 1000);
+      // Back when production holds again: running for a minute and stopping again is not back.
+      const back = first ? heldFrom(runs, first.start.getTime(), to.getTime()) : null;
+      const open = Boolean(first) && back == null;
+      const resumed = first ? runs.find((run) => run.start.getTime() >= first.end.getTime()) : undefined;
       result.pauses.push({
         planned: { start: pause.start.toISOString(), end: pause.end.toISOString() },
         start: first ? first.start.toISOString() : null,
-        end: last && !open ? last.end.toISOString() : null,
+        end: back == null ? null : new Date(back).toISOString(),
+        firstBlocks: back != null && resumed && resumed.start.getTime() < back ? resumed.start.toISOString() : null,
         open,
         ahead: ahead && !first,
       });

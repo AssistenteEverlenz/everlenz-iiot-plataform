@@ -38,6 +38,34 @@ describe('turno previsto × real', () => {
     expect(result.pauses[0]).toMatchObject({ start: at('10:59').toISOString(), end: at('12:49').toISOString(), open: false });
   });
 
+  it('starts when production holds, not at the blocks of adjusting the line', () => {
+    // Oliveira, 2026-10-14: blocks from 05:55, a few minutes at a time between manual stops; the
+    // line ran from 06:25. Back from the pause the same way, and a few blocks while cleaning up
+    // after the end do not move it.
+    const result = adherenceOf(
+      occurrences,
+      [
+        stop('02:00', '05:55', 'manual'),
+        stop('05:58', '06:00'),
+        stop('06:03', '06:09', 'manual'),
+        stop('06:10', '06:25', 'manual'),
+        stop('10:59', '12:49'),
+        stop('12:52', '12:58'),
+        stop('13:00', '13:02'),
+        stop('16:07', '16:45'),
+        stop('16:50', '23:00'),
+      ],
+      at('23:30'),
+    );
+    expect(result.blocks[0]).toMatchObject({
+      start: at('06:25').toISOString(),
+      firstBlocks: at('05:55').toISOString(),
+      end: at('16:07').toISOString(),
+      lastBlocks: at('16:50').toISOString(),
+    });
+    expect(result.pauses[0]).toMatchObject({ end: at('13:02').toISOString(), firstBlocks: at('12:49').toISOString() });
+  });
+
   it('says nothing of the end while the shift runs, and keeps a pause the line is in open', () => {
     const result = adherenceOf(occurrences, [stop('02:00', '05:55'), stop('11:05', '11:40')], at('11:40'));
     expect(result.blocks[0].start).toBe(at('05:55').toISOString());

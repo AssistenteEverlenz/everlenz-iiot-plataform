@@ -5665,6 +5665,12 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   color: var(--brand-accent, #0b2028);
   font-weight: 700;
 }
+/* Blocks passed around this time before production held: the detail is on hover. */
+.shift-adherence-row .real.hinted {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
 .shift-adherence-row .real.pending {
   color: #b7c6cb;
   font-weight: 400;
