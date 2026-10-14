@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Database } from '@iiot/database';
 import { addDays, plantDate } from '@iiot/shared';
+import { answerQuestion, composeNotFound } from './assistant-answers.js';
 import { buildBriefing } from './briefing.js';
 import { n8nAllowed } from './production-messages.js';
 import { loadConfig, productionDetailData } from './shift-production.js';
@@ -14,7 +15,9 @@ import { loadConfig, productionDetailData } from './shift-production.js';
  *   inbound + collect: the debounce of a burst of messages;
  *   contact: who the number is, which machines they see, today's date at the plant;
  *   production: each day of a period, per machine (today included, so far);
- *   now: the machine at this moment (the panel's summary).
+ *   now: the machine at this moment (the panel's summary);
+ *   answer: the question, already understood by n8n's router, answered with the messages
+ *     themselves, written by the platform in the daily summary's layout (assistant-answers.ts).
  *
  * A number is only ever answered with the machines its person can see on the platform.
  */
@@ -24,6 +27,7 @@ export const WHATSAPP_ROUTES = [
   '/api/n8n/whatsapp/contact',
   '/api/n8n/whatsapp/production',
   '/api/n8n/whatsapp/now',
+  '/api/n8n/whatsapp/answer',
 ];
 
 const MAX_DAYS = 62;
@@ -66,8 +70,11 @@ async function contactOf(db: Database, phoneOrJid: string) {
 
 async function devicesOf(db: Database, contact: Contact) {
   return (
-    await db.query<{ id: string; name: string }>(
-      `SELECT d.id,d.name FROM devices d
+    await db.query<{ id: string; name: string; dashboard_id: string | null }>(
+      `SELECT d.id,d.name,
+         (SELECT da.id FROM dashboards da WHERE da.tenant_id=d.tenant_id AND da.device_id=d.id
+          ORDER BY da.is_default DESC,da.created_at LIMIT 1) dashboard_id
+       FROM devices d
        WHERE d.tenant_id=$1 AND d.archived_at IS NULL AND d.enabled=true
          AND EXISTS (SELECT 1 FROM production_settings ps WHERE ps.device_id=d.id
            AND (ps.blocks_tag_id IS NOT NULL OR ps.pallets_tag_id IS NOT NULL))
@@ -113,6 +120,7 @@ async function dayOf(db: Database, tenantId: string, device: { id: string; name:
       : ((board.totals as Record<string, number>)[board.metric] ?? 0);
   return {
     date,
+    metric: board.metric,
     device: device.name,
     shifts: detail.shifts.length,
     status: detail.status,
@@ -255,6 +263,34 @@ export function registerWhatsappAssistantRoutes(app: FastifyInstance, db: Databa
       };
     });
     return { found: true, today, days: rows, totals };
+  });
+
+  // The answer itself: the messages to send, one per machine.
+  app.get('/api/n8n/whatsapp/answer', async (req, reply) => {
+    if (!n8nAllowed(req, reply)) return;
+    const query = phoneQuery
+      .extend({
+        kind: z.enum(['agora', 'dia', 'paradas', 'periodo', 'comparativo']),
+        from: z.iso.date().optional(),
+        to: z.iso.date().optional(),
+        dates: z.string().max(400).optional(),
+      })
+      .parse(req.query);
+    const contact = await contactOf(db, query.phone);
+    if (!contact) return reply.code(404).send({ error: 'Contato não cadastrado' });
+    const all = await devicesOf(db, contact);
+    const machines = pickDevices(all, query.device);
+    const web = (process.env.PUBLIC_WEB_URL ?? 'https://iotplataform.everlenz.com.br').replace(/\/$/, '');
+    const texts = machines.length
+      ? await answerQuestion(db, contact.tenant_id, machines, query, web, async (machine, date) => {
+          const figures = await dayOf(db, contact.tenant_id, machine, date);
+          // A production day is one that produced, as for the summary's averages: a shift with the
+          // machine off all day (a holiday) would pull the average and the worst day down.
+          return figures && figures.made > 0 ? figures : null;
+        })
+      : [composeNotFound(query.device ?? '', all.map((device) => device.name))];
+    // The shape the Mensageira gives, so n8n sends both the same way.
+    return { output: { messages: texts.map((text) => ({ messages: text })) } };
   });
 
   // The machine at this moment: state, the day so far, the target and where it is heading.

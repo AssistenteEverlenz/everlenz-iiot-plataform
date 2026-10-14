@@ -6,7 +6,10 @@
 // que a plataforma consegue responder. Sem rede e sem LLM: testável (tests/n8n-code.test.ts).
 //
 // ENTRADA: { saida: { messages, dados }, hoje: 'AAAA-MM-DD' }
-// SAÍDA:   { acao: 'agora' | 'producao' | 'conversa', instrucao, consulta: { from, to, dates, device } }
+// SAÍDA:   { acao: 'agora' | 'producao' | 'paradas' | 'conversa', instrucao,
+//            consulta: { kind, from, to, dates, device } }
+// kind é o que a plataforma responde (/api/n8n/whatsapp/answer): agora, dia, paradas, periodo,
+// comparativo. A resposta já vem escrita pela plataforma, no layout do resumo diário.
 
 export function normalizar({ saida, hoje }) {
   const dados = (saida && saida.dados) || {};
@@ -54,14 +57,20 @@ export function normalizar({ saida, hoje }) {
   if (messages) return conversa(messages);
 
   const tipo = semAcento(dados.tipo_consulta);
-  if (tipo === 'agora') return { acao: 'agora', instrucao: '', consulta: { device } };
+  if (tipo === 'agora') return { acao: 'agora', instrucao: '', consulta: { device, kind: 'agora' } };
+
+  if (tipo === 'paradas') {
+    const dia = data(dados.data) || hoje;
+    if (!valida(dia) || dia > hoje) return conversa('Pergunte, com leveza, de qual dia a pessoa quer ver as paradas.');
+    return { acao: 'paradas', instrucao: '', consulta: { from: dia, to: dia, dates: '', device, tipo: 'paradas', kind: 'paradas' } };
+  }
 
   if (tipo === 'dia') {
     const dia = data(dados.data) || hoje;
     if (!valida(dia)) return conversa('Pergunte, com leveza, de qual dia a pessoa quer saber a produção.');
     if (dia > hoje)
       return conversa(`Explique que ${dia.split('-').reverse().join('/')} ainda não aconteceu e pergunte se ela quer outro dia.`);
-    return { acao: 'producao', instrucao: '', consulta: { from: dia, to: dia, dates: '', device, tipo: 'dia' } };
+    return { acao: 'producao', instrucao: '', consulta: { from: dia, to: dia, dates: '', device, tipo: 'dia', kind: 'dia' } };
   }
 
   if (tipo === 'periodo') {
@@ -72,7 +81,7 @@ export function normalizar({ saida, hoje }) {
     if (fim > hoje) fim = hoje;
     // Mais de 62 dias vira os últimos 62: a resposta ainda cabe numa mensagem.
     if (somaDias(inicio, 61) < fim) inicio = somaDias(fim, -61);
-    return { acao: 'producao', instrucao: '', consulta: { from: inicio, to: fim, dates: '', device, tipo: 'periodo' } };
+    return { acao: 'producao', instrucao: '', consulta: { from: inicio, to: fim, dates: '', device, tipo: 'periodo', kind: 'periodo' } };
   }
 
   if (tipo === 'comparativo') {
@@ -86,11 +95,11 @@ export function normalizar({ saida, hoje }) {
     return {
       acao: 'producao',
       instrucao: '',
-      consulta: { from: unicas[0], to: unicas.at(-1), dates: unicas.slice(0, 7).join(','), device, tipo: 'comparativo' },
+      consulta: { from: unicas[0], to: unicas.at(-1), dates: unicas.slice(0, 7).join(','), device, tipo: 'comparativo', kind: 'comparativo' },
     };
   }
 
   return conversa(
-    'Diga com simpatia que por aqui dá para perguntar a produção de agora, de um dia, de um período ou comparar dias, e dê um exemplo curto de cada.',
+    'Diga com simpatia que por aqui dá para perguntar a produção de agora, de um dia, de um período, comparar dias ou ver as paradas, e dê um exemplo curto de cada.',
   );
 }

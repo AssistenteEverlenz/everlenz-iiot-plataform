@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain JavaScript embedded into the n8n Code nodes
 import { normalizar } from '../infrastructure/n8n/code/normalizador.mjs';
-// @ts-expect-error plain JavaScript embedded into the n8n Code nodes
-import { montarInstrucao } from '../infrastructure/n8n/code/instrucao.mjs';
 
 /** The deterministic steps of the WhatsApp orchestrator (infrastructure/n8n). */
 const hoje = '2026-10-11';
@@ -31,54 +29,17 @@ describe('normalizador do assistente', () => {
     expect(p.consulta.from).toBe('2026-08-11');
   });
 
+  it('asks the platform for the stops of a day, today when no day is said', () => {
+    const today = normalizar(saida({ tipo_consulta: 'paradas', data: '' }));
+    expect(today.acao).toBe('paradas');
+    expect(today.consulta).toMatchObject({ kind: 'paradas', from: hoje });
+    expect(normalizar(saida({ tipo_consulta: 'paradas', data: 'ontem' })).consulta.from).toBe('2026-10-10');
+    expect(normalizar(saida({ tipo_consulta: 'agora' })).consulta.kind).toBe('agora');
+    expect(normalizar(saida({ tipo_consulta: 'periodo', inicio: '01/10' })).consulta.kind).toBe('periodo');
+  });
+
   it('lets the router talk when it has something to ask', () => {
     expect(normalizar(saida({ tipo_consulta: 'dia' }, 'Pergunte qual equipamento')).acao).toBe('conversa');
     expect(normalizar(saida({ tipo_consulta: 'agora', equipamento: 'capixaba' })).consulta.device).toBe('capixaba');
-  });
-});
-
-describe('instrução da mensageira', () => {
-  const dia = (date: string, made: number) => ({
-    date,
-    device: 'Cerâmica Capixaba',
-    unit: 'paletes',
-    made,
-    milheiros: made * 0.4,
-    pallets: made,
-    tons: made * 1.1,
-    target: 250,
-    targetShare: Math.round((made / 250) * 100),
-    utilization: 76,
-    stoppedMinutes: 78,
-    pacePerHour: 25,
-  });
-
-  it('does the comparison arithmetic itself', () => {
-    const { instrucao } = montarInstrucao({
-      acao: 'producao',
-      consulta: { from: '2026-10-10', to: '2026-10-11', tipo: 'comparativo' },
-      resposta: { found: true, today: hoje, days: [dia('2026-10-10', 200), dia('2026-10-11', 230)] },
-      nome: 'Ana',
-    });
-    expect(instrucao).toContain('10/10/2026: 200 paletes de 250 (80% da meta)');
-    expect(instrucao).toContain('+30 paletes (+15%)');
-  });
-
-  it('says today is so far, and lists the machines when one is not found', () => {
-    const { instrucao } = montarInstrucao({
-      acao: 'producao',
-      consulta: { from: hoje, to: hoje, tipo: 'dia' },
-      resposta: { found: true, today: hoje, days: [dia(hoje, 120)] },
-      nome: 'Ana',
-    });
-    expect(instrucao).toContain('(hoje, até agora)');
-    expect(instrucao).toContain('1h18 parada no turno');
-    const missing = montarInstrucao({
-      acao: 'agora',
-      consulta: { device: 'galo' },
-      resposta: { found: false, devices: ['Cerâmica Capixaba'] },
-      nome: 'Ana',
-    });
-    expect(missing.instrucao).toContain('Cerâmica Capixaba');
   });
 });

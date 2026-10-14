@@ -140,6 +140,24 @@ describe('assistente do WhatsApp', () => {
     await api.close();
   }, 30_000);
 
+  it('answers with the messages already written, one per machine', async () => {
+    const { api } = await platform();
+    const ask = async (query: string) =>
+      (await api.inject({ url: `/api/n8n/whatsapp/answer?phone=5527999998888&${query}`, headers })).json();
+    // A past day is the daily summary itself.
+    const day = await ask('kind=dia&from=2026-10-06');
+    expect(day.output.messages).toHaveLength(1);
+    expect(day.output.messages[0].messages).toContain('🟢 *Haiwell A7 Teste · 120 paletes · 120%*');
+    expect(day.output.messages[0].messages).toContain('*RESUMO*');
+    const stops = await ask('kind=paradas&from=2026-10-06');
+    expect(stops.output.messages[0].messages).toContain('⛔ *Haiwell A7 Teste · paradas de ter 06/10*');
+    const period = await ask('kind=periodo&from=2026-10-05&to=2026-10-07');
+    expect(period.output.messages[0].messages).toContain('> 📦 *120 paletes* em 1 dia');
+    const missing = await ask('kind=dia&from=2026-10-06&device=galo');
+    expect(missing.output.messages[0].messages).toContain('Não encontrei *galo*');
+    await api.close();
+  }, 60_000);
+
   it('pushes the next summary to n8n, and takes it back when the webhook fails', async () => {
     const { db, api, user } = await platform();
     await db.query(

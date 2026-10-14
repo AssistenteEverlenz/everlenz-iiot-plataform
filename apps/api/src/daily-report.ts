@@ -71,6 +71,8 @@ export interface DayFacts {
   timeline: Array<'producing' | 'idle' | 'manual' | 'offline'>;
   /** The longest stops of the day, inside the shifts. */
   topStops: Array<{ at: string; seconds: number; state: string }>;
+  /** Every stop of three minutes or more, in the order they happened; open = still stopped. */
+  stopList: Array<{ at: string; seconds: number; state: string; open: boolean }>;
   /** Averages over the last production days before this one; null when there are none. */
   average: { made: number; pacePerHour: number; utilization: number | null; stoppedSeconds: number } | null;
 }
@@ -155,6 +157,8 @@ export async function gatherDay(
   // Rows that overlap or are a moment of production apart are one stop; under three minutes it
   // is a micro-stop. Each counted only inside the shifts' productive time.
   const windows = occurrences.flatMap(productiveWindows);
+  const openUntil = Math.min(Date.now(), end.getTime());
+  const stillOpen = rows.rows.some((row) => !row.ended_at);
   const merged = mergeStops(
     rows.rows.map((row) => ({
       start: new Date(row.started_at),
@@ -165,6 +169,7 @@ export async function gatherDay(
     .map((stop) => ({
       start: new Date(Math.max(stop.start.getTime(), start.getTime())),
       state: stop.state,
+      open: stillOpen && stop.end.getTime() >= openUntil - 1000,
       seconds: stop.covered.reduce((sum, part) => sum + productiveSecondsIn(windows, part.start, part.end), 0),
     }))
     .filter((stop) => stop.seconds > 0)
@@ -216,9 +221,15 @@ export async function gatherDay(
   const average = recent.length
     ? {
         made: recent.reduce((sum, day) => sum + day.made, 0) / recent.length,
+        // Over the shift's time, stops included, as the board's pace is: over the producing time
+        // alone the average came out higher than any real day and the pace was always red.
         pacePerHour:
           recent.reduce((sum, day) => sum + day.made, 0) /
-          Math.max(1, recent.reduce((sum, day) => sum + day.producing, 0) / 3600),
+          Math.max(
+            1,
+            recent.reduce((sum, day) => sum + day.time.producing + day.time.idle + day.time.manual + day.time.offline, 0) /
+              3600,
+          ),
         utilization: (() => {
           const values = recent
             .map((day) => utilizationFrom(board.utilizationFormula, day.time))
@@ -284,6 +295,9 @@ export async function gatherDay(
     reasons: { idle: board.time.idle, manual: board.time.manual, offline: board.time.offline },
     timelineStart: start.toISOString(),
     timeline,
+    stopList: [...counted]
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+      .map((stop) => ({ at: plantClock(stop.start), seconds: stop.seconds, state: stop.state, open: stop.open })),
     topStops: counted.slice(0, 12).map((stop) => ({
       at: plantClock(stop.start),
       seconds: stop.seconds,
@@ -350,6 +364,9 @@ function light(value: number | null, average: number | null | undefined, higherI
 }
 const short = (name: string) => name.replace(/^cer[aâ]mica\s+/i, '');
 
+/** The writing pieces the WhatsApp assistant's answers share with this summary (assistant-answers.ts). */
+export const fmt = { UNITS, WEEKDAYS, num, duration, dayLabel, bar, hourLabel, light, short };
+
 /** The sentence about what made the day, by rule. */
 export function highlight(f: DayFacts) {
   const units = UNITS[f.metric] ?? UNITS.pallets;
@@ -404,9 +421,14 @@ export function panelLink(web: string, dashboardId: string | null) {
 }
 
 /** Between the sections of a machine. */
-const RULE = '_'.repeat(52);
+export const RULE = '_'.repeat(52);
 /** Around each machine's headline. */
-const FRAME = '#'.repeat(37);
+export const FRAME = '#'.repeat(37);
+
+/** One machine's whole day, framed: what the summary sends for one machine, and the assistant for a day. */
+export function composeDay(f: DayFacts, link: string | null) {
+  return [FRAME, headline(f), FRAME, '', composeDevice(f, link)].join('\n');
+}
 
 /** One machine's body, under the headline. */
 export function composeDevice(f: DayFacts, link: string | null) {
@@ -486,7 +508,7 @@ export function composeMessage(days: DayFacts[], web: string, kind: 'daily' | 't
   const parts: string[] = [];
   if (kind === 'test') parts.push('🔔 _Mensagem de teste_', '');
   if (days.length === 1) {
-    parts.push(FRAME, headline(days[0]), FRAME, '', composeDevice(days[0], panelLink(web, days[0].dashboardId)));
+    parts.push(composeDay(days[0], panelLink(web, days[0].dashboardId)));
     return parts.join('\n');
   }
   const ranked = [...days].sort((a, b) => (b.target ? b.made / b.target : 0) - (a.target ? a.made / a.target : 0));
@@ -497,6 +519,6 @@ export function composeMessage(days: DayFacts[], web: string, kind: 'daily' | 't
     const share = f.target ? ` · ${Math.round((f.made / f.target) * 100)}%` : '';
     parts.push(`${medals[index] ?? '▫️'} *${short(f.name)}* · ${num(f.made, units.decimals)} ${units.unit}${share}`);
   });
-  for (const f of days) parts.push('', FRAME, headline(f), FRAME, '', composeDevice(f, panelLink(web, f.dashboardId)));
+  for (const f of days) parts.push('', composeDay(f, panelLink(web, f.dashboardId)));
   return parts.join('\n');
 }
