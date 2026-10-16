@@ -305,22 +305,26 @@ async function templateSegmentColumn(sql: Executor) {
 }
 
 /**
- * The mortar model until a mortar panel is saved as one: the four boards of the segment, as the
- * demonstration plant has them. Without it a mortar plant would start from the ceramic model.
+ * The mortar model until a mortar panel is saved as one: the four boards of the segment on two
+ * tabs, the bagger's and the mixer's. Without it a mortar plant would start from the ceramic model.
  */
 const MORTAR_DEFAULT: SnapshotContent = {
   version: 1,
   dashboard: { name: 'Argamassa', refresh_ms: 2000, time_window_minutes: 60 },
   production: null,
   productionContext: null,
+  tabs: [
+    { id: 'ensaque', name: 'Ensaque', position: 0, icon: 'bag' },
+    { id: 'misturador', name: 'Misturador', position: 1, icon: 'mixer' },
+  ],
   widgets: (
     [
-      ['bagging', 'Ensaque', 'full'],
-      ['mortar_output', 'Produzido por produto', 'large'],
-      ['mortar_yield', 'Rendimento', 'medium'],
-      ['mortar_materials', 'Matéria-prima', 'full'],
+      ['bagging', 'Ensaque', 'full', 'ensaque'],
+      ['mortar_output', 'Produzido por produto', 'full', 'ensaque'],
+      ['mortar_materials', 'Matéria-prima', 'full', 'misturador'],
+      ['mortar_yield', 'Rendimento', 'full', 'misturador'],
     ] as const
-  ).map(([widget_type, title, width], position) => ({
+  ).map(([widget_type, title, width, tab], position) => ({
     id: `mortar-${widget_type}`,
     device_id: '',
     tag_id: null,
@@ -329,7 +333,7 @@ const MORTAR_DEFAULT: SnapshotContent = {
     position,
     width,
     config: {},
-    tab_id: null,
+    tab_id: tab,
   })),
 };
 

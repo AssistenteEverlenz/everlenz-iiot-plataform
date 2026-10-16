@@ -104,6 +104,13 @@ export async function setupMortarDevice(db: Database, deviceCode: string) {
     const materials = signals
       .map((signal) => /^PesoDesejado(.+)$/.exec(signal.key)?.[1])
       .filter((name): name is string => !!name && name !== 'Total' && name !== 'TotalBatelada')
+      .sort((a, b) => {
+        const rank = (name: string) => {
+          const at = Object.keys(MATERIAL_NAMES).indexOf(name);
+          return at < 0 ? 99 : at;
+        };
+        return rank(a) - rank(b) || a.localeCompare(b);
+      })
       .map((name) => ({ label: MATERIAL_NAMES[name] ?? name, tagId: tag(`PesoDesejado${name}`) }));
     const mixEnabled = !!tag('ContagemBateladas');
     const settings = {
@@ -129,6 +136,51 @@ export async function setupMortarDevice(db: Database, deviceCode: string) {
       ? await call('POST', `/api/dashboards/${dashboard.id}/template/apply`)
       : null;
 
+    // The mixer's live readings on its tab: what it is making, where the run is, the scale.
+    const readings: string[] = [];
+    if (dashboard && mixEnabled) {
+      const tabs = await call<{ tabs: Array<{ id: string; name: string }> }>(
+        'GET',
+        `/api/dashboards/${dashboard.id}/tabs`,
+      );
+      const tabId = tabs.tabs.find((item) => item.name === 'Misturador')?.id ?? null;
+      const cards: Array<[string, string, string, Record<string, unknown>]> = [
+        ['ReceitaAtual', 'value', 'Receita no misturador', {}],
+        ['ContagemBateladas', 'value', 'Bateladas do lote', { decimals: 0 }],
+        ['BateladasDesejadas', 'value', 'Bateladas pedidas', { decimals: 0 }],
+        ['PesoBalanca', 'value', 'Peso na balança', { decimals: 1, unitLabel: 'kg' }],
+        ['TempoMistura', 'value', 'Tempo de mistura', { decimals: 0, unitLabel: 's' }],
+        ['TempoDescarga', 'value', 'Tempo de descarga', { decimals: 0, unitLabel: 's' }],
+      ];
+      for (const [key, widgetType, title, config] of cards) {
+        if (!tag(key)) continue;
+        await call('POST', `/api/dashboards/${dashboard.id}/widgets`, {
+          deviceId: device.id,
+          tagId: tag(key),
+          widgetType,
+          title,
+          width: 'small',
+          config,
+          tabId,
+        });
+        readings.push(title);
+      }
+      // The live readings open the mixer tab, above its boards. Positions are unique per panel:
+      // park the cards out of the way before numbering them again.
+      await db.query('UPDATE dashboard_widgets SET position=position+1000 WHERE dashboard_id=$1', [
+        dashboard.id,
+      ]);
+      await db.query(
+        `WITH ordered AS (
+           SELECT id,row_number() OVER (ORDER BY
+             CASE WHEN widget_type IN ('bagging','mortar_output') THEN 0
+                  WHEN widget_type='value' THEN 1 ELSE 2 END, position) - 1 AS at
+           FROM dashboard_widgets WHERE dashboard_id=$1)
+         UPDATE dashboard_widgets w SET position=o.at FROM ordered o WHERE w.id=o.id`,
+        [dashboard.id],
+      );
+    }
+
     return {
       device: device.name,
       tags: tagOf.size,
@@ -143,6 +195,7 @@ export async function setupMortarDevice(db: Database, deviceCode: string) {
         ? { recipe: !!settings.recipeTagId, scale: !!settings.scaleTagId, materials: materials.map((m) => m.label) }
         : 'sem ContagemBateladas: o misturador fica desligado até ela chegar',
       panel,
+      readings,
     };
   } finally {
     await app.close();
