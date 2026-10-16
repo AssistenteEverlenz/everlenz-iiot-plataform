@@ -16,6 +16,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { usePoll } from './data';
 import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
 import { MortarShiftBoard } from './MortarShift';
@@ -284,15 +285,21 @@ export function Bagging({
       onClose={() => setSpoutOpen(null)}
     />
   );
-  // One day reads as the production board, the spouts right under its figures.
+  // One day reads as the production board, the spouts right under its figures -- counted in
+  // the board's own window (the shift, or the day), so the spouts add up to its total.
   if (boardDate)
     return (
-      <>
-        <MortarShiftBoard deviceId={deviceId} date={boardDate} onDate={onDate}>
-          {spoutCards}
-        </MortarShiftBoard>
-        {spoutModal}
-      </>
+      <MortarShiftBoard deviceId={deviceId} date={boardDate} onDate={onDate}>
+        {(span) => (
+          <SpoutsInWindow
+            deviceId={deviceId}
+            boardDate={boardDate}
+            span={span}
+            live={live}
+            onLink={onLink}
+          />
+        )}
+      </MortarShiftBoard>
     );
   return (
     <>
@@ -338,6 +345,61 @@ export function Bagging({
 
       {figure && <BagFigureModal data={data} figure={figure} onClose={() => setFigure(null)} />}
       {spoutModal}
+    </>
+  );
+}
+
+/** The spout cards of the board's window: the summary read to the instant of the shift. */
+function SpoutsInWindow({
+  deviceId,
+  boardDate,
+  span,
+  live,
+  onLink,
+}: {
+  deviceId: string;
+  boardDate: string;
+  span: { start: string; end: string };
+  live: boolean;
+  onLink?: () => void;
+}) {
+  const palette = useContext(MortarColors);
+  const [spoutOpen, setSpoutOpen] = useState<string | null>(null);
+  const summary = usePoll<Summary>(
+    `/devices/${deviceId}/mortar?from=${boardDate}&to=${boardDate}` +
+      `&start=${encodeURIComponent(span.start)}&end=${encodeURIComponent(span.end)}`,
+    30000,
+  );
+  const data = summary.data;
+  if (!data) return <div className="stops-empty">{summary.error ?? 'Carregando os bicos…'}</div>;
+  const { totals, spouts } = data.bagging;
+  const opened = spouts.find((spout) => spout.id === spoutOpen);
+  return (
+    <>
+      <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
+      <div className="mortar-divider" role="separator" />
+      <div className="mortar-spouts">
+        {spouts.map((spout, index) => (
+          <SpoutCard
+            key={spout.id}
+            spout={spout}
+            color={palette.spout(index)}
+            live={live}
+            onOpen={() => setSpoutOpen(spout.id)}
+          />
+        ))}
+      </div>
+      {opened && (
+        <SpoutModal
+          data={data}
+          spout={opened}
+          color={palette.spout(spouts.indexOf(opened))}
+          live={live}
+          deviceId={deviceId}
+          boardDate={boardDate}
+          onClose={() => setSpoutOpen(null)}
+        />
+      )}
     </>
   );
 }

@@ -24,6 +24,12 @@ const range = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  /*
+   * A window inside the days, to the instant: the bagging board's shift. The spout cards under
+   * its figures read the same window, or their bags would not add up to the board's total.
+   */
+  start: z.iso.datetime().optional(),
+  end: z.iso.datetime().optional(),
 });
 
 /** Plant-local day of a timestamp column, on the plant's fixed offset (shifts.ts). */
@@ -46,8 +52,18 @@ export function registerMortarRoutes(
     const tenantId = access.principal(req).tenantId;
     const to = query.to ?? plantDate(new Date());
     const from = query.from && query.from <= to ? query.from : to;
-    const start = plantInstant(from, '00:00');
-    const end = plantInstant(addDays(to, 1), '00:00');
+    const start = new Date(
+      Math.max(
+        plantInstant(from, '00:00').getTime(),
+        query.start ? new Date(query.start).getTime() : Number.NEGATIVE_INFINITY,
+      ),
+    );
+    const end = new Date(
+      Math.min(
+        plantInstant(addDays(to, 1), '00:00').getTime(),
+        query.end ? new Date(query.end).getTime() : Number.POSITIVE_INFINITY,
+      ),
+    );
     // One day reads by the hour; anything longer by the day.
     const hourly = from === to;
     const slot = hourly ? PLANT_HOUR : PLANT_DAY;

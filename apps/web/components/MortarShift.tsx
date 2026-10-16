@@ -174,8 +174,12 @@ export function MortarShiftBoard({
   /** One spout only, when the board opens from a spout. */
   spoutId?: string;
   spoutName?: string;
-  /** What goes right under the figures: the spout cards, on the line's board. */
-  children?: ReactNode;
+  /**
+   * What goes right under the figures: the spout cards, on the line's board. Given as a function
+   * it receives the window the board reads (the shift, or the day), so the cards count the same
+   * bags as the figures above them.
+   */
+  children?: ReactNode | ((span: { start: string; end: string }) => ReactNode);
 }) {
   const { user } = usePlatform();
   const palette = useContext(MortarColors);
@@ -567,7 +571,7 @@ export function MortarShiftBoard({
         </div>
       </div>
 
-      {children}
+      {typeof children === 'function' ? children(board.span) : children}
 
       <div className="mortar-curve-block">
         <div className="mortar-curve-head">
