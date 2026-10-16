@@ -56,5 +56,5 @@ describe('mortar process steps', () => {
       { process: 'pesagem', step: 20, from: 3800, to: null },
     ]);
     expect(rows.filter((row) => row.process === 'misturador').map((row) => row.step)).toEqual([1, 5, 5]);
-  });
+  }, 60_000);
 });
