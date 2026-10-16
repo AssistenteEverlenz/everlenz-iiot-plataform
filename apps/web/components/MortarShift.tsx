@@ -19,6 +19,7 @@ import { usePlatform } from './PlatformShell';
 import { DayCalendar } from './DayCalendar';
 import { FormulaInput } from './FormulaInput';
 import { Gauge, ShiftCurve, stateInfo, type BoardData } from './ShiftBoard';
+import { ShiftAdherence } from './ShiftAdherence';
 import {
   DEFAULT_MORTAR_UTILIZATION,
   MORTAR_UTILIZATION_VARIABLES,
@@ -644,7 +645,15 @@ export function MortarShiftBoard({
               <MortarAvailability
                 board={board}
                 onEdit={user.role === 'master' ? () => setEditingFormula(true) : undefined}
-              />
+              >
+                <ShiftAdherence
+                  deviceId={deviceId}
+                  date={data.date}
+                  span={board.span}
+                  source="mortar/adherence"
+                  unitWord="sacos"
+                />
+              </MortarAvailability>
             </div>
             {other && (
               <div className="shift-compare">
@@ -745,9 +754,12 @@ function MortarAvailability({
   board,
   label: caption,
   onEdit,
+  children,
 }: {
   board: MortarBoard;
   label?: string;
+  /** Under the states: the shift as registered against the real one. */
+  children?: React.ReactNode;
   /** Opens the choice of formula; absent on a compared day and for those who cannot change it. */
   onEdit?: () => void;
 }) {
@@ -790,6 +802,7 @@ function MortarAvailability({
           },
         )}
       </ul>
+      {children}
     </div>
   );
 }

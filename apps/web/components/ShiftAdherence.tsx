@@ -63,7 +63,7 @@ const hours = (minutes: number) =>
  * it happens) and the difference. A pause is always two rows, leaving and coming back, so the
  * columns hold times only and line up.
  */
-export function rowsOf(data: Adherence): Row[] {
+export function rowsOf(data: Adherence, unitWord = 'blocos'): Row[] {
   const rows: Row[] = [];
   const several = data.blocks.length > 1;
   data.blocks.forEach((block, index) => {
@@ -79,9 +79,9 @@ export function rowsOf(data: Adherence): Row[] {
       shift: late,
       hint:
         block.firstBlocks && block.start
-          ? `Primeiros blocos às ${clock(block.firstBlocks)} · ${minutesBetween(block.start, block.firstBlocks)} min de ajuste até a produção firme`
+          ? `Primeiros ${unitWord} às ${clock(block.firstBlocks)} · ${minutesBetween(block.start, block.firstBlocks)} min de ajuste até a produção firme`
           : block.firstBlocks
-            ? `Primeiros blocos às ${clock(block.firstBlocks)}, produção ainda não firme`
+            ? `Primeiros ${unitWord} às ${clock(block.firstBlocks)}, produção ainda não firme`
             : undefined,
     });
     const pauses = data.pauses.filter(
@@ -136,19 +136,25 @@ export function ShiftAdherence({
   deviceId,
   date,
   span,
+  source = 'shift-adherence',
+  unitWord,
 }: {
   deviceId: string;
   date: string;
   /** The shift (or day) the board shows: only its shifts are read. */
   span: { start: string; end: string };
+  /** The route under the device that reads it: the ceramic board's, or the bagger's. */
+  source?: string;
+  /** What the line counts, for the hint on a start ("Primeiros sacos às…"). */
+  unitWord?: string;
 }) {
   const data = usePoll<{ adherence: Adherence | null }>(
-    `/devices/${deviceId}/shift-adherence?date=${date}&start=${encodeURIComponent(span.start)}&end=${encodeURIComponent(span.end)}`,
+    `/devices/${deviceId}/${source}?date=${date}&start=${encodeURIComponent(span.start)}&end=${encodeURIComponent(span.end)}`,
     60000,
   );
   const adherence = data.data?.adherence;
   if (!adherence?.blocks.length) return null;
-  const rows = rowsOf(adherence);
+  const rows = rowsOf(adherence, unitWord);
   const lost = rows.reduce((sum, row) => sum + Math.min(0, row.effect ?? 0), 0);
   const gained = rows.reduce((sum, row) => sum + Math.max(0, row.effect ?? 0), 0);
   return (
