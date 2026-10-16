@@ -58,3 +58,54 @@ describe('mortar process steps', () => {
     expect(rows.filter((row) => row.process === 'misturador').map((row) => row.step)).toEqual([1, 5, 5]);
   }, 60_000);
 });
+
+describe('a mixer configured with its own variables', () => {
+  it('records the steps and the alert word from the variables the configuration names', async () => {
+    const { db } = await memoryDatabase();
+    await migrate(db);
+    await seed(db);
+    const tag = async (key: string) =>
+      (
+        await db.query<{ id: string }>(
+          'INSERT INTO tags(tenant_id,device_id,key,name,data_type) VALUES($1,$2,$3,$3,$4) RETURNING id',
+          [TENANT, GENERIC, key, 'number'],
+        )
+      ).rows[0].id;
+    // Another maker's PLC: other names, and the old names are not there.
+    const weighing = await tag('PassoBalanca');
+    const alarm = await tag('CodigoFalha');
+    await db.query(
+      `INSERT INTO mortar_settings(device_id,tenant_id,mixer_config) VALUES($1,$2,$3::jsonb)`,
+      [
+        GENERIC,
+        TENANT,
+        JSON.stringify({
+          tags: {},
+          weighing: { tagId: weighing, steps: [{ value: 3, label: 'Dosando', kind: 'work' }] },
+          mixing: { tagId: null, steps: [] },
+          alarms: { tagId: alarm, codes: [{ value: 6, label: 'Falta cimento', kind: 'material' }] },
+        }),
+      ],
+    );
+    const pipeline = new IngestionPipeline(db);
+    const t0 = Date.now() - 3600_000;
+    const send = (seconds: number, values: Record<string, unknown>) =>
+      pipeline.ingest({
+        topic: 'iiot/poc/laboratorio/generic-001/telemetry',
+        payload: Buffer.from(JSON.stringify({ timestamp: new Date().toISOString(), values })),
+        qos: 1,
+        retain: false,
+        receivedAt: new Date(t0 + seconds * 1000),
+      });
+    await send(0, { PassoBalanca: 3, CodigoFalha: 0 });
+    await send(10, { PassoBalanca: 3, CodigoFalha: 6 });
+    await send(70, { PassoBalanca: 4, CodigoFalha: 0 });
+    const rows = (
+      await db.query<{ process: string; step: number }>(
+        'SELECT process,step FROM mortar_process_steps WHERE device_id=$1 ORDER BY process,started_at',
+        [GENERIC],
+      )
+    ).rows.map((row) => `${row.process}:${row.step}`);
+    expect(rows).toEqual(['alarme:0', 'alarme:6', 'alarme:0', 'pesagem:3', 'pesagem:4']);
+  }, 60_000);
+});

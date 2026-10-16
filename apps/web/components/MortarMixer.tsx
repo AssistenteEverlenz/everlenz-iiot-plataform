@@ -14,7 +14,18 @@ import {
 import { usePoll } from './data';
 import { useFirstDraw } from './firstDraw';
 import { MortarColors, integer, isoDay, tons } from './mortarShared';
-import { PROCESS_STEPS, STEP_KINDS, stepOf, type Process, type StepKind } from './mortarSteps';
+import {
+  ALARM_KINDS,
+  DEFAULT_CATALOG,
+  STEP_KINDS,
+  StepsContext,
+  alarmOf,
+  materialIndex,
+  stepOf,
+  type Catalog,
+  type Process,
+  type StepKind,
+} from './mortarSteps';
 
 /**
  * The mixer board (migration 046). Two large areas, one per process of the PLC -- the weighing
@@ -43,6 +54,10 @@ type ProcessDay = {
 };
 type Mixer = {
   configured: boolean;
+  /** The device's steps and alert codes (its configuration, migration 049). */
+  catalog?: Catalog;
+  /** The alert word through the day, kept like a process. */
+  alerts?: ProcessDay | null;
   processes: Record<Process, ProcessDay | null> | null;
   live: boolean;
   updatedAt: string | null;
@@ -101,20 +116,21 @@ const Y_AXIS = 52;
 const RIGHT = 8;
 
 /** Seconds of each kind of step in a process's day. */
-function kindTotals(process: Process, data: ProcessDay | null) {
+function kindTotals(catalog: Catalog, process: Process, data: ProcessDay | null) {
   const totals: Record<StepKind, number> = { work: 0, prep: 0, wait: 0, off: 0 };
-  for (const item of data?.steps ?? []) totals[stepOf(process, item.step).kind] += item.total;
+  for (const item of data?.steps ?? [])
+    totals[stepOf(catalog, process, item.step).kind] += item.total;
   const on = totals.work + totals.prep + totals.wait;
   return { totals, on, working: on > 0 ? totals.work / on : null };
 }
 const stepStat = (data: ProcessDay | null, step: number) =>
   data?.steps.find((item) => item.step === step) ?? null;
 /** How long the process has been in its step now (null when it is in none, or not live). */
-function nowOf(process: Process, data: ProcessDay | null, live: boolean) {
+function nowOf(catalog: Catalog, process: Process, data: ProcessDay | null, live: boolean) {
   if (!data?.current || !live) return null;
-  const step = stepOf(process, data.current.step);
+  const step = stepOf(catalog, process, data.current.step);
   const elapsed = (Date.now() - new Date(data.current.since).getTime()) / 1000;
-  const stat = stepStat(data, step.step);
+  const stat = stepStat(data, step.value);
   return { step, elapsed, reference: stat?.typical ?? stat?.median ?? null };
 }
 const workTone = (share: number | null) =>
@@ -139,48 +155,62 @@ export function MixerBoard({ deviceId }: { deviceId: string }) {
   const isToday = day === today;
 
   return (
-    <div className="mx-board">
-      <MixerHead data={data} />
-      {isToday && (
-        <div className="mx-halves">
-          <Weighing data={data} process={processes?.pesagem ?? null} />
-          <Mixing data={data} process={processes?.misturador ?? null} />
-        </div>
-      )}
-
-      <section className="mx-day">
-        <div className="mx-day-head">
-          <div>
-            <strong>{isToday ? 'O dia de hoje' : 'Ontem'}</strong>
-            <small>
-              {integer(data.day.batches)} bateladas · {tons(data.day.kg)} t misturadas
-              {data.day.lastAt ? ` · última às ${clock(data.day.lastAt)}` : ''}
-            </small>
+    <StepsContext.Provider value={data.catalog ?? DEFAULT_CATALOG}>
+      <div className="mx-board">
+        <MixerHead data={data} />
+        {isToday && (
+          <div className="mx-halves">
+            <Weighing data={data} process={processes?.pesagem ?? null} />
+            <Mixing data={data} process={processes?.misturador ?? null} />
           </div>
-          <div className="widget-period" role="group" aria-label="Dia">
-            <button type="button" className={isToday ? 'active' : ''} onClick={() => setDay(today)}>
-              Hoje
-            </button>
-            <button
-              type="button"
-              className={day === yesterday ? 'active' : ''}
-              onClick={() => setDay(yesterday)}
-            >
-              Ontem
-            </button>
-          </div>
-        </div>
-        <WorkCurve data={data} />
-        {processes && (processes.pesagem || processes.misturador) && (
-          <TimeSpent processes={processes} />
         )}
-      </section>
-    </div>
+
+        <section className="mx-day">
+          <div className="mx-day-head">
+            <div>
+              <strong>{isToday ? 'O dia de hoje' : 'Ontem'}</strong>
+              <small>
+                {integer(data.day.batches)} bateladas · {tons(data.day.kg)} t misturadas
+                {data.day.lastAt ? ` · última às ${clock(data.day.lastAt)}` : ''}
+              </small>
+            </div>
+            <div className="widget-period" role="group" aria-label="Dia">
+              <button
+                type="button"
+                className={isToday ? 'active' : ''}
+                onClick={() => setDay(today)}
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                className={day === yesterday ? 'active' : ''}
+                onClick={() => setDay(yesterday)}
+              >
+                Ontem
+              </button>
+            </div>
+          </div>
+          <WorkCurve data={data} />
+          {processes && (processes.pesagem || processes.misturador) && (
+            <TimeSpent processes={processes} alerts={data.alerts ?? null} />
+          )}
+        </section>
+      </div>
+    </StepsContext.Provider>
   );
 }
 
 /** The recipe, the run and the mode, on one quiet line above the two halves. */
 function MixerHead({ data }: { data: Mixer }) {
+  const catalog = useContext(StepsContext);
+  const alert =
+    data.live && data.alerts?.current && data.alerts.current.step !== 0
+      ? {
+          ...alarmOf(catalog, data.alerts.current.step),
+          since: (Date.now() - new Date(data.alerts.current.since).getTime()) / 1000,
+        }
+      : null;
   const asked = data.asked != null && data.asked > 0 ? Math.min(Math.round(data.asked), 30) : null;
   const done = data.count != null ? Math.max(0, Math.round(data.count)) : null;
   return (
@@ -203,6 +233,18 @@ function MixerHead({ data }: { data: Mixer }) {
         )}
       </div>
       <div className="mx-pills">
+        {alert && (
+          <em
+            className="mx-alert"
+            style={{
+              color: ALARM_KINDS[alert.kind].color,
+              borderColor: ALARM_KINDS[alert.kind].color,
+            }}
+            title={ALARM_KINDS[alert.kind].label}
+          >
+            ⚠ {alert.label} · há {span(alert.since)}
+          </em>
+        )}
         {data.automatic != null && (
           <em className={data.automatic ? 'on' : 'manual'}>
             {data.automatic ? 'Automático' : 'Manual'}
@@ -231,7 +273,8 @@ function StepNow({
   data: ProcessDay | null;
   live: boolean;
 }) {
-  const now = nowOf(process, data, live);
+  const catalog = useContext(StepsContext);
+  const now = nowOf(catalog, process, data, live);
   if (!data)
     return (
       <div className="mx-missing">
@@ -282,11 +325,19 @@ function Weighing({ data, process }: { data: Mixer; process: ProcessDay | null }
   const recipeKg = data.materials.reduce((sum, item) => sum + (item.kg ?? 0), 0);
   const total = data.target ?? (recipeKg || null);
   const share = data.scale != null && total ? Math.min(1, data.scale / total) : null;
-  const dosing = process?.current ? stepOf('pesagem', process.current.step).material : undefined;
-  const kinds = kindTotals('pesagem', process);
-  // How long each dose takes today, against the week before.
+  const catalog = useContext(StepsContext);
+  const dosing = process?.current
+    ? materialIndex(data.materials, stepOf(catalog, 'pesagem', process.current.step).material)
+    : -1;
+  const kinds = kindTotals(catalog, 'pesagem', process);
+  // How long each dose takes today, against the week before: the dosing step of each material.
+  const doseStep = (index: number) =>
+    catalog.pesagem.find((step) => materialIndex(data.materials, step.material) === index);
   const doses = data.materials
-    .map((item, index) => ({ item, index, stat: stepStat(process, [10, 20, 30][index]) }))
+    .map((item, index) => {
+      const step = doseStep(index);
+      return { item, index, stat: step ? stepStat(process, step.value) : null };
+    })
     .filter(({ item, stat }) => item.kg && stat?.median);
   const longest = Math.max(
     1,
@@ -354,7 +405,9 @@ function Weighing({ data, process }: { data: Mixer; process: ProcessDay | null }
                     background: palette.material(item.label, index),
                   }}
                 />
-                {stat!.typical ? <u style={{ left: `${(stat!.typical / longest) * 100}%` }} /> : null}
+                {stat!.typical ? (
+                  <u style={{ left: `${(stat!.typical / longest) * 100}%` }} />
+                ) : null}
               </div>
               <b>{span(stat!.median)}</b>
             </div>
@@ -378,29 +431,32 @@ function Weighing({ data, process }: { data: Mixer; process: ProcessDay | null }
  * the recipe programs; under it, mixing and discharge programmed against real, in bars.
  */
 function Mixing({ data, process }: { data: Mixer; process: ProcessDay | null }) {
-  const now = nowOf('misturador', process, data.live);
-  const programmedFor = (step: number) =>
-    step === 15 ? data.mixSeconds : step === 21 ? data.dischargeSeconds : null;
-  const programmed = now ? programmedFor(now.step.step) : null;
+  const catalog = useContext(StepsContext);
+  const now = nowOf(catalog, 'misturador', process, data.live);
+  // The timed steps are the ones the configuration marks: mixing and discharge.
+  const timer = now?.step.timer ?? null;
+  const programmed =
+    timer === 'mix' ? data.mixSeconds : timer === 'discharge' ? data.dischargeSeconds : null;
   // How long the step has run: the PLC's own stopwatch when it publishes one, else since the
   // step began.
-  const stopwatch = now?.step.step === 15 ? data.mix?.elapsed : now?.step.step === 21 ? data.discharge?.elapsed : null;
+  const stopwatch =
+    timer === 'mix' ? data.mix?.elapsed : timer === 'discharge' ? data.discharge?.elapsed : null;
   const ran = now ? (stopwatch != null && stopwatch > 0 ? stopwatch : now.elapsed) : 0;
-  const learnt =
-    (now?.step.step === 15 ? data.mix?.source : data.discharge?.source) === 'learnt';
-  const kinds = kindTotals('misturador', process);
+  const learnt = (timer === 'mix' ? data.mix?.source : data.discharge?.source) === 'learnt';
+  const timedStep = (which: 'mix' | 'discharge') =>
+    catalog.misturador.find((step) => step.timer === which)?.value ?? null;
+  const statOf = (which: 'mix' | 'discharge') => {
+    const value = timedStep(which);
+    return value == null ? null : stepStat(process, value);
+  };
+  const kinds = kindTotals(catalog, 'misturador', process);
   const rows: Array<[string, number | null, number | null, number | null]> = [
-    [
-      'Mistura',
-      data.mixSeconds,
-      stepStat(process, 15)?.median ?? null,
-      stepStat(process, 15)?.typical ?? null,
-    ],
+    ['Mistura', data.mixSeconds, statOf('mix')?.median ?? null, statOf('mix')?.typical ?? null],
     [
       'Descarga',
       data.dischargeSeconds,
-      stepStat(process, 21)?.median ?? null,
-      stepStat(process, 21)?.typical ?? null,
+      statOf('discharge')?.median ?? null,
+      statOf('discharge')?.typical ?? null,
     ],
   ];
   const longest = Math.max(1, ...rows.flatMap(([, a, b, c]) => [a ?? 0, b ?? 0, c ?? 0]));
@@ -419,7 +475,7 @@ function Mixing({ data, process }: { data: Mixer; process: ProcessDay | null }) 
             <b className={ran > programmed ? 'over' : ''}>{countdown(programmed - ran)}</b>
             <span>{ran <= programmed ? 'para terminar' : 'além do programado'}</span>
             <em>
-              {now.step.step === 15 ? 'mistura' : 'descarga'} de {span(programmed)}
+              {timer === 'mix' ? 'mistura' : 'descarga'} de {span(programmed)}
               {learnt ? ' · programado lido do cronômetro' : ' · programado na receita'}
             </em>
           </div>
@@ -499,6 +555,7 @@ function Mixing({ data, process }: { data: Mixer; process: ProcessDay | null }) 
  */
 function WorkCurve({ data }: { data: Mixer }) {
   const palette = useContext(MortarColors);
+  const catalog = useContext(StepsContext);
   const color = palette.accent;
   const rows = useMemo(
     () => data.curve.map((point) => ({ t: new Date(point.at).getTime(), kg: point.kg })),
@@ -509,8 +566,8 @@ function WorkCurve({ data }: { data: Mixer }) {
   const activity = [
     ...rows.map((row) => row.t),
     ...lanes.flatMap((process) =>
-      data.processes![process]!.segments
-        .filter((segment) => segment.step !== 0)
+      data
+        .processes![process]!.segments.filter((segment) => segment.step !== 0)
         .flatMap((segment) => [new Date(segment.start).getTime(), new Date(segment.end).getTime()]),
     ),
   ];
@@ -553,7 +610,9 @@ function WorkCurve({ data }: { data: Mixer }) {
               labelFormatter={(value) => clock(new Date(Number(value)).toISOString())}
               formatter={(value) => [`${integer(Number(value))} kg`, 'balança']}
             />
-            {data.target && <ReferenceLine y={data.target} stroke="#0b2028" strokeDasharray="6 4" />}
+            {data.target && (
+              <ReferenceLine y={data.target} stroke="#0b2028" strokeDasharray="6 4" />
+            )}
             {data.day.list.map((batch) => (
               <ReferenceLine key={batch.at} x={new Date(batch.at).getTime()} stroke="#d3dde0" />
             ))}
@@ -575,7 +634,7 @@ function WorkCurve({ data }: { data: Mixer }) {
           <span className="mx-lane-name">{process === 'pesagem' ? 'Pesagem' : 'Mistura'}</span>
           <div className="mx-lane-track">
             {data.processes![process]!.segments.map((segment) => {
-              const step = stepOf(process, segment.step);
+              const step = stepOf(catalog, process, segment.step);
               const left = at(new Date(segment.start).getTime());
               const width = at(new Date(segment.end).getTime()) - left;
               if (width <= 0) return null;
@@ -594,6 +653,31 @@ function WorkCurve({ data }: { data: Mixer }) {
           </div>
         </div>
       ))}
+      {data.alerts && data.alerts.segments.some((segment) => segment.step !== 0) && (
+        <div className="mx-lane" style={{ marginLeft: Y_AXIS, marginRight: RIGHT }}>
+          <span className="mx-lane-name">Alertas</span>
+          <div className="mx-lane-track">
+            {data.alerts.segments
+              .filter((segment) => segment.step !== 0)
+              .map((segment) => {
+                const alert = alarmOf(catalog, segment.step);
+                const left = at(new Date(segment.start).getTime());
+                const width = Math.max(0.3, at(new Date(segment.end).getTime()) - left);
+                return (
+                  <i
+                    key={`alert-${segment.start}`}
+                    style={{
+                      left: `${left}%`,
+                      width: `${width}%`,
+                      background: ALARM_KINDS[alert.kind].color,
+                    }}
+                    title={`${clock(segment.start)}–${clock(segment.end)} · ${alert.label} · ${span(segment.seconds)}`}
+                  />
+                );
+              })}
+          </div>
+        </div>
+      )}
       {lanes.length > 0 && (
         <div className="mx-legend" style={{ marginLeft: Y_AXIS }}>
           {(['work', 'prep', 'wait', 'off'] as const).map((kind) => (
@@ -616,8 +700,19 @@ function WorkCurve({ data }: { data: Mixer }) {
  * Where the time went, per process: one bar split by kind, the longest wait in words, and every
  * step's numbers behind a click, so the board stays readable and the detail stays at hand.
  */
-function TimeSpent({ processes }: { processes: Record<Process, ProcessDay | null> }) {
+function TimeSpent({
+  processes,
+  alerts,
+}: {
+  processes: Record<Process, ProcessDay | null>;
+  alerts: ProcessDay | null;
+}) {
   const [open, setOpen] = useState(false);
+  const catalog = useContext(StepsContext);
+  // The alerts of the day, longest first: what held the mixer up, and for how long.
+  const dayAlerts = (alerts?.steps ?? [])
+    .filter((item) => item.step !== 0 && item.total > 0)
+    .sort((a, b) => b.total - a.total);
   return (
     <div className="mx-spent">
       <div className="mx-section-title">
@@ -630,9 +725,11 @@ function TimeSpent({ processes }: { processes: Record<Process, ProcessDay | null
         {(['pesagem', 'misturador'] as const).map((process) => {
           const data = processes[process];
           if (!data) return null;
-          const { totals, on } = kindTotals(process, data);
+          const { totals, on } = kindTotals(catalog, process, data);
           const waits = data.steps
-            .filter((item) => stepOf(process, item.step).kind === 'wait' && item.total >= 60)
+            .filter(
+              (item) => stepOf(catalog, process, item.step).kind === 'wait' && item.total >= 60,
+            )
             .sort((a, b) => b.total - a.total);
           return (
             <div key={process} className="mx-spent-item">
@@ -675,8 +772,8 @@ function TimeSpent({ processes }: { processes: Record<Process, ProcessDay | null
               )}
               {waits[0] && (
                 <p className="mx-callout">
-                  Maior espera: <b>{stepOf(process, waits[0].step).label.toLowerCase()}</b> ·{' '}
-                  {span(waits[0].total)}
+                  Maior espera: <b>{stepOf(catalog, process, waits[0].step).label.toLowerCase()}</b>{' '}
+                  · {span(waits[0].total)}
                   {on > 0 && ` (${Math.round((waits[0].total / on) * 100)}% do tempo ligado)`}
                 </p>
               )}
@@ -685,13 +782,37 @@ function TimeSpent({ processes }: { processes: Record<Process, ProcessDay | null
           );
         })}
       </div>
+      {dayAlerts.length > 0 && (
+        <div className="mx-alerts">
+          <div className="mx-spent-name">
+            <b>Alertas do dia</b>
+            <small>quanto tempo cada alerta do CLP ficou ativo</small>
+          </div>
+          <ul>
+            {dayAlerts.map((item) => {
+              const alert = alarmOf(catalog, item.step);
+              return (
+                <li key={item.step} title={ALARM_KINDS[alert.kind].label}>
+                  <i style={{ background: ALARM_KINDS[alert.kind].color }} />
+                  <span>{alert.label}</span>
+                  <b>{span(item.total)}</b>
+                  <small>
+                    {item.runs} {item.runs === 1 ? 'vez' : 'vezes'}
+                  </small>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
 
 /** Every step of a process: how often, its typical time against the seven days before, the total. */
 function StepTable({ process, data, on }: { process: Process; data: ProcessDay; on: number }) {
-  const order = PROCESS_STEPS[process].map((item) => item.step);
+  const catalog = useContext(StepsContext);
+  const order = catalog[process].map((item) => item.value);
   const rows = data.steps
     .filter((item) => item.step !== 0 && (item.runs > 0 || item.total > 0))
     .sort((a, b) => order.indexOf(a.step) - order.indexOf(b.step));
@@ -714,7 +835,7 @@ function StepTable({ process, data, on }: { process: Process; data: ProcessDay; 
       </thead>
       <tbody>
         {rows.map((item) => {
-          const step = stepOf(process, item.step);
+          const step = stepOf(catalog, process, item.step);
           // In time, not percent: a 10 s wait that became 2 min reads "+1 min 50 s".
           const change =
             item.median != null && item.typical != null ? item.median - item.typical : null;

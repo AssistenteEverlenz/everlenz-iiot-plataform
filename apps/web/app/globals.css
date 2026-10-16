@@ -13694,3 +13694,143 @@ button.mortar-spout:hover .mortar-spout-open {
 .shifts-extension-input small {
   color: #71868d;
 }
+
+/* The mixer's alerts: the one on now beside the mode, the day's in a list under the time spent. */
+.mx-pills em.mx-alert {
+  max-width: 340px;
+  overflow: hidden;
+  background: #fff6f3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-alerts {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mx-alerts ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-alerts li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #e3eaec;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.mx-alerts li i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.mx-alerts li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #20353d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-alerts li b {
+  color: #0b2028;
+  font-variant-numeric: tabular-nums;
+}
+.mx-alerts li small {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+
+/* The mixer's configuration, in the card's pencil. */
+.mixer-config {
+  display: grid;
+  gap: 18px;
+}
+.mixer-config section {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #e3eaec;
+}
+.mixer-config h4 {
+  margin: 0;
+  color: #0b2028;
+  font-size: 14px;
+}
+.mixer-config .mixer-config-help {
+  margin: -4px 0 0;
+  color: #71868d;
+  font-size: 12px;
+}
+.mixer-config-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px 16px;
+}
+.mixer-config-roles label {
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.mixer-config-roles label small {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+.mixer-config-table {
+  display: grid;
+  gap: 6px;
+}
+.mixer-config-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 2fr) 130px minmax(0, 1fr) 74px 32px;
+  align-items: center;
+  gap: 6px;
+}
+.mixer-config-row.with-timer {
+  grid-template-columns: 70px minmax(0, 2.4fr) 130px 120px 74px 32px;
+}
+.mixer-config-row.alarm {
+  grid-template-columns: 70px minmax(0, 2fr) 150px minmax(0, 1fr) 32px;
+}
+.mixer-config-row.head {
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.mixer-config-row input,
+.mixer-config-row select {
+  min-width: 0;
+  width: 100%;
+}
+.mixer-config-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.mixer-config-row button {
+  min-height: 30px;
+  padding: 0;
+}
+.mixer-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 900px) {
+  .mixer-config-row,
+  .mixer-config-row.alarm {
+    grid-template-columns: 1fr 1fr;
+  }
+  .mixer-config-row.head {
+    display: none;
+  }
+}

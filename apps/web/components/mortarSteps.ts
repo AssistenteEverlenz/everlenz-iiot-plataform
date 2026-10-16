@@ -1,44 +1,27 @@
-/**
- * The steps the mixer's PLC runs its two processes with (Bella Massa, 2026-10-15), in the words
- * the board uses. Each step has a kind, the one thing the board needs to colour and add it:
- *   work  -- the machine doing its job (dosing, loading, mixing, discharging);
- *   prep  -- the PLC checking or calculating between jobs, seconds at a time;
- *   wait  -- waiting for something outside the process (the mixer, the additive, the bagger);
- *   off   -- the process switched off.
- * A step the list does not know is shown as "Passo N" and counted as work.
- */
-export type StepKind = 'work' | 'prep' | 'wait' | 'off';
-export type Process = 'pesagem' | 'misturador';
+import { createContext } from 'react';
+import {
+  MT_METAL_MIXER,
+  type MixerAlarm,
+  type MixerStep,
+  type StepKind,
+} from './mortarMixerConfig';
 
-export const PROCESS_STEPS: Record<
-  Process,
-  Array<{ step: number; label: string; short: string; kind: StepKind; material?: number }>
-> = {
-  pesagem: [
-    { step: 0, label: 'Desligado', short: 'Desligado', kind: 'off' },
-    { step: 1, label: 'Verificando a balança', short: 'Verifica', kind: 'prep' },
-    { step: 5, label: 'Calculando a areia', short: 'Calcula', kind: 'prep' },
-    { step: 10, label: 'Dosando areia', short: 'Areia', kind: 'work', material: 0 },
-    { step: 15, label: 'Calculando o porta bag 01', short: 'Calcula', kind: 'prep' },
-    { step: 20, label: 'Dosando porta bag 01', short: 'Bag 01', kind: 'work', material: 1 },
-    { step: 25, label: 'Calculando o porta bag 02', short: 'Calcula', kind: 'prep' },
-    { step: 30, label: 'Dosando porta bag 02', short: 'Bag 02', kind: 'work', material: 2 },
-    { step: 35, label: 'Finalizando a pesagem', short: 'Finaliza', kind: 'prep' },
-    { step: 40, label: 'Aguardando o misturador esvaziar', short: 'Aguarda', kind: 'wait' },
-    { step: 45, label: 'Descarregando a balança', short: 'Descarga', kind: 'work' },
-  ],
-  misturador: [
-    { step: 0, label: 'Desligado', short: 'Desligado', kind: 'off' },
-    { step: 1, label: 'Aguardando a balança', short: 'Aguarda', kind: 'wait' },
-    { step: 5, label: 'Carregando o misturador', short: 'Carga', kind: 'work' },
-    { step: 10, label: 'Aguardando o aditivo', short: 'Aditivo', kind: 'wait' },
-    { step: 15, label: 'Misturando', short: 'Mistura', kind: 'work' },
-    { step: 20, label: 'Aguardando a moega da ensacadeira', short: 'Moega', kind: 'wait' },
-    { step: 21, label: 'Descarregando o misturador', short: 'Descarga', kind: 'work' },
-    { step: 22, label: 'Verificando o nível da moega', short: 'Nível', kind: 'wait' },
-    { step: 25, label: 'Liberando o misturador', short: 'Libera', kind: 'work' },
-  ],
+/**
+ * The steps and alerts a mixer board names and colours its numbers with: the device's own
+ * configuration (mortarMixerConfig.ts, migration 049), handed to the board by the API and shared
+ * with everything inside it. A step the list does not know is shown as "Passo N" and counted as
+ * work; an alert it does not know as "Alerta N".
+ */
+export type { StepKind } from './mortarMixerConfig';
+export type Process = 'pesagem' | 'misturador';
+export type Catalog = { pesagem: MixerStep[]; misturador: MixerStep[]; alarmes: MixerAlarm[] };
+
+export const DEFAULT_CATALOG: Catalog = {
+  pesagem: MT_METAL_MIXER.weighing.steps,
+  misturador: MT_METAL_MIXER.mixing.steps,
+  alarmes: MT_METAL_MIXER.alarms.codes,
 };
+export const StepsContext = createContext<Catalog>(DEFAULT_CATALOG);
 
 export const STEP_KINDS: Record<StepKind, { label: string; color: string }> = {
   work: { label: 'Trabalhando', color: 'var(--brand-accent, #12b8a6)' },
@@ -47,13 +30,43 @@ export const STEP_KINDS: Record<StepKind, { label: string; color: string }> = {
   off: { label: 'Desligado', color: '#cfd8db' },
 };
 
-export function stepOf(process: Process, step: number) {
+export const ALARM_KINDS: Record<MixerAlarm['kind'], { label: string; color: string }> = {
+  material: { label: 'Falta de material', color: '#e4572e' },
+  equipment: { label: 'Equipamento', color: '#9b6bd3' },
+  process: { label: 'Processo', color: '#f2a93b' },
+  info: { label: 'Aviso', color: '#8a9ca2' },
+};
+
+export function stepOf(catalog: Catalog, process: Process, value: number) {
   return (
-    PROCESS_STEPS[process].find((item) => item.step === step) ?? {
-      step,
-      label: `Passo ${step}`,
-      short: `P${step}`,
+    catalog[process].find((item) => item.value === value) ?? {
+      value,
+      label: `Passo ${value}`,
       kind: 'work' as StepKind,
+      material: null,
+      timer: null,
+      cycle: false,
     }
   );
+}
+
+export function alarmOf(catalog: Catalog, value: number) {
+  return (
+    catalog.alarmes.find((item) => item.value === value) ?? {
+      value,
+      label: `Alerta ${value}`,
+      kind: 'info' as MixerAlarm['kind'],
+      material: null,
+    }
+  );
+}
+
+/** The material a weighing step doses, matched by name to the recipe's materials. */
+export function materialIndex(materials: Array<{ label: string }>, name: string | null | undefined) {
+  if (!name) return -1;
+  const wanted = name.trim().toLowerCase();
+  return materials.findIndex((item) => {
+    const label = item.label.trim().toLowerCase();
+    return label === wanted || label.startsWith(wanted) || wanted.startsWith(label);
+  });
 }

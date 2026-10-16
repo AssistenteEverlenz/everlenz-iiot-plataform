@@ -36,13 +36,18 @@ type Config = {
 };
 
 /**
- * The step numbers the mixer's PLC runs its two processes with (migration 046), published by
- * the HMI under these names: each change of step is a row in mortar_process_steps.
+ * The step numbers the mixer's PLC runs its two processes with (migration 046), and its alert
+ * word (migration 049): each change is a row in mortar_process_steps. Which variables they are
+ * is the device's own configuration (mortar_settings.mixer_config); a device not configured yet
+ * is read by the first plant's names.
  */
-const PROCESS_KEYS: Array<[string, 'pesagem' | 'misturador']> = [
+type ProcessName = 'pesagem' | 'misturador' | 'alarme';
+const DEFAULT_PROCESS_KEYS: Array<[string, ProcessName]> = [
   ['ProcessoPesagem', 'pesagem'],
   ['ProcessoMisturador', 'misturador'],
+  ['StatusAlerta', 'alarme'],
 ];
+type ProcessSetup = { keys: Array<[string, ProcessName]>; recipeKey: string | null };
 type StepState = { id: string | null; step: number; lastAt: number };
 /**
  * A silence this long ends the step at the last message heard. Shorter ones -- a network blip --
@@ -55,8 +60,9 @@ export class MortarTracker {
   private spoutRuntimes = new Map<string, SpoutRuntime>();
   private mixRuntimes = new Map<string, MixRuntime>();
   private steps = new Map<string, StepState>();
+  private processSetups = new Map<string, { expiresAt: number; setup: ProcessSetup }>();
   /** Migration 046 not applied yet: steps are not written, and asked again later. */
-  private stepsPausedUntil = 0;
+  private stepsPausedUntil = new Map<string, number>();
 
   constructor(
     private db: Database,
@@ -166,12 +172,17 @@ export class MortarTracker {
     samples: { key: string; value: unknown }[],
     at: number,
   ) {
-    if (at < this.stepsPausedUntil) return;
-    const published = PROCESS_KEYS.filter(([key]) => samples.some((item) => item.key === key));
+    const setup = await this.processSetup(device, tags);
+    const published = setup.keys.filter(([key]) => samples.some((item) => item.key === key));
     if (!published.length) return;
-    try {
-      const recipe = recipeOf(samples.find((item) => item.key === 'ReceitaAtual')?.value);
-      for (const [key, process] of published) {
+    const recipe = recipeOf(
+      samples.find((item) => item.key === (setup.recipeKey ?? 'ReceitaAtual'))?.value,
+    );
+    // Each process on its own: an alert word that cannot be kept yet (migration 049) must not
+    // stop the steps from being kept.
+    for (const [key, process] of published) {
+      if (at < (this.stepsPausedUntil.get(process) ?? 0)) continue;
+      try {
         const sample = samples.find((item) => item.key === key)!;
         const tag = tags.find((item) => item.key === key);
         const value = numberOf(tag ? convertTag(sample.value, tag) : sample.value);
@@ -209,18 +220,61 @@ export class MortarTracker {
           [device.tenant_id, device.id, process, step, recipe, new Date(at)],
         );
         this.steps.set(memo, { id: created.rows[0].id, step, lastAt: at });
+      } catch (error) {
+        // A migration not applied yet, most likely: try again in a minute, and say why.
+        this.stepsPausedUntil.set(process, at + 60_000);
+        console.warn(
+          JSON.stringify({
+            event: 'mortar_steps_failed',
+            deviceId: device.id,
+            process,
+            error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+          }),
+        );
       }
-    } catch (error) {
-      // Migration 046 not applied yet, most likely: try again in a minute, and say why.
-      this.stepsPausedUntil = at + 60_000;
-      console.warn(
-        JSON.stringify({
-          event: 'mortar_steps_failed',
-          deviceId: device.id,
-          error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
-        }),
-      );
     }
+  }
+
+  /** Which variables are the device's steps and alerts, kept 30 s like the mortar settings. */
+  private async processSetup(device: Device, tags: TagConfig[]): Promise<ProcessSetup> {
+    const cached = this.processSetups.get(device.id);
+    if (cached && cached.expiresAt > Date.now()) return cached.setup;
+    const keyOf = (id: unknown) =>
+      (typeof id === 'string' && tags.find((tag) => tag.id === id)?.key) || null;
+    let setup: ProcessSetup = { keys: DEFAULT_PROCESS_KEYS, recipeKey: null };
+    try {
+      const row = (
+        await this.db.query<{
+          config: {
+            weighing?: { tagId?: string | null };
+            mixing?: { tagId?: string | null };
+            alarms?: { tagId?: string | null };
+          } | null;
+          recipe_tag_id: string | null;
+        }>(
+          `SELECT to_jsonb(ms)->'mixer_config' config,recipe_tag_id FROM mortar_settings ms
+           WHERE tenant_id=$1 AND device_id=$2`,
+          [device.tenant_id, device.id],
+        )
+      ).rows[0];
+      const config = row?.config;
+      setup = {
+        recipeKey: keyOf(row?.recipe_tag_id),
+        keys: config
+          ? (
+              [
+                [keyOf(config.weighing?.tagId), 'pesagem'],
+                [keyOf(config.mixing?.tagId), 'misturador'],
+                [keyOf(config.alarms?.tagId), 'alarme'],
+              ] as Array<[string | null, ProcessName]>
+            ).filter((item): item is [string, ProcessName] => item[0] != null)
+          : DEFAULT_PROCESS_KEYS,
+      };
+    } catch {
+      // Migration 037 not applied: the first plant's names.
+    }
+    this.processSetups.set(device.id, { expiresAt: Date.now() + 30_000, setup });
+    return setup;
   }
 
   private async observeSpout(

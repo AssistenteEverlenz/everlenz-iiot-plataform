@@ -2749,12 +2749,15 @@ export function DashboardCanvas({ id }: { id: string }) {
                     ? 'Bicos da ensacadeira'
                     : editingWidget.widget_type === 'mortar_materials'
                       ? 'Mistura e materiais'
-                      : 'Dados do card'
+                      : editingWidget.widget_type === 'mortar_mixer'
+                        ? 'Misturador: variáveis, etapas e alertas'
+                        : 'Dados do card'
                 }
                 open
                 when={
                   editingWidget.widget_type === 'bagging' ||
-                  editingWidget.widget_type === 'mortar_materials'
+                  editingWidget.widget_type === 'mortar_materials' ||
+                  editingWidget.widget_type === 'mortar_mixer'
                 }
               >
                 <div className="form-grid">

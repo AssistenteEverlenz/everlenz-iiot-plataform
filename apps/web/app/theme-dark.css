@@ -4255,4 +4255,34 @@
   :root[data-theme='dark'] .shifts-extension-input small {
     color: #8d9ea3;
   }
+  :root[data-theme='dark'] .mx-pills em.mx-alert {
+    background: #29150e;
+  }
+  :root[data-theme='dark'] .mx-alerts li {
+    border: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .mx-alerts li span {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .mx-alerts li b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-alerts li small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mixer-config section {
+    border-top: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .mixer-config h4 {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mixer-config .mixer-config-help {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .mixer-config-roles label small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mixer-config-row.head {
+    color: #8d9ea3;
+  }
 }

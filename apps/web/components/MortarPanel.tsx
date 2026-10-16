@@ -1,12 +1,13 @@
 'use client';
 import { confirmar } from './Dialogs';
 
-import { useEffect, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { mutate, usePoll } from './data';
 import { ModalPortal } from './ModalPortal';
 import { usePlatform } from './PlatformShell';
 import { Bagging, Materials, MortarColors, Output, Yield } from './MortarBoards';
 import { MixerBoard } from './MortarMixer';
+import { MixerSettings, type MixerSettingsHandle } from './MortarMixerSettings';
 import {
   PERIODS,
   integer,
@@ -566,6 +567,8 @@ export function MortarCardSettings({
     }>;
   }>(`/devices/${deviceId}/mortar/settings`, 600000);
   const [form, setForm] = useState<Form | null>(null);
+  // The mixer card is configured in its own editor (MortarMixerSettings.tsx).
+  const mixerHandle = useRef<MixerSettingsHandle | null>(null);
 
   useEffect(() => {
     if (form || !saved.data) return;
@@ -618,6 +621,7 @@ export function MortarCardSettings({
   const edits = view === 'bagging' || view === 'mortar_materials';
   handle.current = {
     save: async () => {
+      if (view === 'mortar_mixer') return mixerHandle.current?.save();
       if (form && edits) await mutate(`/devices/${deviceId}/mortar/settings`, 'PUT', form);
     },
     config: () => ({ spoutColors, materialColors }),
@@ -633,6 +637,7 @@ export function MortarCardSettings({
     />
   );
 
+  if (view === 'mortar_mixer') return <MixerSettings deviceId={deviceId} handle={mixerHandle} />;
   if (!edits)
     return (
       <div className="notice full-field">
