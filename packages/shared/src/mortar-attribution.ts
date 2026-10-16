@@ -180,6 +180,8 @@ export interface MixRuntime {
   /** The lot being made: the recipe it was started with. */
   lotNumber?: string | null;
   lotRecipe?: string | null;
+  /** Since when the batch counter reads zero (kept in memory only). */
+  zeroSince?: number | null;
 }
 export interface MixObservation {
   at: number;
@@ -198,6 +200,9 @@ export interface MixBatch {
   scaleKg: number | null;
   lotNumber: string;
 }
+
+/** How long the batch counter must read zero to be a reset for a new run, not a glitch. */
+const MIX_RESET_HOLD_MS = 60_000;
 
 /** A lot's number: the plant date and time it started, "261001-0715". Readable and unique. */
 export function lotNumberOf(at: number) {
@@ -230,12 +235,32 @@ export function attributeMix(
       },
       batch: null,
     };
-  const step = counterStep(runtime.lastCount, observation.count);
+  /*
+   * A mixer's counter runs 0..N over one run of batches and the operator zeroes it before the
+   * next run. A plain counter step ignores a zero (a glitch must not count the whole run again),
+   * so a run that ends on the number the last one ended on -- a run of one batch after another
+   * -- would never count. A zero held for a minute is that reset, not a glitch: after it the
+   * count starts over from zero.
+   */
+  const restarted =
+    runtime.zeroSince != null &&
+    observation.at - runtime.zeroSince >= MIX_RESET_HOLD_MS &&
+    observation.count != null &&
+    observation.count > 0;
+  const step = restarted
+    ? { delta: observation.count!, reading: observation.count }
+    : counterStep(runtime.lastCount, observation.count);
   const next = {
     lastAt: Math.max(runtime.lastAt, observation.at),
     lastCount: step.reading,
     lotNumber: runtime.lotNumber ?? null,
     lotRecipe: runtime.lotRecipe ?? null,
+    zeroSince:
+      observation.count === 0
+        ? (runtime.zeroSince ?? observation.at)
+        : observation.count == null
+          ? (runtime.zeroSince ?? null)
+          : null,
   };
   if (!step.delta) return { runtime: { ...next, scalePeak: peak }, batch: null };
   const batches = Math.round(step.delta);
@@ -243,7 +268,8 @@ export function attributeMix(
   // A new lot when the recipe changed or the counter was reset for a new run of batches.
   const recipe = observation.recipe ?? NO_RECIPE;
   const reset =
-    observation.count != null && runtime.lastCount != null && observation.count < runtime.lastCount;
+    restarted ||
+    (observation.count != null && runtime.lastCount != null && observation.count < runtime.lastCount);
   const lotNumber =
     !runtime.lotNumber || reset || recipe !== runtime.lotRecipe
       ? lotNumberOf(observation.at)

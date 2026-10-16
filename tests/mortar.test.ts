@@ -84,6 +84,28 @@ describe('mix attribution', () => {
     expect(closed.batch).toMatchObject({ recipe: 'A', batches: 1, totalKg: 620, scaleKg: 631 });
     expect(closed.runtime.scalePeak).toBeNull();
   });
+
+  it('counts a new run after the counter is zeroed, even a run of one after another of one', () => {
+    const mix = (count: number, at: number) => ({ at, count, recipe: 'A', scale: 0, materials });
+    let runtime = attributeMix(null, mix(0, T0)).runtime;
+    const counted: number[] = [];
+    // One batch, zeroed for five minutes, one batch again; then a one-message glitch to zero.
+    for (const [count, at] of [
+      [1, 60_000],
+      [0, 120_000],
+      [0, 200_000],
+      [0, 420_000],
+      [1, 480_000],
+      [0, 485_000],
+      [1, 490_000],
+      [2, 600_000],
+    ]) {
+      const step = attributeMix(runtime, mix(count, T0 + at));
+      if (step.batch) counted.push(step.batch.batches);
+      runtime = step.runtime;
+    }
+    expect(counted).toEqual([1, 1, 1]);
+  });
 });
 
 describe('mortar summary', () => {
