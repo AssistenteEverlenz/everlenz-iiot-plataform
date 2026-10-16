@@ -417,15 +417,18 @@ export function registerMortarBoardRoutes(
     const timeline: Array<{ t: string; state: string; mix: Record<string, number> }> = [];
     const spoutCurves: Record<string, Array<number | null>> = {};
     for (const spout of spouts.rows) spoutCurves[spout.id] = [];
+    // The points sit on the five-minute slots: a shift that started with the line (06:26, as
+    // worked) begins at its slot, or no slot is ever found and the curve stays at zero.
+    const firstAt = Math.floor(chart.start.getTime() / STEP_MS) * STEP_MS;
     // Bags made before the chart's first point are carried in: the curve ends at the total.
     for (const [at, slot] of slots)
-      if (at < chart.start.getTime()) {
+      if (at < firstAt - STEP_MS) {
         doneBags += slot.bags;
         doneKg += slot.kg;
         for (const [spoutId, value] of Object.entries(slot.spouts))
           perSpoutDone[spoutId] = (perSpoutDone[spoutId] ?? 0) + value;
       }
-    for (let at = chart.start.getTime(); at <= chart.end.getTime(); at += STEP_MS) {
+    for (let at = firstAt; at <= chart.end.getTime(); at += STEP_MS) {
       const instant = new Date(at);
       const past = at <= now.getTime();
       const slot = slots.get(at - STEP_MS);
