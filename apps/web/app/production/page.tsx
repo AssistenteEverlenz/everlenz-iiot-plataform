@@ -1044,8 +1044,14 @@ function ShiftsModal({
       breaks: Array<{ start: string; end: string }>;
     }>;
     isDefault: boolean;
+    extensionMinutes?: number;
   }>(`/sites/${siteId}/shifts`, 600000);
   const [shifts, setShifts] = useState<ShiftForm[] | null>(null);
+  // How long the line may stand still after the shift before the stretched shift closes.
+  const [extension, setExtension] = useState<string | null>(null);
+  useEffect(() => {
+    if (loaded.data && extension == null) setExtension(String(loaded.data.extensionMinutes ?? 120));
+  }, [loaded.data, extension]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -1072,7 +1078,13 @@ function ShiftsModal({
     setSaving(true);
     setError('');
     try {
-      await mutate(`/sites/${siteId}/shifts`, 'PUT', { shifts });
+      const minutes = Math.round(Number(extension));
+      await mutate(`/sites/${siteId}/shifts`, 'PUT', {
+        shifts,
+        ...(Number.isFinite(minutes) && minutes >= 0 && minutes <= 720
+          ? { extensionMinutes: minutes }
+          : {}),
+      });
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar os turnos.');
@@ -1233,6 +1245,29 @@ function ShiftsModal({
             Sem turnos cadastrados, a fábrica volta a usar o turno padrão.
           </p>
         )}
+        <div className="shifts-extension">
+          <label className="field">
+            Turno acompanha a produção
+            <span className="shifts-extension-input">
+              <input
+                type="number"
+                min={0}
+                max={720}
+                step={5}
+                value={extension ?? ''}
+                onChange={(event) => setExtension(event.target.value)}
+              />
+              <small>min</small>
+            </span>
+          </label>
+          <p className="shifts-help">
+            Se a linha começa antes do turno ou continua produzindo depois dele, o turno acompanha
+            a produção: tudo conta no turno, paradas inclusive. Uma parada maior que este tempo
+            depois do fim do turno encerra o turno no último produto feito. Num dia sem turno
+            cadastrado, a produção vira um <b>turno extra</b>. Use 0 para manter o turno só no
+            horário cadastrado.
+          </p>
+        </div>
         {error && <div className="form-error">{error}</div>}
         <div className="modal-actions">
           <button type="button" disabled={saving} onClick={onClose}>

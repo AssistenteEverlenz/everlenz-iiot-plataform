@@ -1,6 +1,6 @@
 'use client';
 
-import { useContext, useMemo, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Bar,
   BarChart,
@@ -20,6 +20,7 @@ import { DayCalendar } from './DayCalendar';
 import { FormulaInput } from './FormulaInput';
 import { Gauge, ShiftCurve, stateInfo, type BoardData } from './ShiftBoard';
 import { ShiftAdherence } from './ShiftAdherence';
+import { inOvertime, shiftTitle, workedNote } from './workedShift';
 import {
   DEFAULT_MORTAR_UTILIZATION,
   MORTAR_UTILIZATION_VARIABLES,
@@ -53,9 +54,21 @@ type SpoutRow = {
   effectiveness: number | null;
   stops: number;
   stopSeconds: number;
+  longestStop: number;
   state: string;
+  recipe: string | null;
   product: string | null;
+  lastBagAt: string | null;
+  products: Array<{
+    recipe: string;
+    product: string | null;
+    bags: number;
+    kg: number | null;
+    runningS: number;
+    secondsPerBag: number | null;
+  }>;
 };
+export type { SpoutRow };
 type Stop = {
   spoutId: string;
   state: string;
@@ -113,8 +126,16 @@ export type MortarBoardResponse = {
   now: string;
   state: string;
   product: string | null;
-  shifts: Array<{ shiftId: string; name: string; start: string; end: string }>;
-  available: Array<{ shiftId: string; name: string; start: string; end: string }>;
+  shifts: Array<{
+    shiftId: string;
+    name: string;
+    start: string;
+    end: string;
+    plannedStart?: string;
+    plannedEnd?: string;
+    extra?: boolean;
+  }>;
+  available: Array<{ shiftId: string; name: string; start: string; end: string; extra?: boolean }>;
   board: MortarBoard;
   compare: { label: string; actual: Array<number | null> } | null;
   spouts: SpoutRow[];
@@ -179,7 +200,7 @@ export function MortarShiftBoard({
    * it receives the window the board reads (the shift, or the day), so the cards count the same
    * bags as the figures above them.
    */
-  children?: ReactNode | ((span: { start: string; end: string }) => ReactNode);
+  children?: ReactNode | ((data: MortarBoardResponse) => ReactNode);
 }) {
   const { user } = usePlatform();
   const palette = useContext(MortarColors);
@@ -211,6 +232,12 @@ export function MortarShiftBoard({
     30000,
   );
   const below = usePoll<MortarBoardResponse>(comparedDay ? query(comparedDay) : null, 60000);
+  // A line that works one shift reads its day only (the ceramic board's rule, ShiftBoard.tsx).
+  const registeredShifts = (response.data?.available ?? []).filter((item) => !item.extra).length;
+  const singleShift = Boolean(response.data) && registeredShifts <= 1;
+  useEffect(() => {
+    if (singleShift && mode === 'shift') setMode('day');
+  }, [singleShift, mode]);
   const days = usePoll<{ days: string[] }>(`/devices/${deviceId}/mortar/days`, 600000);
   const data = response.data;
   if (!data)
@@ -246,13 +273,22 @@ export function MortarShiftBoard({
   const title =
     (spoutName ? `Bico ${spoutName} · ` : pickedSpout ? `Bico ${pickedSpout.name} · ` : '') +
     (data.mode === 'day'
-      ? `Dia ${data.date.split('-').reverse().slice(0, 2).join('/')} · ${data.shifts.length} turno${data.shifts.length === 1 ? '' : 's'}`
+      ? `Dia ${data.date.split('-').reverse().slice(0, 2).join('/')}${workedNote(data.shifts, data.now)}`
       : data.shifts[0]
-        ? `${data.shifts[0].name} · ${clock(data.shifts[0].start)}–${clock(data.shifts[0].end)}`
+        ? shiftTitle(data.shifts[0], data.now)
         : 'Sem turno');
   const statusText =
-    data.status === 'running'
-      ? `termina em ${duration((new Date(board.span.end).getTime() - new Date(data.now).getTime()) / 1000)}`
+    data.status === 'running' && inOvertime(data.shifts[0], data.now)
+      ? 'em hora extra'
+      : data.status === 'running'
+      ? // The day view runs to midnight; what ends is the last shift of the day.
+        `termina em ${duration(
+          ((data.mode === 'day' && data.shifts.length
+            ? Math.max(...data.shifts.map((item) => new Date(item.end).getTime()))
+            : new Date(board.span.end).getTime()) -
+            new Date(data.now).getTime()) /
+            1000,
+        )}`
       : data.status === 'finished'
         ? data.mode === 'day'
           ? 'dia encerrado'
@@ -409,14 +445,16 @@ export function MortarShiftBoard({
               ))}
             </div>
           )}
-          <div className="shift-mode" role="group" aria-label="Período">
-            <button className={mode === 'shift' ? 'active' : ''} onClick={() => setMode('shift')}>
-              Turno
-            </button>
-            <button className={mode === 'day' ? 'active' : ''} onClick={() => setMode('day')}>
-              Dia
-            </button>
-          </div>
+          {!singleShift && (
+            <div className="shift-mode" role="group" aria-label="Período">
+              <button className={mode === 'shift' ? 'active' : ''} onClick={() => setMode('shift')}>
+                Turno
+              </button>
+              <button className={mode === 'day' ? 'active' : ''} onClick={() => setMode('day')}>
+                Dia
+              </button>
+            </div>
+          )}
         </div>
       </div>
       <div className="mortar-board-filters">
@@ -571,7 +609,7 @@ export function MortarShiftBoard({
         </div>
       </div>
 
-      {typeof children === 'function' ? children(board.span) : children}
+      {typeof children === 'function' ? children(data) : children}
 
       <div className="mortar-curve-block">
         <div className="mortar-curve-head">

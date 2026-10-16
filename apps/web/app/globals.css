@@ -13673,3 +13673,24 @@ button.mortar-spout:hover .mortar-spout-open {
     overflow-x: auto;
   }
 }
+
+/* The shift that follows the line: one field under the shifts, with what it does in words. */
+.shifts-extension {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e3eaec;
+}
+.shifts-extension-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.shifts-extension-input input {
+  width: 110px;
+  min-width: 0;
+}
+.shifts-extension-input small {
+  color: #71868d;
+}

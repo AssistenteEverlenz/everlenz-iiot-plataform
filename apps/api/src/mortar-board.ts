@@ -15,6 +15,7 @@ import {
 import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
 import { loadShifts } from './shift-production.js';
+import { effectiveShifts, type EffectiveOccurrence } from './effective-shifts.js';
 import {
   mortarUtilizationError,
   mortarUtilizationFrom,
@@ -41,8 +42,14 @@ type Bucket = {
   running_s: number;
   idle_s: number;
   off_s: number;
+  /** Share of the bucket inside the shifts as worked: the time states count only that part. */
+  weight?: number;
 };
 type Link = { recipe: string; name: string; nominal_kg: number; standard_rate: number | null };
+
+const registeredOf = (item: ShiftOccurrence) =>
+  'planned' in item ? (item as EffectiveOccurrence).planned : { start: item.start, end: item.end };
+const isExtra = (item: ShiftOccurrence) => 'extra' in item && (item as EffectiveOccurrence).extra;
 
 function occurrenceJson(item: ShiftOccurrence) {
   return {
@@ -52,21 +59,38 @@ function occurrenceJson(item: ShiftOccurrence) {
     start: item.start.toISOString(),
     end: item.end.toISOString(),
     plannedSeconds: item.plannedSeconds,
+    // The registered window, and whether the line worked past it (effective-shifts.ts).
+    plannedStart: registeredOf(item).start.toISOString(),
+    plannedEnd: registeredOf(item).end.toISOString(),
+    extra: isExtra(item),
   };
 }
 
-/** Which stretch of time the board reads: a shift of the day, or the whole day. */
+/**
+ * Which stretch of time the board reads: a shift of the day as the line worked it (stretched to
+ * the production around it, effective-shifts.ts), or the whole calendar day -- every bag of it,
+ * with the time states read over the day's shifts as worked.
+ */
 async function windowOf(
   db: Database,
   tenantId: string,
   siteId: string,
+  deviceId: string,
   query: { mode: 'shift' | 'day'; date?: string; shift?: string },
   now: Date,
 ) {
   const today = plantDate(now);
   const date = query.date ?? today;
   const { shifts, isDefault } = await loadShifts(db, tenantId, siteId);
-  const occurrences = expandShifts(shifts, addDays(date, -1), addDays(date, 1));
+  const occurrences = await effectiveShifts(db, {
+    tenantId,
+    siteId,
+    deviceId,
+    occurrences: expandShifts(shifts, addDays(date, -1), addDays(date, 1)),
+    dates: { from: addDays(date, -1), to: date < today ? date : today },
+    now,
+    source: 'mortar',
+  });
   const ofDate = occurrences.filter((item) => item.productionDate === date);
   const running = occurrences.find((item) => item.start <= now && now < item.end) ?? null;
   let chosen: ShiftOccurrence[] = [];
@@ -78,12 +102,16 @@ async function windowOf(
     const one = named ?? current ?? last ?? ofDate[0];
     chosen = one ? [one] : [];
   }
-  const span: TimeWindow = chosen.length
-    ? { start: chosen[0].start, end: chosen[chosen.length - 1].end }
-    : { start: plantInstant(date, '00:00'), end: plantInstant(addDays(date, 1), '00:00') };
-  const windows = chosen.length
-    ? chosen.flatMap((item) => productiveWindows(item))
-    : [{ start: span.start, end: span.end }];
+  const wholeDay = {
+    start: plantInstant(date, '00:00'),
+    end: plantInstant(addDays(date, 1), '00:00'),
+  };
+  const span: TimeWindow =
+    query.mode === 'day' || !chosen.length
+      ? wholeDay
+      : { start: chosen[0].start, end: chosen[chosen.length - 1].end };
+  // No shift and nothing made: no working time at all, not a whole day of idleness.
+  const windows = chosen.flatMap((item) => productiveWindows(item));
   return { date, today, isDefault, ofDate, chosen, span, windows };
 }
 
@@ -102,8 +130,10 @@ async function loadBuckets(
   deviceId: string,
   span: TimeWindow,
   spout: string | null,
+  /** The shifts as worked: given, the time of each bucket counts only inside them. */
+  windows?: TimeWindow[],
 ) {
-  return (
+  const rows = (
     await db.query<Bucket>(
       `SELECT bucket,spout_id,recipe,bags::float bags,running_s::float running_s,idle_s::float idle_s,off_s::float off_s
        FROM bagging_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4
@@ -112,6 +142,20 @@ async function loadBuckets(
       [tenantId, deviceId, span.start, span.end, spout],
     )
   ).rows;
+  if (!windows) return rows;
+  // Bags count wherever they were made; the time states only inside the shifts, so a spout left
+  // enabled through the night is not a night of idleness.
+  return rows.map((row) => {
+    const start = new Date(row.bucket);
+    const weight = productiveSecondsIn(windows, start, new Date(start.getTime() + 300_000)) / 300;
+    return {
+      ...row,
+      running_s: Number(row.running_s) * weight,
+      idle_s: Number(row.idle_s) * weight,
+      off_s: Number(row.off_s) * weight,
+      weight,
+    };
+  });
 }
 
 /** Availability, performance and their product for a set of buckets. */
@@ -124,7 +168,7 @@ function efficiencyOf(rows: Bucket[], product: Map<string, Link>) {
     const rate = product.get(row.recipe)?.standard_rate;
     if (!rate) continue;
     expected += (Number(row.running_s) / 3600) * Number(rate);
-    rated += Number(row.bags);
+    rated += Number(row.bags) * (row.weight ?? 1);
   }
   const availability = running + idle > 0 ? running / (running + idle) : null;
   const performance = expected > 0 ? rated / expected : null;
@@ -195,6 +239,7 @@ export function registerMortarBoardRoutes(
       db,
       tenantId,
       device.site_id,
+      id,
       query,
       now,
     );
@@ -210,7 +255,7 @@ export function registerMortarBoardRoutes(
         [tenantId, id],
       ),
       loadLinks(db, tenantId),
-      loadBuckets(db, tenantId, id, span, spoutFilter),
+      loadBuckets(db, tenantId, id, span, spoutFilter, windows),
       db.query<{
         spout_id: string;
         state: string;
@@ -332,7 +377,10 @@ export function registerMortarBoardRoutes(
           : null,
     };
 
-    const target = perShift == null || spoutFilter ? null : perShift * Math.max(1, chosen.length);
+    // The target belongs to the registered shifts: an extra shift has none.
+    const registeredCount = chosen.filter((item) => !isExtra(item)).length;
+    const target =
+      perShift == null || spoutFilter || !registeredCount ? null : perShift * registeredCount;
     const pace = elapsedProductive > 0 ? actual / elapsedProductive : 0;
     const remaining = Math.max(0, planned - elapsedProductive);
     const projected = status === 'upcoming' ? 0 : actual + pace * remaining;
@@ -499,16 +547,20 @@ export function registerMortarBoardRoutes(
       }
     }
 
-    // Stops of the window, and the ones going on now.
-    const stopList = stops.rows.map((row) => ({
-      spoutId: row.spout_id,
-      state: row.state,
-      startedAt: new Date(row.started_at).toISOString(),
-      endedAt: new Date(row.ended_at).toISOString(),
-      seconds: Number(row.seconds),
-      product: row.recipe ? (product.get(row.recipe)?.name ?? null) : null,
-      open: false,
-    }));
+    // Stops of the window, and the ones going on now: each counted only for its part inside the
+    // shifts as worked, so a spout left enabled overnight is not a night of stops.
+    const insideShifts = (start: Date, end: Date) => productiveSecondsIn(windows, start, end);
+    const stopList = stops.rows
+      .filter((row) => insideShifts(new Date(row.started_at), new Date(row.ended_at)) > 0)
+      .map((row) => ({
+        spoutId: row.spout_id,
+        state: row.state,
+        startedAt: new Date(row.started_at).toISOString(),
+        endedAt: new Date(row.ended_at).toISOString(),
+        seconds: insideShifts(new Date(row.started_at), new Date(row.ended_at)),
+        product: row.recipe ? (product.get(row.recipe)?.name ?? null) : null,
+        open: false,
+      }));
     if (status === 'running')
       for (const row of liveRows)
         if (row.stop_started_at && row.stop_state && nowState(row) !== 'offline')
@@ -517,7 +569,7 @@ export function registerMortarBoardRoutes(
             state: row.stop_state,
             startedAt: new Date(row.stop_started_at).toISOString(),
             endedAt: now.toISOString(),
-            seconds: (now.getTime() - new Date(row.stop_started_at).getTime()) / 1000,
+            seconds: insideShifts(new Date(row.stop_started_at), now),
             product: row.recipe ? (product.get(row.recipe)?.name ?? null) : null,
             open: true,
           });
@@ -560,8 +612,28 @@ export function registerMortarBoardRoutes(
         })(),
         stops: own.length,
         stopSeconds: own.reduce((total, stop) => total + stop.seconds, 0),
+        longestStop: own.reduce((most, stop) => Math.max(most, stop.seconds), 0),
         state: nowState(live),
+        recipe: live?.recipe ?? null,
         product: live?.recipe ? (product.get(live.recipe)?.name ?? live.recipe) : null,
+        lastBagAt: live?.last_increment_at ? new Date(live.last_increment_at).toISOString() : null,
+        // What the spout filled in the window, recipe by recipe: the spout cards read these.
+        products: [...new Set(rows.map((row) => row.recipe))]
+          .map((recipe) => {
+            const own = rows.filter((row) => row.recipe === recipe);
+            const bags = own.reduce((total, row) => total + Number(row.bags), 0);
+            const runningS = own.reduce((total, row) => total + Number(row.running_s), 0);
+            return {
+              recipe,
+              product: product.get(recipe)?.name ?? null,
+              bags,
+              kg: product.get(recipe) ? kgOf(recipe, bags) : null,
+              runningS,
+              secondsPerBag: bags > 0 ? runningS / bags : null,
+            };
+          })
+          .filter((item) => item.bags > 0)
+          .sort((a, b) => b.bags - a.bags),
       };
     });
 
@@ -640,14 +712,14 @@ export function registerMortarBoardRoutes(
     if (!device) return reply.code(404).send({ error: 'Device not found' });
     const metric = settings?.target_metric ?? 'bags';
     const now = new Date();
-    const { chosen, span } = await windowOf(db, tenantId, device.site_id, query, now);
+    const { chosen, span, windows } = await windowOf(db, tenantId, device.site_id, id, query, now);
     const [spouts, product, buckets] = await Promise.all([
       db.query<{ id: string; name: string }>(
         'SELECT id,name FROM bagging_spouts WHERE tenant_id=$1 AND device_id=$2 ORDER BY position',
         [tenantId, id],
       ),
       loadLinks(db, tenantId),
-      loadBuckets(db, tenantId, id, span, query.spout ?? null),
+      loadBuckets(db, tenantId, id, span, query.spout ?? null, windows),
     ]);
     const stepMs = query.step * 60_000;
     type Period = {

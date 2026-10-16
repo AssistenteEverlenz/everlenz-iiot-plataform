@@ -1,6 +1,7 @@
 'use client';
 
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { inOvertime, shiftTitle, workedNote } from './workedShift';
 import { useFirstDraw } from './firstDraw';
 import {
   Area,
@@ -44,6 +45,11 @@ interface Occurrence {
   start: string;
   end: string;
   plannedSeconds: number;
+  /** The registered window, when the line worked past it (effective-shifts.ts). */
+  plannedStart?: string;
+  plannedEnd?: string;
+  /** Production no shift covered, counted as a shift of its own. */
+  extra?: boolean;
 }
 export interface BoardData {
   span: { start: string; end: string };
@@ -189,8 +195,17 @@ export function minutesSeconds(seconds: number | null | undefined) {
 function statusLine(data: ShiftBoardResponse) {
   const now = new Date(data.now).getTime();
   const span = data.board?.span;
-  if (data.status === 'running' && span)
-    return `termina em ${duration((new Date(span.end).getTime() - now) / 1000)}`;
+  // Past the registered end with the line still producing: the shift runs as long as it does.
+  if (data.status === 'running' && inOvertime(data.shifts[0], data.now)) return 'em hora extra';
+  // The day view runs to midnight; what ends is the last shift of the day.
+  const ends =
+    data.mode === 'day' && data.shifts.length
+      ? Math.max(...data.shifts.map((item) => new Date(item.end).getTime()))
+      : span
+        ? new Date(span.end).getTime()
+        : null;
+  if (data.status === 'running' && ends != null)
+    return ends > now ? `termina em ${duration((ends - now) / 1000)}` : 'turno encerrado';
   if (data.status === 'finished') return 'turno encerrado';
   if (data.status === 'upcoming' && data.shifts[0])
     return `começa às ${clock(data.shifts[0].start)}`;
@@ -679,6 +694,9 @@ export function ShiftBoard({
   );
   // Both charts zoom together when two days are read one above the other.
   const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
+  // A plant that works one shift reads its day, and only its day: "turno ou dia" is a choice it
+  // never needs, and one button less to get lost in. The extra shifts of a stretched day do not
+  // count -- only the shifts the plant registered (effective-shifts.ts).
   const response = usePoll<ShiftBoardResponse>(
     day
       ? null
@@ -687,6 +705,11 @@ export function ShiftBoard({
         }`,
     30000,
   );
+  const registeredShifts = (response.data?.available ?? []).filter((item) => !item.extra).length;
+  const singleShift = Boolean(response.data) && registeredShifts <= 1;
+  useEffect(() => {
+    if (singleShift && mode === 'shift') setMode('day');
+  }, [singleShift, mode]);
   // Opened without the card's formulas (the operations report does that): take the ones the
   // device's own production card carries, so its calculations are charted there too.
   const config = usePoll<{ calculated?: CalculatedSetting[] }>(
@@ -815,7 +838,7 @@ export function ShiftBoard({
       data={shown}
       deviceId={deviceId}
       mode={day ? 'day' : mode}
-      onMode={day ? undefined : setMode}
+      onMode={day || singleShift ? undefined : setMode}
       shiftId={shiftId}
       onShift={day ? undefined : setShiftId}
       historical={Boolean(day)}
@@ -1104,11 +1127,12 @@ export function ShiftBoardView({
   const target = board?.target ?? null;
   const title =
     mode === 'day'
-      ? `Dia ${data.productionDate.split('-').reverse().slice(0, 2).join('/')} · ${
-          data.shifts.length
-        } turno${data.shifts.length === 1 ? '' : 's'}`
+      ? `Dia ${data.productionDate.split('-').reverse().slice(0, 2).join('/')}${workedNote(
+          data.shifts,
+          data.now,
+        )}`
       : data.shifts[0]
-        ? `${data.shifts[0].name} · ${clock(data.shifts[0].start)}–${clock(data.shifts[0].end)}`
+        ? shiftTitle(data.shifts[0], data.now)
         : 'Sem turno';
   const healthText = (() => {
     if (!board || !target || !target.health) return null;

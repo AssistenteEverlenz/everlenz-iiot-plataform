@@ -30,6 +30,11 @@ import {
 import { recordAudit } from './audit.js';
 import { MINIMUM_SECONDS, mergeStops } from './stop-consolidation.js';
 import { loadAdherence } from './shift-adherence.js';
+import {
+  effectiveShifts,
+  extensionMinutesOf,
+  type EffectiveOccurrence,
+} from './effective-shifts.js';
 
 // Production by shift (migration 018): the plant's shift calendar, the device's production
 // configuration, the live shift board and the shift history. Everything reads the 5-minute
@@ -241,6 +246,35 @@ export async function loadShiftsFor(db: Database, tenantId: string, siteId: stri
   const { shifts } = await loadShifts(db, tenantId, siteId);
   return expandShifts(shifts, addDays(date, -1), date);
 }
+
+/**
+ * The shifts of a range of production days as the line worked them (effective-shifts.ts): the
+ * registered ones stretched to the production around them, plus the extra shifts of production
+ * no shift took in. Every board, report and stop count reads its shifts from here.
+ */
+export async function workedShifts(
+  db: Database,
+  tenantId: string,
+  siteId: string,
+  deviceId: string,
+  shifts: ShiftDefinition[],
+  from: string,
+  to: string,
+  now: Date,
+) {
+  const today = plantDate(now);
+  return effectiveShifts(db, {
+    tenantId,
+    siteId,
+    deviceId,
+    occurrences: expandShifts(shifts, from, to),
+    dates: { from, to: to < today ? to : today },
+    now,
+  });
+}
+const registeredOf = (item: ShiftOccurrence) =>
+  'planned' in item ? (item as EffectiveOccurrence).planned : { start: item.start, end: item.end };
+const isExtra = (item: ShiftOccurrence) => 'extra' in item && (item as EffectiveOccurrence).extra;
 
 export async function loadShifts(db: Database, tenantId: string, siteId: string) {
   const result = await db.query<{
@@ -527,10 +561,19 @@ async function buildBoard(
   occurrences: ShiftOccurrence[],
   fallbackSpan: TimeWindow,
   now: Date,
+  /** The whole calendar day, on the day view: everything made in it counts. */
+  spanOverride?: TimeWindow,
 ) {
-  const span = occurrences.length ? spanOf(occurrences) : fallbackSpan;
+  const span = spanOverride ?? (occurrences.length ? spanOf(occurrences) : fallbackSpan);
   const windows = occurrences.flatMap(productiveWindows);
   const planned = occurrences.reduce((total, item) => total + item.plannedSeconds, 0);
+  // The target belongs to the registered shifts, spread over their registered hours: a shift
+  // that ran late made more time, not more target, and an extra shift has none.
+  const registered = occurrences.filter((item) => !isExtra(item));
+  const registeredWindows = registered.flatMap((item) =>
+    productiveWindows({ ...item, ...registeredOf(item) }),
+  );
+  const registeredPlanned = registered.reduce((total, item) => total + item.plannedSeconds, 0);
   const until = new Date(Math.min(span.end.getTime(), now.getTime()));
   const buckets = await loadBuckets(
     db,
@@ -540,7 +583,18 @@ async function buildBoard(
     new Date(until.getTime() + BUCKET_MS),
   );
   const closingSeconds = closingSecondsOf(config);
-  const summary = summarize(buckets, span, windows, now, closingSeconds);
+  // On the day view the totals are the calendar day's; the states are read over the shifts as
+  // worked, so the waiting and closing rules see the shifts' own edges, as on the shift view.
+  const stateSpan = spanOverride && occurrences.length ? spanOf(occurrences) : span;
+  const states = summarize(buckets, stateSpan, windows, now, closingSeconds);
+  const dayTotals = stateSpan === span ? states : summarize(buckets, span, windows, now, closingSeconds);
+  const summary = {
+    ...states,
+    pieces: dayTotals.pieces,
+    pallets: dayTotals.pallets,
+    tons: dayTotals.tons,
+    products: dayTotals.products,
+  };
   const pallets = config.pallets_tag_id
     ? await palletTiming(db, tenantId, deviceId, config.pallets_tag_id, span.start, until, summary)
     : null;
@@ -562,7 +616,7 @@ async function buildBoard(
   const perShift = await targetFor(db, tenantId, deviceId, config, until);
   const utilizationFormula =
     (await utilizationFormulas(db, tenantId, [deviceId])).get(deviceId) ?? null;
-  const targetValue = perShift ? perShift.value * Math.max(occurrences.length, 0) : null;
+  const targetValue = perShift ? perShift.value * registered.length : null;
 
   // Cumulative curve by bucket end: planned (target spread over productive time), actual and,
   // after now, the projection at the pace of the last productive hour.
@@ -614,8 +668,9 @@ async function buildBoard(
     curve.push({
       t: pointTime.toISOString(),
       planned:
-        targetValue && planned > 0
-          ? (targetValue * productiveSecondsIn(windows, span.start, pointTime)) / planned
+        targetValue && registeredPlanned > 0
+          ? (targetValue * productiveSecondsIn(registeredWindows, span.start, pointTime)) /
+            registeredPlanned
           : null,
       actual: beforeNow ? cumulative : null,
       projected:
@@ -646,8 +701,8 @@ async function buildBoard(
     /** Seconds of each state inside the block, so a two-minute stop still shows. */
     mix?: Record<string, number>;
   }> = [];
-  const started = firstProducingAt(buckets, span);
-  const closingFrom = closingFromAt(buckets, span, closingSeconds);
+  const started = firstProducingAt(buckets, stateSpan);
+  const closingFrom = closingFromAt(buckets, stateSpan, closingSeconds);
   for (let at = firstBucket; at < until.getTime(); at += BUCKET_MS) {
     const start = new Date(at);
     const end = new Date(Math.min(at + BUCKET_MS, until.getTime()));
@@ -656,7 +711,12 @@ async function buildBoard(
       const worked = (statesByBucket.get(at)?.producing ?? 0) > 0;
       timeline.push({
         t: start.toISOString(),
-        state: worked ? 'producing' : occurrences.length ? 'pause' : 'outside',
+        // Inside a shift and not productive is its pause; anywhere else in the day is outside.
+        state: worked
+          ? 'producing'
+          : occurrences.some((item) => item.start <= start && start < item.end)
+            ? 'pause'
+            : 'outside',
       });
       continue;
     }
@@ -728,7 +788,11 @@ async function buildBoard(
           value: targetValue,
           source: perShift?.source ?? 'fixed',
           actual,
-          plannedToNow: planned > 0 ? (targetValue * summary.elapsedProductive) / planned : 0,
+          plannedToNow:
+            registeredPlanned > 0
+              ? (targetValue * productiveSecondsIn(registeredWindows, span.start, until)) /
+                registeredPlanned
+              : 0,
           projected,
           ratePerHour: ratePerSecond * 3600,
           requiredPerHour:
@@ -815,6 +879,10 @@ function occurrenceJson(occurrence: ShiftOccurrence) {
       end: pause.end.toISOString(),
     })),
     plannedSeconds: occurrence.plannedSeconds,
+    // The registered window, and whether the line worked past it (effective-shifts.ts).
+    plannedStart: registeredOf(occurrence).start.toISOString(),
+    plannedEnd: registeredOf(occurrence).end.toISOString(),
+    extra: isExtra(occurrence),
   };
 }
 
@@ -1178,15 +1246,32 @@ export async function closeShiftReports(
     const done = new Set(
       existing.rows.map((row) => `${row.kind}|${new Date(row.planned_start).getTime()}`),
     );
-    const occurrences = expandShifts(shifts, addDays(fromDate, -1), lastDate);
+    const occurrences = await workedShifts(
+      db,
+      device.tenant_id,
+      device.site_id,
+      device.id,
+      shifts,
+      addDays(fromDate, -1),
+      lastDate,
+      now,
+    );
+    // A shift is closed once it can no longer stretch: its limit has passed since its end (or
+    // since its registered end, when the line stopped before it).
+    const reach = (await extensionMinutesOf(db, device.tenant_id, device.site_id)) * 60_000;
     // A shift whose end was moved after it closed is reopened: its report goes away (the running
     // shift, or a rewrite once the new end passed, takes its place) and keeps its target.
     const reopened = new Map<number, { metric: string | null; value: number | null }>();
     for (const row of existing.rows) {
       if (row.kind !== 'shift' || row.deleted_at) continue;
       const start = new Date(row.planned_start).getTime();
-      const occurrence = occurrences.find((item) => item.start.getTime() === start);
-      if (!occurrence || occurrence.end.getTime() === new Date(row.planned_end).getTime()) continue;
+      const occurrence = occurrences.find((item) => registeredOf(item).start.getTime() === start);
+      if (
+        !occurrence ||
+        isExtra(occurrence) ||
+        registeredOf(occurrence).end.getTime() === new Date(row.planned_end).getTime()
+      )
+        continue;
       await db.query('DELETE FROM shift_reports WHERE id=$1', [row.id]);
       done.delete(`shift|${start}`);
       reopened.set(start, {
@@ -1237,10 +1322,13 @@ export async function closeShiftReports(
       written += 1;
     };
     for (const occurrence of occurrences) {
+      const registeredWindow = registeredOf(occurrence);
       if (occurrence.productionDate < fromDate || occurrence.productionDate > lastDate) continue;
       if (occurrence.end.getTime() > now.getTime() - 60_000) continue;
+      if (now.getTime() < Math.max(occurrence.end.getTime(), registeredWindow.end.getTime()) + reach)
+        continue;
       if (occurrence.start < since) continue;
-      if (done.has(`shift|${occurrence.start.getTime()}`)) continue;
+      if (done.has(`shift|${registeredWindow.start.getTime()}`)) continue;
       const buckets = await loadBuckets(
         db,
         device.tenant_id,
@@ -1248,21 +1336,25 @@ export async function closeShiftReports(
         occurrence.start,
         occurrence.end,
       );
+      // The report is keyed by the registered window; its numbers are the worked window's.
       await insert({
         kind: 'shift',
-        shiftId: occurrence.shiftId,
+        shiftId: isExtra(occurrence) ? null : occurrence.shiftId,
         name: occurrence.name,
         date: occurrence.productionDate,
-        start: occurrence.start,
-        end: occurrence.end,
-        // The target this shift had (kept on a recount), else its target at the end of it.
-        target: options.targets?.get(occurrence.start.getTime()) ??
-          reopened.get(occurrence.start.getTime()) ?? {
-            metric: device.target_metric,
-            value:
-              (await targetFor(db, device.tenant_id, device.id, device, occurrence.end))?.value ??
-              null,
-          },
+        start: registeredWindow.start,
+        end: registeredWindow.end,
+        // The target this shift had (kept on a recount), else its target at the end of it; an
+        // extra shift has none.
+        target: isExtra(occurrence)
+          ? { metric: device.target_metric, value: null }
+          : (options.targets?.get(registeredWindow.start.getTime()) ??
+            reopened.get(registeredWindow.start.getTime()) ?? {
+              metric: device.target_metric,
+              value:
+                (await targetFor(db, device.tenant_id, device.id, device, occurrence.end))
+                  ?.value ?? null,
+            }),
         planned: occurrence.plannedSeconds,
         summary: summarize(
           buckets,
@@ -1312,7 +1404,16 @@ async function panelBoard(db: Database, tenantId: string, deviceId: string, now:
   if (!config || !(config.blocks_tag_id || config.pallets_tag_id)) return null;
   const { shifts } = await loadShifts(db, tenantId, config.site_id);
   const today = plantDate(now);
-  const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 7));
+  const occurrences = await workedShifts(
+    db,
+    tenantId,
+    config.site_id,
+    deviceId,
+    shifts,
+    addDays(today, -1),
+    addDays(today, 7),
+    now,
+  );
   const selected =
     occurrences.find((item) => item.start <= now && now < item.end) ??
     [...occurrences]
@@ -1423,7 +1524,16 @@ async function shiftDetailData(
     const now = new Date();
     const { shifts } = await loadShifts(db, tenantId, config.site_id);
     const today = plantDate(now);
-    const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 1));
+    const occurrences = await workedShifts(
+      db,
+      tenantId,
+      config.site_id,
+      id,
+      shifts,
+      addDays(today, -1),
+      addDays(today, 1),
+      now,
+    );
     const running = occurrences.find((item) => item.start <= now && now < item.end) ?? null;
     const date = running?.productionDate ?? today;
     const chosen =
@@ -1512,9 +1622,9 @@ export async function productionDetailData(
 ) {
     const now = new Date();
     const { shifts, isDefault } = await loadShifts(db, tenantId, config.site_id);
-    const ofDay = expandShifts(shifts, addDays(query.date, -1), query.date).filter(
-      (item) => item.productionDate === query.date,
-    );
+    const ofDay = (
+      await workedShifts(db, tenantId, config.site_id, id, shifts, addDays(query.date, -1), query.date, now)
+    ).filter((item) => item.productionDate === query.date);
     let occurrences: ShiftOccurrence[] = query.kind === 'day' ? ofDay : [];
     let fallback: TimeWindow = {
       start: plantInstant(query.date, '00:00'),
@@ -1522,7 +1632,9 @@ export async function productionDetailData(
     };
     if (query.kind === 'shift' && query.start) {
       const start = new Date(query.start).getTime();
-      const match = ofDay.find((item) => item.start.getTime() === start);
+      const match = ofDay.find(
+        (item) => registeredOf(item).start.getTime() === start || item.start.getTime() === start,
+      );
       if (match) occurrences = [match];
       else if (query.end) fallback = { start: new Date(query.start), end: new Date(query.end) };
     }
@@ -1530,7 +1642,17 @@ export async function productionDetailData(
       query.kind === 'shift' && query.end
         ? new Date(Math.min(now.getTime(), new Date(query.end).getTime()))
         : now;
-    const board = await buildBoard(db, tenantId, id, config, occurrences, fallback, until);
+    // The day reads the whole calendar day: everything made in it, the shifts' time for the rest.
+    const board = await buildBoard(
+      db,
+      tenantId,
+      id,
+      config,
+      occurrences,
+      fallback,
+      until,
+      query.kind === 'day' ? fallback : undefined,
+    );
     const spanEnd = occurrences.length
       ? Math.max(...occurrences.map((item) => item.end.getTime()))
       : fallback.end.getTime();
@@ -2149,7 +2271,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       id,
     ]);
     if (!site.rows.length) return reply.code(404).send({ error: 'Site not found' });
-    return loadShifts(db, tenantId, id);
+    return {
+      ...(await loadShifts(db, tenantId, id)),
+      // How long a stop after the shift may last before the stretched shift closes.
+      extensionMinutes: await extensionMinutesOf(db, tenantId, id),
+    };
   });
 
   // Replaces the plant's whole calendar at once, so a half-edited set of shifts never exists.
@@ -2172,9 +2298,19 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
             }),
           )
           .max(6),
+        extensionMinutes: z.number().int().min(0).max(720).optional(),
       })
       .parse(req.body);
     const current = access.principal(req);
+    // Migration 047 not applied yet: the limit cannot be kept, the shifts still are.
+    const extensionColumn =
+      body.extensionMinutes !== undefined &&
+      (
+        await db.query(
+          `SELECT 1 FROM information_schema.columns
+           WHERE table_name='sites' AND column_name='shift_extension_minutes' LIMIT 1`,
+        )
+      ).rows.length > 0;
     const site = await db.query('SELECT id FROM sites WHERE tenant_id=$1 AND id=$2', [
       current.tenantId,
       id,
@@ -2207,14 +2343,26 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
             index,
           ],
         );
+      if (extensionColumn)
+        await sql.query('UPDATE sites SET shift_extension_minutes=$3 WHERE tenant_id=$1 AND id=$2', [
+          current.tenantId,
+          id,
+          body.extensionMinutes,
+        ]);
       await recordAudit(sql, req, current, {
         action: 'site.shifts.update',
         targetType: 'site',
         targetId: id,
-        summary: { shifts: shifts.map((shift) => `${shift.name} ${shift.start}-${shift.end}`) },
+        summary: {
+          shifts: shifts.map((shift) => `${shift.name} ${shift.start}-${shift.end}`),
+          extensionMinutes: body.extensionMinutes ?? null,
+        },
       });
     });
-    return loadShifts(db, current.tenantId, id);
+    return {
+      ...(await loadShifts(db, current.tenantId, id)),
+      extensionMinutes: await extensionMinutesOf(db, current.tenantId, id),
+    };
   });
 
   app.get('/api/devices/:id/production-config', async (req, reply) => {
@@ -2464,7 +2612,9 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const { shifts } = config
       ? await loadShifts(db, tenantId, config.site_id)
       : { shifts: DEFAULT_SHIFTS };
-    const occurrences = expandShifts(shifts, from, to);
+    const occurrences = config
+      ? await workedShifts(db, tenantId, config.site_id, id, shifts, from, to, now)
+      : expandShifts(shifts, from, to);
     const closingSeconds = config ? closingSecondsOf(config) : 0;
     const buckets = occurrences.length
       ? await loadBuckets(
@@ -2734,7 +2884,16 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const { shifts, isDefault } = await loadShifts(db, tenantId, config.site_id);
     const today = plantDate(now);
     // A week ahead, so on a weekend the board still shows Monday's shift as the next one.
-    const occurrences = expandShifts(shifts, addDays(today, -1), addDays(today, 7));
+    const occurrences = await workedShifts(
+      db,
+      tenantId,
+      config.site_id,
+      id,
+      shifts,
+      addDays(today, -1),
+      addDays(today, 7),
+      now,
+    );
     const running = occurrences.find((item) => item.start <= now && now < item.end) ?? null;
     const next = occurrences.find((item) => item.start > now) ?? null;
     const last =
@@ -2763,17 +2922,21 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     if (mode === 'day') {
       const date = running?.productionDate ?? today;
       const dayOccurrences = occurrences.filter((item) => item.productionDate === date);
+      const wholeDay = {
+        start: plantInstant(date, '00:00'),
+        end: plantInstant(addDays(date, 1), '00:00'),
+      };
+      // The day is 00:00 to 23:59: everything made in it counts; the shifts' time (as worked)
+      // is what the efficiency reads.
       const board = await buildBoard(
         db,
         tenantId,
         id,
         config,
         dayOccurrences,
-        {
-          start: plantInstant(date, '00:00'),
-          end: plantInstant(addDays(date, 1), '00:00'),
-        },
+        wholeDay,
         now,
+        wholeDay,
       );
       // Each shift of the day counted on its own, so the day view says what belongs to which
       // instead of one number the plant cannot take apart.
@@ -2996,28 +3159,48 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const now = new Date();
     const { shifts, isDefault } = await loadShifts(db, tenantId, config.site_id);
     const today = plantDate(now);
-    const running = expandShifts(shifts, addDays(today, -1), today).find(
-      (item) => item.start <= now && now < item.end,
+    const worked = await workedShifts(
+      db,
+      tenantId,
+      config.site_id,
+      id,
+      shifts,
+      addDays(today, -1),
+      today,
+      now,
     );
+    // The shift running, or the last one still waiting to close (it may yet stretch): until its
+    // report is written, the history shows it from the readings.
+    const reach = (await extensionMinutesOf(db, tenantId, config.site_id)) * 60_000;
+    const running =
+      worked.find((item) => item.start <= now && now < item.end) ??
+      [...worked]
+        .reverse()
+        .find(
+          (item) =>
+            item.end <= now &&
+            now.getTime() < Math.max(item.end.getTime(), registeredOf(item).end.getTime()) + reach,
+        );
     let open = null;
     if (running && running.productionDate >= query.from && running.productionDate <= query.to) {
-      const buckets = await loadBuckets(db, tenantId, id, running.start, now);
+      const until = new Date(Math.min(now.getTime(), running.end.getTime()));
+      const buckets = await loadBuckets(db, tenantId, id, running.start, until);
       const summary = summarize(
         buckets,
         running,
         productiveWindows(running),
-        now,
+        until,
         closingSecondsOf(config),
       );
       open = {
         id: 'open',
         kind: 'shift',
         open: true,
-        shift_id: running.shiftId,
+        shift_id: isExtra(running) ? null : running.shiftId,
         shift_name: running.name,
         production_date: running.productionDate,
-        planned_start: running.start,
-        planned_end: running.end,
+        planned_start: registeredOf(running).start,
+        planned_end: registeredOf(running).end,
         planned_seconds: running.plannedSeconds,
         pieces: summary.pieces,
         pallets: summary.pallets,
@@ -3061,9 +3244,9 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const now = new Date();
     const { shifts } = await loadShifts(db, current.tenantId, config.site_id);
     const today = plantDate(now);
-    const running = expandShifts(shifts, addDays(today, -1), today).find(
-      (item) => item.start <= now && now < item.end,
-    );
+    const running = (
+      await workedShifts(db, current.tenantId, config.site_id, id, shifts, addDays(today, -1), today, now)
+    ).find((item) => item.start <= now && now < item.end);
     if (!running)
       return reply
         .code(400)

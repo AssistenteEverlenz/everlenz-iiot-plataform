@@ -89,8 +89,9 @@ describe('resumo diário no WhatsApp', () => {
       )
     ).rows[0];
     expect(message.phone).toBe('5527999998888');
-    // The verdict comes right under the frame of #.
-    expect(message.body.split('\n')[1].startsWith('🟢 *Haiwell A7 Teste · 120 paletes · 120%*')).toBe(true);
+    // The verdict comes right under the frame of #. The day is 00:00 to 23:59: the 12 pallets
+    // made after the shift are in the total.
+    expect(message.body.split('\n')[1].startsWith('🟢 *Haiwell A7 Teste · 132 paletes · 132%*')).toBe(true);
     expect(message.body).toContain('🎯 Meta 100');
     expect(message.body).toContain('➕ 12 paletes após o turno');
     if (process.env.SHOW_MESSAGE) console.log(message.body);

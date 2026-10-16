@@ -4249,4 +4249,10 @@
   :root[data-theme='dark'] .mx-delta.good {
     color: #82e3b7;
   }
+  :root[data-theme='dark'] .shifts-extension {
+    border-top: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .shifts-extension-input small {
+    color: #8d9ea3;
+  }
 }

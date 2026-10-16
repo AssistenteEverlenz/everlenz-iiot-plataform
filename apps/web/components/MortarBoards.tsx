@@ -19,7 +19,7 @@ import {
 import { usePoll } from './data';
 import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
-import { MortarShiftBoard } from './MortarShift';
+import { MortarShiftBoard, type MortarBoardResponse } from './MortarShift';
 import { LotsTable, useLots } from './MortarLots';
 import {
   PRODUCT_COLORS,
@@ -290,11 +290,12 @@ export function Bagging({
   if (boardDate)
     return (
       <MortarShiftBoard deviceId={deviceId} date={boardDate} onDate={onDate}>
-        {(span) => (
+        {(board) => (
           <SpoutsInWindow
             deviceId={deviceId}
             boardDate={boardDate}
-            span={span}
+            board={board}
+            unlinkedBags={totals.unlinkedBags}
             live={live}
             onLink={onLink}
           />
@@ -349,34 +350,69 @@ export function Bagging({
   );
 }
 
-/** The spout cards of the board's window: the summary read to the instant of the shift. */
+/**
+ * The spout cards of the board: read from the board's own answer, so each spout counts the bags
+ * and the time of the board's window (the shift as worked, or the day) and the three add up to
+ * its figures by construction. The window a spout opens reads the summary of the same window.
+ */
 function SpoutsInWindow({
   deviceId,
   boardDate,
-  span,
+  board,
+  unlinkedBags,
   live,
   onLink,
 }: {
   deviceId: string;
   boardDate: string;
-  span: { start: string; end: string };
+  board: MortarBoardResponse;
+  unlinkedBags: number;
   live: boolean;
   onLink?: () => void;
 }) {
   const palette = useContext(MortarColors);
   const [spoutOpen, setSpoutOpen] = useState<string | null>(null);
+  const span = board.board.span;
   const summary = usePoll<Summary>(
-    `/devices/${deviceId}/mortar?from=${boardDate}&to=${boardDate}` +
-      `&start=${encodeURIComponent(span.start)}&end=${encodeURIComponent(span.end)}`,
+    spoutOpen
+      ? `/devices/${deviceId}/mortar?from=${boardDate}&to=${boardDate}` +
+          `&start=${encodeURIComponent(span.start)}&end=${encodeURIComponent(span.end)}`
+      : null,
     30000,
   );
+  const spouts: Spout[] = board.spouts.map((row, position) => ({
+    id: row.id,
+    position,
+    name: row.name,
+    state:
+      row.state === 'producing'
+        ? 'running'
+        : row.state === 'disabled'
+          ? 'off'
+          : row.state === 'idle' || row.state === 'offline'
+            ? row.state
+            : 'unknown',
+    recipe: row.recipe,
+    product: row.product,
+    lastBagAt: row.lastBagAt,
+    bags: row.bags,
+    kg: row.kg,
+    runningS: row.runningS,
+    idleS: row.idleS,
+    offS: row.offS,
+    bagsPerHour: row.pacePerHour,
+    secondsPerBag: row.secondsPerBag,
+    products: row.products,
+    stops: row.stops,
+    stopSeconds: row.stopSeconds,
+    longestStop: row.longestStop,
+    performance: row.performance,
+  }));
+  const opened = summary.data?.bagging.spouts.find((spout) => spout.id === spoutOpen);
   const data = summary.data;
-  if (!data) return <div className="stops-empty">{summary.error ?? 'Carregando os bicos…'}</div>;
-  const { totals, spouts } = data.bagging;
-  const opened = spouts.find((spout) => spout.id === spoutOpen);
   return (
     <>
-      <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
+      <Unlinked bags={unlinkedBags} onLink={onLink} />
       <div className="mortar-divider" role="separator" />
       <div className="mortar-spouts">
         {spouts.map((spout, index) => (
@@ -389,7 +425,7 @@ function SpoutsInWindow({
           />
         ))}
       </div>
-      {opened && (
+      {opened && data && (
         <SpoutModal
           data={data}
           spout={opened}
