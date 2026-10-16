@@ -3980,12 +3980,9 @@
   :root[data-theme='dark'] .mortar-spout-now.mortar-spout-now-none b {
     color: #798e95;
   }
-  :root[data-theme='dark'] .mx-head {
-    border-bottom: 1px solid #202e32;
-  }
   :root[data-theme='dark'] .mx-recipe span,
-  :root[data-theme='dark'] .mx-label,
-  :root[data-theme='dark'] .mx-proc-head small {
+  :root[data-theme='dark'] .mx-section-title,
+  :root[data-theme='dark'] .mx-bars-head {
     color: #8d9ea3;
   }
   :root[data-theme='dark'] .mx-recipe b {
@@ -4018,157 +4015,190 @@
   :root[data-theme='dark'] .mx-pills small {
     color: #798e95;
   }
+  :root[data-theme='dark'] .mx-pills small u {
+    background: #374e56;
+  }
+  :root[data-theme='dark'] .mx-pills small.live u {
+    background: #1fbf7a;
+    box-shadow: 0 0 0 3px #1fbf7a2e;
+  }
   :root[data-theme='dark'] .mx-pills small.stale {
     color: #e29883;
   }
-  :root[data-theme='dark'] .mx-proc {
-    border: 1px solid #223035;
-    background: #141d1f;
-  }
-  :root[data-theme='dark'] .mx-proc-head strong {
-    color: #e0e6e8;
-  }
-  :root[data-theme='dark'] .mx-proc-missing {
-    border: 1px dashed #2c3f45;
-    color: #8d9ea3;
-  }
-  :root[data-theme='dark'] .mx-now.work > i {
-    box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand-accent, #12b8a6) 18%, transparent);
-  }
-  :root[data-theme='dark'] .mx-now > div:first-of-type span {
-    color: #8d9ea3;
-  }
-  :root[data-theme='dark'] .mx-now > div:first-of-type b {
-    color: #e0e6e8;
-  }
-  :root[data-theme='dark'] .mx-now.wait > div:first-of-type b {
-    color: #f4c071;
-  }
-  :root[data-theme='dark'] .mx-elapsed b {
-    color: #e0e6e8;
-  }
-  :root[data-theme='dark'] .mx-elapsed small {
-    color: #798e95;
-  }
-  :root[data-theme='dark'] .mx-elapsed.warn b {
-    color: #e9be7c;
-  }
-  :root[data-theme='dark'] .mx-elapsed.bad b {
-    color: #e29883;
-  }
-  :root[data-theme='dark'] .mx-progress {
-    background: #1e2b2f;
-  }
-  :root[data-theme='dark'] .mx-progress i {
-    background: var(--brand-accent, #12b8a6);
-  }
-  :root[data-theme='dark'] .mx-progress.warn i {
-    background: #f2a93b;
-  }
-  :root[data-theme='dark'] .mx-progress.bad i {
+  :root[data-theme='dark'] .mx-pills small.stale u {
     background: #e4572e;
   }
-  :root[data-theme='dark'] .mx-progress u {
-    background: #0b2028;
+  :root[data-theme='dark'] .mx-halves::before {
+    background: linear-gradient(180deg, transparent, #27373c 18%, #27373c 82%, transparent);
   }
-  :root[data-theme='dark'] .mx-track li {
-    border: 1px solid #223035;
-    background: #12191c;
+  :root[data-theme='dark'] .mx-half {
+    background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand-accent, #12b8a6) 7%, #12191c) 0%,
+    color-mix(in srgb, var(--brand-accent, #12b8a6) 2%, #12191c) 45%,
+    transparent 100%
+  );
+  }
+  :root[data-theme='dark'] .mx-half-head h3 {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-half-head h3::after {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .mx-half-head small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mx-missing {
+    background: rgba(18, 25, 28, 0.702);
     color: #8d9ea3;
   }
-  :root[data-theme='dark'] .mx-track li.active {
-    border-color: var(--brand-accent, #12b8a6);
+  :root[data-theme='dark'] .mx-step {
+    background: rgba(18, 25, 28, 0.8);
+    box-shadow: 0 1px 0 #0b20280a;
+  }
+  :root[data-theme='dark'] .mx-step.work > i {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand-accent, #12b8a6) 18%, transparent);
+  }
+  :root[data-theme='dark'] .mx-step.wait > i {
+    box-shadow: 0 0 0 5px #f2a93b2e;
+  }
+  :root[data-theme='dark'] .mx-step > div span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .mx-step > div b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-step.wait > div b {
+    color: #f4c071;
+  }
+  :root[data-theme='dark'] .mx-step > em {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-step > em small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mx-step > em.warn {
+    color: #e9be7c;
+  }
+  :root[data-theme='dark'] .mx-step > em.bad {
+    color: #e29883;
+  }
+  :root[data-theme='dark'] .mx-hero b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-hero b.over {
+    color: #e29883;
+  }
+  :root[data-theme='dark'] .mx-hero span {
+    color: #b2c1c6;
+  }
+  :root[data-theme='dark'] .mx-hero em {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mx-fill-cover {
+    background: rgba(18, 25, 28, 0.769);
+  }
+  :root[data-theme='dark'] .mx-fill-edge {
+    background: #0b2028;
+  }
+  :root[data-theme='dark'] .mx-legend-materials li {
+    color: #b2c1c6;
+  }
+  :root[data-theme='dark'] .mx-legend-materials li b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-legend-materials li.dosing {
     background: var(--brand-accent, #12b8a6);
     color: #fff;
   }
-  :root[data-theme='dark'] .mx-track li.wait.active {
-    border-color: #f2a93b;
-    background: #f2a93b;
+  :root[data-theme='dark'] .mx-legend-materials li.dosing b {
+    color: #fff;
   }
-  :root[data-theme='dark'] .mx-scale {
-    border-top: 1px dashed #233237;
-  }
-  :root[data-theme='dark'] .mx-big b {
-    color: #e0e6e8;
-  }
-  :root[data-theme='dark'] .mx-big small {
-    color: #8d9ea3;
-  }
-  :root[data-theme='dark'] .mx-big em {
-    color: #e0e6e8;
-  }
-  :root[data-theme='dark'] .mx-gauge {
+  :root[data-theme='dark'] .mx-progress-big {
     background: #1e2b2f;
   }
-  :root[data-theme='dark'] .mx-gauge i {
+  :root[data-theme='dark'] .mx-progress-big i {
     background: var(--brand-accent, #12b8a6);
   }
-  :root[data-theme='dark'] .mx-materials li span {
+  :root[data-theme='dark'] .mx-progress-big i.over {
+    background: #e4572e;
+  }
+  :root[data-theme='dark'] .mx-bars-head small {
+    color: #a1b1b5;
+  }
+  :root[data-theme='dark'] .mx-bar-row > span,
+  :root[data-theme='dark'] .mx-bar-pair > span {
     color: #b2c1c6;
   }
-  :root[data-theme='dark'] .mx-materials li b {
+  :root[data-theme='dark'] .mx-bar-row > b,
+  :root[data-theme='dark'] .mx-bar-pair > b {
     color: #e0e6e8;
   }
-  :root[data-theme='dark'] .mx-material-bar {
-    background: #1b262a;
-  }
-  :root[data-theme='dark'] .mx-materials li.dosing {
-    outline: 1px solid var(--brand-accent, #12b8a6);
-    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 8%, #12191c);
-  }
-  :root[data-theme='dark'] .mx-materials li.dosing span::after {
-    color: var(--brand-accent, #7de8dc);
-  }
-  :root[data-theme='dark'] .mx-times {
-    border-top: 1px dashed #233237;
-  }
-  :root[data-theme='dark'] .mx-times-head span {
+  :root[data-theme='dark'] .mx-bar-pair > b.muted {
     color: #798e95;
   }
-  :root[data-theme='dark'] .mx-times-row span {
-    color: #b2c1c6;
+  :root[data-theme='dark'] .mx-bar-pair > b small.mx-up {
+    color: #e29883;
   }
-  :root[data-theme='dark'] .mx-times-row b {
-    color: #e0e6e8;
-  }
-  :root[data-theme='dark'] .mx-times-row b.good small {
+  :root[data-theme='dark'] .mx-bar-pair > b small.mx-down {
     color: #82e3b7;
   }
-  :root[data-theme='dark'] .mx-times-row b.warn small {
+  :root[data-theme='dark'] .mx-bar {
+    background: #1b262a;
+  }
+  :root[data-theme='dark'] .mx-bar i {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .mx-bar i.warn {
+    background: #f2a93b;
+  }
+  :root[data-theme='dark'] .mx-bar i.bad {
+    background: #e4572e;
+  }
+  :root[data-theme='dark'] .mx-bar.ghost {
+    background: transparent;
+  }
+  :root[data-theme='dark'] .mx-bar.ghost i {
+    background: #2e4148;
+  }
+  :root[data-theme='dark'] .mx-bar u {
+    background: #0b2028;
+  }
+  :root[data-theme='dark'] .mx-bars-key {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mx-bars-key i {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .mx-bars-key i.ghost {
+    background: #2e4148;
+  }
+  :root[data-theme='dark'] .mx-facts {
+    border-top: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .mx-facts span {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .mx-facts b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-facts b.good {
+    color: #82e3b7;
+  }
+  :root[data-theme='dark'] .mx-facts b.warn {
     color: #e9be7c;
   }
-  :root[data-theme='dark'] .mx-times-row b.bad {
+  :root[data-theme='dark'] .mx-facts b.bad {
     color: #e29883;
   }
   :root[data-theme='dark'] .mx-day-head strong {
-    color: #ced8db;
-  }
-  :root[data-theme='dark'] .mx-figure {
-    border: 1px solid #223035;
-  }
-  :root[data-theme='dark'] .mx-figure span {
-    color: #8d9ea3;
-  }
-  :root[data-theme='dark'] .mx-figure b {
     color: #e0e6e8;
   }
-  :root[data-theme='dark'] .mx-figure b small {
+  :root[data-theme='dark'] .mx-day-head small {
     color: #8d9ea3;
   }
-  :root[data-theme='dark'] .mx-figure em {
-    color: #798e95;
-  }
-  :root[data-theme='dark'] .mx-figure.good b {
-    color: #82e3b7;
-  }
-  :root[data-theme='dark'] .mx-figure.warn b {
-    color: #e9be7c;
-  }
-  :root[data-theme='dark'] .mx-figure.bad b {
-    color: #e29883;
-  }
-  :root[data-theme='dark'] .mx-label small {
-    color: #798e95;
+  :root[data-theme='dark'] .mx-section-title small {
+    color: #a1b1b5;
   }
   :root[data-theme='dark'] .mx-lane-name {
     color: #9aadb3;
@@ -4182,11 +4212,28 @@
   :root[data-theme='dark'] .mx-legend {
     color: #9aadb3;
   }
-  :root[data-theme='dark'] .mx-step-head strong {
-    color: #ced8db;
+  :root[data-theme='dark'] .mx-legend i.dash {
+    border-top: 2px dashed #0b2028;
   }
-  :root[data-theme='dark'] .mx-step-head small {
+  :root[data-theme='dark'] .mx-more {
+    border: 1px solid #2c3f45;
+    background: #12191c;
+    color: #b2c1c6;
+  }
+  :root[data-theme='dark'] .mx-more:hover {
+    border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .mx-spent-name b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mx-spent-name small {
     color: #798e95;
+  }
+  :root[data-theme='dark'] .mx-kinds-key {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .mx-kinds-key b {
+    color: #e0e6e8;
   }
   :root[data-theme='dark'] .mx-callout {
     border-left: 3px solid #f2a93b;

@@ -12943,19 +12943,18 @@ button.mortar-spout:hover .mortar-spout-open {
 
 
 /* ---------- The mixer board (MortarMixer.tsx) ----------
-   Three layers, top-down: now (recipe, run, the two processes side by side), the day (figures,
-   the work curve with the processes under it), the steps (where the time went). */
+   Two large halves, one per process, told apart by their own surface -- a soft wash of the
+   page colour fading down, a hairline between them that fades at both ends -- never by a box.
+   Under them, on the page itself, the day: the work curve and where the time went. */
 .mx-board {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 .mx-head {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto;
   align-items: end;
-  gap: 10px 22px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid #e3eaec;
+  gap: 10px 26px;
 }
 .mx-recipe {
   display: grid;
@@ -12963,20 +12962,21 @@ button.mortar-spout:hover .mortar-spout-open {
   min-width: 0;
 }
 .mx-recipe span,
-.mx-label,
-.mx-proc-head small {
+.mx-section-title,
+.mx-bars-head {
   color: #71868d;
   font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 .mx-recipe b {
   overflow: hidden;
   color: #0b2028;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -12998,8 +12998,8 @@ button.mortar-spout:hover .mortar-spout-open {
 }
 .mx-segments i {
   flex: 1;
-  height: 10px;
-  border-radius: 3px;
+  height: 8px;
+  border-radius: 4px;
   background: #e6eef0;
 }
 .mx-segments i.done {
@@ -13028,369 +13028,461 @@ button.mortar-spout:hover .mortar-spout-open {
   color: #b0700f;
 }
 .mx-pills small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: #8a9ca2;
   font-size: 11px;
+}
+.mx-pills small u {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b9c7cb;
+}
+.mx-pills small.live u {
+  background: #1fbf7a;
+  box-shadow: 0 0 0 3px #1fbf7a2e;
 }
 .mx-pills small.stale {
   color: #c2421f;
 }
+.mx-pills small.stale u {
+  background: #e4572e;
+}
 
-/* The two processes, side by side. */
-.mx-procs {
+/* The two halves. */
+.mx-halves {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 0 34px;
 }
-.mx-proc {
+/* The hairline between them, fading at both ends: a border that is not a box. */
+.mx-halves::before {
+  content: '';
+  position: absolute;
+  top: 6%;
+  bottom: 6%;
+  left: 50%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, #d6e1e4 18%, #d6e1e4 82%, transparent);
+}
+.mx-half {
   display: grid;
   align-content: start;
-  gap: 12px;
-  padding: 14px 16px 16px;
-  border: 1px solid #e0e8ea;
-  border-radius: 12px;
-  background: #fbfcfc;
+  gap: 16px;
+  padding: 20px 22px 18px;
+  border-radius: 18px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--brand-accent, #12b8a6) 7%, #fff) 0%,
+    color-mix(in srgb, var(--brand-accent, #12b8a6) 2%, #fff) 45%,
+    transparent 100%
+  );
 }
-.mx-proc-head {
+.mx-half-head {
   display: flex;
   align-items: baseline;
   gap: 10px;
 }
-.mx-proc-head strong {
+.mx-half-head h3 {
+  position: relative;
+  margin: 0;
+  padding-bottom: 6px;
   color: #0b2028;
-  font-size: 15px;
+  font-size: 21px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
-.mx-proc-missing {
+.mx-half-head h3::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--brand-accent, #12b8a6);
+}
+.mx-half-head small {
+  color: #8a9ca2;
+  font-size: 12px;
+}
+.mx-missing {
   padding: 10px 12px;
-  border: 1px dashed #cbdadd;
-  border-radius: 8px;
+  border-radius: 10px;
+  background: #ffffffb3;
   color: #71868d;
   font-size: 12.5px;
 }
-.mx-now {
+
+/* The step it is in now. */
+.mx-step {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #ffffffcc;
+  box-shadow: 0 1px 0 #0b20280a;
 }
-.mx-now > i {
+.mx-step > i {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
 }
-.mx-now.work > i {
+.mx-step.work > i {
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand-accent, #12b8a6) 18%, transparent);
   animation: mx-pulse 1.6s ease-in-out infinite;
 }
+.mx-step.wait > i {
+  box-shadow: 0 0 0 5px #f2a93b2e;
+}
 @keyframes mx-pulse {
   50% {
-    box-shadow: 0 0 0 9px color-mix(in srgb, var(--brand-accent, #12b8a6) 6%, transparent);
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--brand-accent, #12b8a6) 5%, transparent);
   }
 }
-.mx-now > div:first-of-type {
+.mx-step > div {
   display: grid;
   min-width: 0;
 }
-.mx-now > div:first-of-type span {
+.mx-step > div span {
   color: #71868d;
   font-size: 11px;
   font-weight: 600;
 }
-.mx-now > div:first-of-type b {
+.mx-step > div b {
   overflow: hidden;
   color: #0b2028;
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mx-now.wait > div:first-of-type b {
+.mx-step.wait > div b {
   color: #9a5d00;
 }
-.mx-elapsed {
+.mx-step > em {
   display: grid;
   justify-items: end;
   margin-left: auto;
-}
-.mx-elapsed b {
   color: #0b2028;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 19px;
+  font-style: normal;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.mx-elapsed small {
+.mx-step > em small {
   color: #8a9ca2;
   font-size: 11px;
+  font-weight: 500;
 }
-.mx-elapsed.warn b {
+.mx-step > em.warn {
   color: #b0700f;
 }
-.mx-elapsed.bad b {
+.mx-step > em.bad {
   color: #c2421f;
 }
-/* Time in the step against its typical time: the mark is the typical, the track goes to 150 %. */
-.mx-progress {
+
+/* The big number of each half. */
+.mx-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.mx-hero b {
+  color: #0b2028;
+  font-size: 46px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.mx-hero b.over {
+  color: #c2421f;
+}
+.mx-hero span {
+  color: #3d5a62;
+  font-size: 14px;
+  font-weight: 600;
+}
+.mx-hero em {
+  color: #8a9ca2;
+  font-size: 13px;
+  font-style: normal;
+}
+
+/* The scale filling over the recipe: the track is the recipe in its colours, the cover hides
+   what is still to come, the edge marks where the scale is. */
+.mx-fill {
   position: relative;
-  height: 6px;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 11px;
+}
+.mx-fill-track {
+  display: flex;
+  height: 100%;
+  gap: 2px;
+}
+.mx-fill-track i {
+  height: 100%;
+}
+.mx-fill-cover {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffffc4;
+  backdrop-filter: grayscale(1);
+  transition: left 0.6s ease;
+}
+.mx-fill-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #0b2028;
+  transition: left 0.6s ease;
+}
+.mx-legend-materials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: -6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-legend-materials li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #3d5a62;
+  font-size: 12px;
+}
+.mx-legend-materials li i {
+  width: 9px;
+  height: 9px;
   border-radius: 3px;
+}
+.mx-legend-materials li b {
+  color: #0b2028;
+}
+.mx-legend-materials li.none {
+  opacity: 0.45;
+}
+.mx-legend-materials li.dosing {
+  background: var(--brand-accent, #12b8a6);
+  color: #fff;
+}
+.mx-legend-materials li.dosing b {
+  color: #fff;
+}
+
+/* A timed step running: the countdown's bar. */
+.mx-progress-big {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 6px;
   background: #e6eef0;
 }
-.mx-progress i {
+.mx-progress-big i {
   display: block;
   height: 100%;
-  border-radius: 3px;
+  border-radius: 6px;
   background: var(--brand-accent, #12b8a6);
   transition: width 0.6s ease;
 }
-.mx-progress.warn i {
-  background: #f2a93b;
-}
-.mx-progress.bad i {
+.mx-progress-big i.over {
   background: #e4572e;
 }
-.mx-progress u {
+
+/* Bars: dose times, programmed × real. */
+.mx-bars {
+  display: grid;
+  gap: 8px;
+}
+.mx-bars-head small {
+  margin-left: 6px;
+  color: #a1b1b5;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.mx-bar-row,
+.mx-bar-pair {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) 122px;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12.5px;
+}
+.mx-bar-row > span,
+.mx-bar-pair > span {
+  color: #3d5a62;
+}
+.mx-bar-row > b,
+.mx-bar-pair > b {
+  color: #0b2028;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mx-bar-pair > b.muted {
+  color: #8a9ca2;
+  font-weight: 500;
+}
+.mx-bar-pair > b small {
+  display: inline;
+  margin-left: 4px;
+  font-size: 11px;
+}
+.mx-bar-pair > b small.mx-up {
+  color: #c2421f;
+}
+.mx-bar-pair > b small.mx-down {
+  color: #148a55;
+}
+.mx-bar-pair + .mx-bar-pair {
+  margin-top: 6px;
+}
+.mx-bar {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: #edf2f3;
+}
+.mx-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--brand-accent, #12b8a6);
+  transform-origin: left center;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.mx-bar i.warn {
+  background: #f2a93b;
+}
+.mx-bar i.bad {
+  background: #e4572e;
+}
+.mx-bar.ghost {
+  height: 8px;
+  background: transparent;
+}
+.mx-bar.ghost i {
+  background: #c9d6d9;
+}
+/* The typical time of the seven days before, a mark on the bar. */
+.mx-bar u {
   position: absolute;
   top: -3px;
   bottom: -3px;
   width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
   background: #0b2028;
 }
-.mx-track {
+.mx-bars-key {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.mx-track li {
-  padding: 3px 9px;
-  border: 1px solid #dfe8ea;
-  border-radius: 6px;
-  background: #fff;
-  color: #71868d;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-.mx-track li.wait {
-  border-style: dashed;
-}
-.mx-track li.active {
-  border-color: var(--brand-accent, #12b8a6);
-  background: var(--brand-accent, #12b8a6);
-  color: #fff;
-}
-.mx-track li.wait.active {
-  border-color: #f2a93b;
-  background: #f2a93b;
-}
-
-/* The scale and the recipe. */
-.mx-scale {
-  display: grid;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px dashed #dde6e8;
-}
-.mx-big {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.mx-big b {
-  color: #0b2028;
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.mx-big small {
-  color: #71868d;
-  font-size: 12.5px;
-}
-.mx-big em {
-  margin-left: auto;
-  color: #0b2028;
-  font-size: 15px;
-  font-style: normal;
-  font-weight: 700;
-}
-.mx-gauge {
-  height: 14px;
-  overflow: hidden;
-  border-radius: 7px;
-  background: #e6eef0;
-}
-.mx-gauge i {
-  display: block;
-  height: 100%;
-  border-radius: 7px;
-  background: var(--brand-accent, #12b8a6);
-  transition: width 0.6s ease;
-}
-.mx-materials {
-  display: grid;
-  gap: 6px;
-  margin: 2px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.mx-materials li {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 2px 8px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  font-size: 12.5px;
-}
-.mx-materials li > i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-}
-.mx-materials li span {
-  color: #3d5a62;
-}
-.mx-materials li b {
-  color: #0b2028;
-  font-variant-numeric: tabular-nums;
-}
-.mx-material-bar {
-  grid-column: 2 / -1;
-  height: 4px;
-  border-radius: 2px;
-  background: #edf2f3;
-}
-.mx-material-bar u {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-}
-.mx-materials li.none {
-  opacity: 0.45;
-}
-.mx-materials li.dosing {
-  outline: 1px solid var(--brand-accent, #12b8a6);
-  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 8%, #fff);
-}
-.mx-materials li.dosing span::after {
-  content: " · dosando";
-  color: var(--brand-accent, #12b8a6);
-  font-weight: 700;
-}
-
-/* The mixer's timed steps: programmed against real. */
-.mx-times {
-  display: grid;
-  gap: 6px;
-  padding-top: 12px;
-  border-top: 1px dashed #dde6e8;
-}
-.mx-times-head,
-.mx-times-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 1fr 1fr;
-  align-items: baseline;
-  gap: 8px;
-}
-.mx-times-head span {
+  gap: 14px;
   color: #8a9ca2;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.mx-times-row span {
-  color: #3d5a62;
-  font-size: 13px;
-}
-.mx-times-row b {
-  color: #0b2028;
-  font-size: 17px;
-  font-weight: 600;
-}
-.mx-times-row b small {
   font-size: 11px;
 }
-.mx-times-row b.good small {
+.mx-bars-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mx-bars-key i {
+  width: 14px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--brand-accent, #12b8a6);
+}
+.mx-bars-key i.ghost {
+  background: #c9d6d9;
+}
+
+/* The three facts at the foot of a half. */
+.mx-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #e3eaec;
+}
+.mx-facts div {
+  display: grid;
+  gap: 2px;
+}
+.mx-facts span {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+.mx-facts b {
+  color: #0b2028;
+  font-size: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mx-facts b.good {
   color: #148a55;
 }
-.mx-times-row b.warn small {
+.mx-facts b.warn {
   color: #b0700f;
 }
-.mx-times-row b.bad {
+.mx-facts b.bad {
   color: #c2421f;
 }
 
 /* The day. */
 .mx-day {
   display: grid;
-  gap: 14px;
+  gap: 18px;
+  padding-top: 4px;
 }
 .mx-day-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
+.mx-day-head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
 .mx-day-head strong {
-  color: #20353d;
-  font-size: 15px;
+  color: #0b2028;
+  font-size: 17px;
   font-weight: 700;
 }
-.mx-figures {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
-}
-.mx-figure {
-  display: grid;
-  align-content: start;
-  gap: 3px;
-  padding: 10px 12px;
-  border: 1px solid #e0e8ea;
-  border-radius: 10px;
-}
-.mx-figure span {
+.mx-day-head small {
   color: #71868d;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 12.5px;
 }
-.mx-figure b {
-  color: #0b2028;
-  font-size: 22px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.mx-figure b small {
-  color: #71868d;
-  font-size: 12px;
-  font-weight: 500;
-}
-.mx-figure em {
-  color: #8a9ca2;
-  font-size: 11px;
-  font-style: normal;
-}
-.mx-figure.good b {
-  color: #148a55;
-}
-.mx-figure.warn b {
-  color: #b0700f;
-}
-.mx-figure.bad b {
-  color: #c2421f;
-}
-.mx-curve {
+.mx-curve,
+.mx-spent {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
-.mx-label small {
-  margin-left: 8px;
-  color: #8a9ca2;
+.mx-section-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.mx-section-title small {
+  color: #a1b1b5;
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0;
@@ -13398,10 +13490,9 @@ button.mortar-spout:hover .mortar-spout-open {
 }
 .mx-chart {
   width: 100%;
-  height: 230px;
+  height: 220px;
 }
 .mx-lane {
-  position: relative;
   display: grid;
   gap: 2px;
 }
@@ -13412,9 +13503,9 @@ button.mortar-spout:hover .mortar-spout-open {
 }
 .mx-lane-track {
   position: relative;
-  height: 14px;
+  height: 12px;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #f1f5f6;
 }
 .mx-lane-track i {
@@ -13431,7 +13522,6 @@ button.mortar-spout:hover .mortar-spout-open {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
-  margin-top: 2px;
   color: #5d747b;
   font-size: 11px;
 }
@@ -13445,39 +13535,79 @@ button.mortar-spout:hover .mortar-spout-open {
   height: 10px;
   border-radius: 3px;
 }
-
-/* The steps. */
-.mx-steps {
+.mx-legend i.dash {
+  width: 14px;
+  height: 0;
+  border-top: 2px dashed #0b2028;
+  border-radius: 0;
+}
+.mx-more {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid #cbdadd;
+  border-radius: 999px;
+  background: #fff;
+  color: #3d5a62;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+.mx-more:hover {
+  border-color: var(--brand-accent, #12b8a6);
+}
+.mx-spent-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 18px 34px;
 }
-.mx-step-table {
+.mx-spent-item {
   display: grid;
   align-content: start;
   gap: 8px;
   min-width: 0;
 }
-.mx-step-head {
+.mx-spent-name {
   display: flex;
   align-items: baseline;
   gap: 10px;
 }
-.mx-step-head strong {
-  color: #20353d;
+.mx-spent-name b {
+  color: #0b2028;
   font-size: 14px;
-  font-weight: 700;
 }
-.mx-step-head small {
+.mx-spent-name small {
   color: #8a9ca2;
   font-size: 11.5px;
 }
 .mx-kinds {
   display: flex;
-  height: 10px;
+  height: 12px;
   overflow: hidden;
   gap: 2px;
-  border-radius: 5px;
+  border-radius: 6px;
+}
+.mx-kinds-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: #5d747b;
+  font-size: 11.5px;
+}
+.mx-kinds-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mx-kinds-key i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.mx-kinds-key b {
+  color: #0b2028;
 }
 .mx-callout {
   margin: 0;
@@ -13503,9 +13633,6 @@ button.mortar-spout:hover .mortar-spout-open {
   font-weight: 700;
 }
 @media (max-width: 1100px) {
-  .mx-figures {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
   .mx-head {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -13515,22 +13642,33 @@ button.mortar-spout:hover .mortar-spout-open {
   }
 }
 @media (max-width: 900px) {
-  .mx-procs,
-  .mx-steps {
+  .mx-halves,
+  .mx-spent-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .mx-halves::before {
+    display: none;
   }
 }
 @media (max-width: 760px) {
   .mx-recipe b {
-    font-size: 21px;
+    font-size: 22px;
   }
-  .mx-figures {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .mx-half {
+    padding: 16px 14px;
+  }
+  .mx-hero b {
+    font-size: 38px;
+  }
+  .mx-facts b {
+    font-size: 16px;
+    white-space: normal;
   }
   .mx-chart {
     height: 190px;
   }
-  .mx-step-table .stops-table {
+  .mx-spent-item .stops-table {
     display: block;
     overflow-x: auto;
   }

@@ -210,8 +210,16 @@ export class MortarTracker {
         );
         this.steps.set(memo, { id: created.rows[0].id, step, lastAt: at });
       }
-    } catch {
-      this.stepsPausedUntil = at + 10 * 60_000;
+    } catch (error) {
+      // Migration 046 not applied yet, most likely: try again in a minute, and say why.
+      this.stepsPausedUntil = at + 60_000;
+      console.warn(
+        JSON.stringify({
+          event: 'mortar_steps_failed',
+          deviceId: device.id,
+          error: error instanceof Error ? error.message.slice(0, 200) : 'unknown',
+        }),
+      );
     }
   }
 

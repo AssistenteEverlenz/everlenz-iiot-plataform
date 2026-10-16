@@ -17,15 +17,14 @@ import { MortarColors, integer, isoDay, tons } from './mortarShared';
 import { PROCESS_STEPS, STEP_KINDS, stepOf, type Process, type StepKind } from './mortarSteps';
 
 /**
- * The mixer board (migration 046), read top-down in three layers:
- *   1. now -- the recipe and the run, then the two processes side by side (the weighing and the
- *      mixer run independently in the PLC), each with the step it is in, for how long against
- *      its typical time, and what it is working on (the scale against the recipe; the mixing
- *      and discharge times);
- *   2. the day -- batches, tons, cycle and the share of time each process worked, the work
- *      curve of the scale with both processes drawn under it on the same clock;
- *   3. the steps -- every step with how often it ran, its typical time against the last seven
- *      days, and where the time went, the longest wait called out in words.
+ * The mixer board (migration 046). Two large areas, one per process of the PLC -- the weighing
+ * and the mixing run independently -- told apart by their own surface, not by boxes:
+ *   - the weighing: the scale filling over the recipe, each material in its colour, the step it
+ *     is in, and how long each dose takes;
+ *   - the mixing: the timed step running against what the recipe programs (a countdown), and
+ *     mixing and discharge programmed against real in bars.
+ * Under both, on one clock: the scale's work curve with what each process was doing, and where
+ * the time went, the longest wait in words; every step's numbers one click away.
  * Data: apps/api/src/mortar-mixer.ts.
  */
 type ProcessDay = {
@@ -70,10 +69,6 @@ type Mixer = {
   curve: Array<{ at: string; kg: number }>;
 };
 
-const PROCESS_NAMES: Record<Process, { title: string; hint: string }> = {
-  pesagem: { title: 'Pesagem', hint: 'balança · doses da receita' },
-  misturador: { title: 'Misturador', hint: 'carga · mistura · descarga' },
-};
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('pt-BR', {
     hour: '2-digit',
@@ -91,25 +86,42 @@ const span = (value: number | null | undefined) => {
   }
   return `${Math.floor(total / 3600)} h ${String(Math.round((total % 3600) / 60)).padStart(2, '0')} min`;
 };
+/** A countdown as a clock: 2:05. */
+const countdown = (seconds: number) => {
+  const total = Math.abs(Math.round(seconds));
+  return `${seconds < 0 ? '+' : ''}${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
 const AXIS = { fontSize: 11, fill: '#71868d' };
 /** The chart's left axis and right margin, so the process lanes under it share its clock. */
 const Y_AXIS = 52;
 const RIGHT = 8;
 
 /** Seconds of each kind of step in a process's day. */
-function kindTotals(process: Process, data: ProcessDay) {
+function kindTotals(process: Process, data: ProcessDay | null) {
   const totals: Record<StepKind, number> = { work: 0, prep: 0, wait: 0, off: 0 };
-  for (const item of data.steps) totals[stepOf(process, item.step).kind] += item.total;
+  for (const item of data?.steps ?? []) totals[stepOf(process, item.step).kind] += item.total;
   const on = totals.work + totals.prep + totals.wait;
   return { totals, on, working: on > 0 ? totals.work / on : null };
 }
+const stepStat = (data: ProcessDay | null, step: number) =>
+  data?.steps.find((item) => item.step === step) ?? null;
+/** How long the process has been in its step now (null when it is in none, or not live). */
+function nowOf(process: Process, data: ProcessDay | null, live: boolean) {
+  if (!data?.current || !live) return null;
+  const step = stepOf(process, data.current.step);
+  const elapsed = (Date.now() - new Date(data.current.since).getTime()) / 1000;
+  const stat = stepStat(data, step.step);
+  return { step, elapsed, reference: stat?.typical ?? stat?.median ?? null };
+}
+const workTone = (share: number | null) =>
+  share == null ? '' : share >= 0.7 ? 'good' : share >= 0.5 ? 'warn' : 'bad';
+const percentOf = (share: number | null) => (share == null ? '—' : `${Math.round(share * 100)}%`);
 
 export function MixerBoard({ deviceId }: { deviceId: string }) {
   const today = isoDay(new Date());
   const yesterday = isoDay(new Date(Date.now() - 86_400_000));
   const [day, setDay] = useState(today);
   const mixer = usePoll<Mixer>(`/devices/${deviceId}/mortar/mixer?date=${day}`, 10000);
-  const palette = useContext(MortarColors);
   const data = mixer.data;
   if (!data) return <div className="stops-empty">{mixer.error ?? 'Carregando o misturador…'}</div>;
   const processes = data.processes;
@@ -121,61 +133,26 @@ export function MixerBoard({ deviceId }: { deviceId: string }) {
       </div>
     );
   const isToday = day === today;
-  const asked = data.asked != null && data.asked > 0 ? Math.min(Math.round(data.asked), 30) : null;
-  const done = data.count != null ? Math.max(0, Math.round(data.count)) : null;
 
   return (
     <div className="mx-board">
+      <MixerHead data={data} />
       {isToday && (
-        <header className="mx-head">
-          <div className="mx-recipe">
-            <span>Receita no misturador</span>
-            <b>{data.recipe ?? 'Sem receita na IHM'}</b>
-          </div>
-          <div className="mx-run" title="Bateladas feitas no lote, contra as pedidas">
-            <span>
-              Lote <b>{done ?? '—'}</b>
-              {asked != null && <> de {asked} bateladas</>}
-            </span>
-            {asked != null && (
-              <div className="mx-segments">
-                {Array.from({ length: asked }, (_, at) => (
-                  <i key={at} className={done != null && at < done ? 'done' : ''} />
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="mx-pills">
-            {data.automatic != null && (
-              <em className={data.automatic ? 'on' : 'manual'}>
-                {data.automatic ? 'Automático' : 'Manual'}
-              </em>
-            )}
-            <small className={data.live ? '' : 'stale'}>
-              {data.live
-                ? `ao vivo · ${clock(data.updatedAt!)}`
-                : data.updatedAt
-                  ? `sem leitura desde ${clock(data.updatedAt)}`
-                  : 'sem leituras'}
-            </small>
-          </div>
-        </header>
-      )}
-
-      {isToday && (
-        <div className="mx-procs">
-          <ProcessNow process="pesagem" data={processes?.pesagem ?? null} live={data.live}>
-            <ScaleNow data={data} dosing={processes?.pesagem?.current?.step} />
-          </ProcessNow>
-          <ProcessNow process="misturador" data={processes?.misturador ?? null} live={data.live}>
-            <MixerTimes data={data} />
-          </ProcessNow>
+        <div className="mx-halves">
+          <Weighing data={data} process={processes?.pesagem ?? null} />
+          <Mixing data={data} process={processes?.misturador ?? null} />
         </div>
       )}
 
       <section className="mx-day">
         <div className="mx-day-head">
-          <strong>{isToday ? 'O dia de hoje' : 'Ontem'}</strong>
+          <div>
+            <strong>{isToday ? 'O dia de hoje' : 'Ontem'}</strong>
+            <small>
+              {integer(data.day.batches)} bateladas · {tons(data.day.kg)} t misturadas
+              {data.day.lastAt ? ` · última às ${clock(data.day.lastAt)}` : ''}
+            </small>
+          </div>
           <div className="widget-period" role="group" aria-label="Dia">
             <button type="button" className={isToday ? 'active' : ''} onClick={() => setDay(today)}>
               Hoje
@@ -189,225 +166,321 @@ export function MixerBoard({ deviceId }: { deviceId: string }) {
             </button>
           </div>
         </div>
-        <div className="mx-figures">
-          <Figure label="Bateladas" value={integer(data.day.batches)} />
-          <Figure label="Misturado" value={tons(data.day.kg)} unit="t" />
-          <Figure
-            label="Ciclo típico"
-            value={span(processes?.misturador?.cycleSeconds ?? data.day.cycleSeconds)}
-            hint="de uma mistura à próxima"
-          />
-          {(['pesagem', 'misturador'] as const).map((process) => {
-            const day = processes?.[process];
-            const kinds = day ? kindTotals(process, day) : null;
-            const share = kinds?.working ?? null;
-            const waiting = kinds && kinds.on > 0 ? kinds.totals.wait / kinds.on : null;
-            return (
-              <Figure
-                key={process}
-                label={`${PROCESS_NAMES[process].title} trabalhando`}
-                value={share == null ? '—' : `${Math.round(share * 100)}%`}
-                hint={
-                  waiting != null && waiting >= 0.05
-                    ? `${Math.round(waiting * 100)}% aguardando`
-                    : 'do tempo ligado'
-                }
-                tone={share == null ? undefined : share >= 0.7 ? 'good' : share >= 0.5 ? 'warn' : 'bad'}
-              />
-            );
-          })}
-          <Figure label="Última batelada" value={data.day.lastAt ? clock(data.day.lastAt) : '—'} />
-        </div>
-        <WorkCurve data={data} color={palette.accent} />
+        <WorkCurve data={data} />
         {processes && (processes.pesagem || processes.misturador) && (
-          <div className="mx-steps">
-            {(['pesagem', 'misturador'] as const).map((process) =>
-              processes[process] ? (
-                <StepTable key={process} process={process} data={processes[process]!} />
-              ) : null,
-            )}
-          </div>
+          <TimeSpent processes={processes} />
         )}
       </section>
     </div>
   );
 }
 
-function Figure({
-  label,
-  value,
-  unit,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  hint?: string;
-  tone?: 'good' | 'warn' | 'bad';
-}) {
+/** The recipe, the run and the mode, on one quiet line above the two halves. */
+function MixerHead({ data }: { data: Mixer }) {
+  const asked = data.asked != null && data.asked > 0 ? Math.min(Math.round(data.asked), 30) : null;
+  const done = data.count != null ? Math.max(0, Math.round(data.count)) : null;
   return (
-    <div className={`mx-figure${tone ? ` ${tone}` : ''}`}>
-      <span>{label}</span>
-      <b>
-        {value}
-        {unit && <small> {unit}</small>}
-      </b>
-      {hint && <em>{hint}</em>}
+    <header className="mx-head">
+      <div className="mx-recipe">
+        <span>Receita no misturador</span>
+        <b>{data.recipe ?? 'Sem receita na IHM'}</b>
+      </div>
+      <div className="mx-run" title="Bateladas feitas no lote, contra as pedidas">
+        <span>
+          Lote <b>{done ?? '—'}</b>
+          {asked != null && <> de {asked}</>}
+        </span>
+        {asked != null && (
+          <div className="mx-segments">
+            {Array.from({ length: asked }, (_, at) => (
+              <i key={at} className={done != null && at < done ? 'done' : ''} />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="mx-pills">
+        {data.automatic != null && (
+          <em className={data.automatic ? 'on' : 'manual'}>
+            {data.automatic ? 'Automático' : 'Manual'}
+          </em>
+        )}
+        <small className={data.live ? 'live' : 'stale'}>
+          <u />
+          {data.live
+            ? `ao vivo · ${clock(data.updatedAt!)}`
+            : data.updatedAt
+              ? `sem leitura desde ${clock(data.updatedAt)}`
+              : 'sem leituras'}
+        </small>
+      </div>
+    </header>
+  );
+}
+
+/** The step a process is in, said big, with its time against the typical one. */
+function StepNow({
+  process,
+  data,
+  live,
+}: {
+  process: Process;
+  data: ProcessDay | null;
+  live: boolean;
+}) {
+  const now = nowOf(process, data, live);
+  if (!data)
+    return (
+      <div className="mx-missing">
+        Publique <b>{process === 'pesagem' ? 'ProcessoPesagem' : 'ProcessoMisturador'}</b> no MQTT
+        para acompanhar as etapas.
+      </div>
+    );
+  const ratio = now?.reference ? now.elapsed / now.reference : null;
+  const tone = ratio == null ? '' : ratio <= 1.1 ? 'good' : ratio <= 1.5 ? 'warn' : 'bad';
+  return (
+    <div className={`mx-step ${now?.step.kind ?? 'off'}`}>
+      <i style={{ background: STEP_KINDS[now?.step.kind ?? 'off'].color }} />
+      <div>
+        <span>{now ? STEP_KINDS[now.step.kind].label : 'Agora'}</span>
+        <b>{now ? now.step.label : live ? 'Sem etapa em andamento' : 'Sem leitura do CLP'}</b>
+      </div>
+      {now && (
+        <em className={tone} title={now.reference ? `Típico: ${span(now.reference)}` : undefined}>
+          {span(now.elapsed)}
+          {now.reference ? <small>típico {span(now.reference)}</small> : null}
+        </em>
+      )}
+    </div>
+  );
+}
+
+/** Three figures at the foot of a half: what the process did today. */
+function Facts({ items }: { items: Array<[string, string, string?]> }) {
+  return (
+    <div className="mx-facts">
+      {items.map(([label, value, tone]) => (
+        <div key={label}>
+          <span>{label}</span>
+          <b className={tone}>{value}</b>
+        </div>
+      ))}
     </div>
   );
 }
 
 /**
- * One process now: the step it is in, how long it has been there against the time that step
- * usually takes, and its steps in order with the current one lit.
+ * The weighing: the scale filling over the recipe. The track is the recipe, each material its
+ * share in its colour; the fill is what is on the scale, so the material being dosed is the one
+ * the fill has reached.
  */
-function ProcessNow({
-  process,
-  data,
-  live,
-  children,
-}: {
-  process: Process;
-  data: ProcessDay | null;
-  live: boolean;
-  children?: React.ReactNode;
-}) {
-  const now = data?.current && live ? stepOf(process, data.current.step) : null;
-  const elapsed = data?.current ? (Date.now() - new Date(data.current.since).getTime()) / 1000 : null;
-  const typical = now ? data?.steps.find((item) => item.step === now.step)?.typical ?? null : null;
-  const reference = typical ?? (now ? data?.steps.find((item) => item.step === now.step)?.median : null) ?? null;
-  const ratio = elapsed != null && reference ? elapsed / reference : null;
-  const tone = ratio == null ? '' : ratio <= 1.1 ? 'good' : ratio <= 1.5 ? 'warn' : 'bad';
-  // The track shows each kind of job once, in order: the calculating steps fold into one chip.
-  const track = PROCESS_STEPS[process].filter(
-    (item) => item.kind !== 'off' && !(item.kind === 'prep' && item.label.startsWith('Calculando')),
-  );
-  return (
-    <section className="mx-proc">
-      <div className="mx-proc-head">
-        <strong>{PROCESS_NAMES[process].title}</strong>
-        <small>{PROCESS_NAMES[process].hint}</small>
-      </div>
-      {!data ? (
-        <div className="mx-proc-missing">
-          Publique a variável <b>{process === 'pesagem' ? 'ProcessoPesagem' : 'ProcessoMisturador'}</b>{' '}
-          no MQTT para acompanhar as etapas.
-        </div>
-      ) : (
-        <>
-          <div className={`mx-now ${now ? now.kind : 'off'}`}>
-            <i style={{ background: STEP_KINDS[now?.kind ?? 'off'].color }} />
-            <div>
-              <span>{now ? STEP_KINDS[now.kind].label : 'Agora'}</span>
-              <b>{now ? now.label : live ? 'Sem etapa em andamento' : 'Sem leitura do CLP'}</b>
-            </div>
-            {now && elapsed != null && (
-              <div className={`mx-elapsed ${tone}`}>
-                <b>{span(elapsed)}</b>
-                <small>{reference ? `típico ${span(reference)}` : 'nesta etapa'}</small>
-              </div>
-            )}
-          </div>
-          {now && ratio != null && (
-            <div className={`mx-progress ${tone}`} title="Tempo nesta etapa contra o típico">
-              <i style={{ width: `${Math.min(100, (ratio / 1.5) * 100)}%` }} />
-              <u style={{ left: `${(1 / 1.5) * 100}%` }} />
-            </div>
-          )}
-          <ol className="mx-track">
-            {track.map((item) => {
-              // A calculating step lights the dose it is preparing (Calcula a areia: Areia).
-              const lit =
-                now && now.label.startsWith('Calculando') ? now.step + 5 : now?.step;
-              const active = item.step === lit;
-              return (
-                <li key={item.step} className={`${item.kind}${active ? ' active' : ''}`} title={item.label}>
-                  {item.short}
-                </li>
-              );
-            })}
-          </ol>
-        </>
-      )}
-      {children}
-    </section>
-  );
-}
-
-/** The scale against the recipe's total, and what the recipe is made of, the dosing one lit. */
-function ScaleNow({ data, dosing }: { data: Mixer; dosing?: number }) {
+function Weighing({ data, process }: { data: Mixer; process: ProcessDay | null }) {
   const palette = useContext(MortarColors);
   const recipeKg = data.materials.reduce((sum, item) => sum + (item.kg ?? 0), 0);
-  const share = data.scale != null && data.target ? Math.min(1.15, data.scale / data.target) : null;
-  const dosingMaterial = dosing != null ? stepOf('pesagem', dosing).material : undefined;
+  const total = data.target ?? (recipeKg || null);
+  const share = data.scale != null && total ? Math.min(1, data.scale / total) : null;
+  const dosing = process?.current ? stepOf('pesagem', process.current.step).material : undefined;
+  const kinds = kindTotals('pesagem', process);
+  // How long each dose takes today, against the week before.
+  const doses = data.materials
+    .map((item, index) => ({ item, index, stat: stepStat(process, [10, 20, 30][index]) }))
+    .filter(({ item, stat }) => item.kg && stat?.median);
+  const longest = Math.max(
+    1,
+    ...doses.map(({ stat }) => Math.max(stat!.median ?? 0, stat!.typical ?? 0)),
+  );
   return (
-    <div className="mx-scale">
-      <div className="mx-big">
+    <section className="mx-half weighing">
+      <div className="mx-half-head">
+        <h3>Pesagem</h3>
+        <small>a balança dosando a receita</small>
+      </div>
+      <StepNow process="pesagem" data={process} live={data.live} />
+
+      <div className="mx-hero">
         <b>{data.scale == null ? '—' : integer(data.scale)}</b>
-        <small>kg na balança{data.target ? ` · de ${integer(data.target)} kg` : ''}</small>
-        {share != null && <em>{Math.round(share * 100)}%</em>}
+        <span>kg na balança</span>
+        {total ? <em>de {integer(total)} kg</em> : null}
       </div>
-      <div className="mx-gauge" title="Peso na balança contra o total da receita">
-        <i style={{ width: `${Math.min(100, (share ?? 0) * 100)}%` }} />
-      </div>
-      {recipeKg > 0 && (
-        <ul className="mx-materials">
-          {data.materials.map((item, index) => (
-            <li
-              key={item.label}
-              className={`${item.kg ? '' : 'none'}${dosingMaterial === index ? ' dosing' : ''}`}
-            >
-              <i style={{ background: palette.material(item.label, index) }} />
-              <span>{item.label}</span>
-              <b>{item.kg ? `${integer(item.kg)} kg` : '—'}</b>
-              <div className="mx-material-bar">
-                <u
+      {total ? (
+        <div className="mx-fill" title="A balança enchendo sobre a receita">
+          <div className="mx-fill-track">
+            {data.materials.map((item, index) =>
+              item.kg ? (
+                <i
+                  key={item.label}
                   style={{
-                    width: `${((item.kg ?? 0) / recipeKg) * 100}%`,
+                    width: `${(item.kg / total) * 100}%`,
                     background: palette.material(item.label, index),
                   }}
                 />
-              </div>
+              ) : null,
+            )}
+          </div>
+          <div className="mx-fill-cover" style={{ left: `${(share ?? 0) * 100}%` }} />
+          <div className="mx-fill-edge" style={{ left: `${(share ?? 0) * 100}%` }} />
+        </div>
+      ) : null}
+      {recipeKg > 0 && (
+        <ul className="mx-legend-materials">
+          {data.materials.map((item, index) => (
+            <li
+              key={item.label}
+              className={`${item.kg ? '' : 'none'}${dosing === index ? ' dosing' : ''}`}
+            >
+              <i style={{ background: palette.material(item.label, index) }} />
+              {item.label}
+              <b>{item.kg ? `${integer(item.kg)} kg` : '—'}</b>
             </li>
           ))}
         </ul>
       )}
-    </div>
+
+      {doses.length > 0 && (
+        <div className="mx-bars">
+          <div className="mx-bars-head">
+            Tempo de cada dose <small>hoje · marca = típico dos 7 dias</small>
+          </div>
+          {doses.map(({ item, index, stat }) => (
+            <div key={item.label} className="mx-bar-row">
+              <span>{item.label}</span>
+              <div className="mx-bar">
+                <i
+                  style={{
+                    width: `${((stat!.median ?? 0) / longest) * 100}%`,
+                    background: palette.material(item.label, index),
+                  }}
+                />
+                {stat!.typical ? <u style={{ left: `${(stat!.typical / longest) * 100}%` }} /> : null}
+              </div>
+              <b>{span(stat!.median)}</b>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Facts
+        items={[
+          ['Pesagens hoje', integer(process?.cycles ?? 0)],
+          ['Ciclo típico', span(process?.cycleSeconds)],
+          ['Trabalhando', percentOf(kinds.working), workTone(kinds.working)],
+        ]}
+      />
+    </section>
   );
 }
 
-/** The mixer's two timed steps: what the recipe programs, and what they really take. */
-function MixerTimes({ data }: { data: Mixer }) {
-  const steps = data.processes?.misturador?.steps ?? [];
-  const real = (step: number) => steps.find((item) => item.step === step)?.median ?? null;
-  const rows: Array<[string, number | null, number | null]> = [
-    ['Mistura', data.mixSeconds, real(15)],
-    ['Descarga', data.dischargeSeconds, real(21)],
+/**
+ * The mixing: when the mixer is in a timed step (mixing or discharging) a countdown against what
+ * the recipe programs; under it, mixing and discharge programmed against real, in bars.
+ */
+function Mixing({ data, process }: { data: Mixer; process: ProcessDay | null }) {
+  const now = nowOf('misturador', process, data.live);
+  const programmedFor = (step: number) =>
+    step === 15 ? data.mixSeconds : step === 21 ? data.dischargeSeconds : null;
+  const programmed = now ? programmedFor(now.step.step) : null;
+  const kinds = kindTotals('misturador', process);
+  const rows: Array<[string, number | null, number | null, number | null]> = [
+    [
+      'Mistura',
+      data.mixSeconds,
+      stepStat(process, 15)?.median ?? null,
+      stepStat(process, 15)?.typical ?? null,
+    ],
+    [
+      'Descarga',
+      data.dischargeSeconds,
+      stepStat(process, 21)?.median ?? null,
+      stepStat(process, 21)?.typical ?? null,
+    ],
   ];
+  const longest = Math.max(1, ...rows.flatMap(([, a, b, c]) => [a ?? 0, b ?? 0, c ?? 0]));
+  const progress = now && programmed ? Math.min(1, now.elapsed / programmed) : null;
   return (
-    <div className="mx-times">
-      <div className="mx-times-head">
-        <span />
-        <span>Programado</span>
-        <span>Real hoje</span>
+    <section className="mx-half mixing">
+      <div className="mx-half-head">
+        <h3>Mistura</h3>
+        <small>carga · mistura · descarga</small>
       </div>
-      {rows.map(([name, programmed, measured]) => {
-        const over = programmed && measured ? measured / programmed - 1 : null;
-        return (
-          <div key={name} className="mx-times-row">
-            <span>{name}</span>
-            <b>{span(programmed)}</b>
-            <b className={over == null ? '' : over > 0.15 ? 'bad' : over > 0.05 ? 'warn' : 'good'}>
-              {span(measured)}
-              {over != null && Math.abs(over) >= 0.05 && (
-                <small> {over > 0 ? '+' : '−'}{Math.round(Math.abs(over) * 100)}%</small>
-              )}
+      <StepNow process="misturador" data={process} live={data.live} />
+
+      {now && programmed ? (
+        <>
+          <div className="mx-hero">
+            <b className={now.elapsed > programmed ? 'over' : ''}>
+              {countdown(programmed - now.elapsed)}
             </b>
+            <span>{now.elapsed <= programmed ? 'para terminar' : 'além do programado'}</span>
+            <em>
+              {now.step.step === 15 ? 'mistura' : 'descarga'} de {span(programmed)}
+            </em>
           </div>
-        );
-      })}
-    </div>
+          <div className="mx-progress-big">
+            <i
+              className={now.elapsed > programmed ? 'over' : ''}
+              style={{ width: `${(progress ?? 0) * 100}%` }}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="mx-hero">
+          <b>{integer(data.day.batches)}</b>
+          <span>bateladas hoje</span>
+          <em>{tons(data.day.kg)} t misturadas</em>
+        </div>
+      )}
+
+      <div className="mx-bars">
+        <div className="mx-bars-head">
+          Programado × real <small>real = mediana de hoje · marca = típico dos 7 dias</small>
+        </div>
+        {rows.map(([name, programmedTime, real, typical]) => {
+          const over = programmedTime && real ? real / programmedTime - 1 : null;
+          return (
+            <div key={name} className="mx-bar-pair">
+              <span>{name}</span>
+              <div className="mx-bar ghost" title={`Programado: ${span(programmedTime)}`}>
+                <i style={{ width: `${((programmedTime ?? 0) / longest) * 100}%` }} />
+              </div>
+              <b className="muted">{span(programmedTime)}</b>
+              <span />
+              <div className="mx-bar" title={`Real hoje: ${span(real)}`}>
+                <i
+                  className={over == null ? '' : over > 0.15 ? 'bad' : over > 0.05 ? 'warn' : ''}
+                  style={{ width: `${((real ?? 0) / longest) * 100}%` }}
+                />
+                {typical ? <u style={{ left: `${(typical / longest) * 100}%` }} /> : null}
+              </div>
+              <b>
+                {span(real)}
+                {over != null && Math.abs(over) >= 0.05 && (
+                  <small className={over > 0 ? 'mx-up' : 'mx-down'}>
+                    {' '}
+                    {over > 0 ? '+' : '−'}
+                    {Math.round(Math.abs(over) * 100)}%
+                  </small>
+                )}
+              </b>
+            </div>
+          );
+        })}
+        <div className="mx-bars-key">
+          <span>
+            <i className="ghost" /> programado na receita
+          </span>
+          <span>
+            <i /> real
+          </span>
+        </div>
+      </div>
+
+      <Facts
+        items={[
+          ['Bateladas hoje', integer(data.day.batches)],
+          ['Ciclo típico', span(process?.cycleSeconds ?? data.day.cycleSeconds)],
+          ['Trabalhando', percentOf(kinds.working), workTone(kinds.working)],
+        ]}
+      />
+    </section>
   );
 }
 
@@ -415,7 +488,9 @@ function MixerTimes({ data }: { data: Mixer }) {
  * The scale through the day, each climb a batch being dosed and each line a batch that closed,
  * with both processes drawn under it on the same clock, coloured by what they were doing.
  */
-function WorkCurve({ data, color }: { data: Mixer; color: string }) {
+function WorkCurve({ data }: { data: Mixer }) {
+  const palette = useContext(MortarColors);
+  const color = palette.accent;
   const rows = useMemo(
     () => data.curve.map((point) => ({ t: new Date(point.at).getTime(), kg: point.kg })),
     [data.curve],
@@ -439,9 +514,9 @@ function WorkCurve({ data, color }: { data: Mixer; color: string }) {
   const at = (t: number) => ((t - domain[0]) / (domain[1] - domain[0])) * 100;
   return (
     <div className="mx-curve">
-      <div className="mx-label">
+      <div className="mx-section-title">
         Curva de trabalho
-        <small>peso na balança e o que cada processo fazia · linhas cinzas = bateladas fechadas</small>
+        <small>o peso na balança e, abaixo, o que cada processo fazia · linhas = bateladas</small>
       </div>
       <div className="mx-chart">
         <ResponsiveContainer width="100%" height="100%">
@@ -469,26 +544,9 @@ function WorkCurve({ data, color }: { data: Mixer; color: string }) {
               labelFormatter={(value) => clock(new Date(Number(value)).toISOString())}
               formatter={(value) => [`${integer(Number(value))} kg`, 'balança']}
             />
-            {data.target && (
-              <ReferenceLine
-                y={data.target}
-                stroke="#0b2028"
-                strokeDasharray="6 4"
-                label={{
-                  value: 'total da receita',
-                  position: 'insideTopRight',
-                  fontSize: 10,
-                  fill: '#5d747b',
-                }}
-              />
-            )}
+            {data.target && <ReferenceLine y={data.target} stroke="#0b2028" strokeDasharray="6 4" />}
             {data.day.list.map((batch) => (
-              <ReferenceLine
-                key={batch.at}
-                x={new Date(batch.at).getTime()}
-                stroke="#c3d0d4"
-                strokeWidth={1}
-              />
+              <ReferenceLine key={batch.at} x={new Date(batch.at).getTime()} stroke="#d3dde0" />
             ))}
             <Area
               dataKey="kg"
@@ -505,7 +563,7 @@ function WorkCurve({ data, color }: { data: Mixer; color: string }) {
       </div>
       {lanes.map((process) => (
         <div key={process} className="mx-lane" style={{ marginLeft: Y_AXIS, marginRight: RIGHT }}>
-          <span className="mx-lane-name">{PROCESS_NAMES[process].title}</span>
+          <span className="mx-lane-name">{process === 'pesagem' ? 'Pesagem' : 'Mistura'}</span>
           <div className="mx-lane-track">
             {data.processes![process]!.segments.map((segment) => {
               const step = stepOf(process, segment.step);
@@ -515,7 +573,11 @@ function WorkCurve({ data, color }: { data: Mixer; color: string }) {
               return (
                 <i
                   key={`${segment.start}-${segment.step}`}
-                  style={{ left: `${left}%`, width: `${width}%`, background: STEP_KINDS[step.kind].color }}
+                  style={{
+                    left: `${left}%`,
+                    width: `${width}%`,
+                    background: STEP_KINDS[step.kind].color,
+                  }}
                   title={`${clock(segment.start)}–${clock(segment.end)} · ${step.label} · ${span(segment.seconds)}`}
                 />
               );
@@ -530,6 +592,11 @@ function WorkCurve({ data, color }: { data: Mixer; color: string }) {
               <i style={{ background: STEP_KINDS[kind].color }} /> {STEP_KINDS[kind].label}
             </span>
           ))}
+          {data.target ? (
+            <span>
+              <i className="dash" /> total da receita
+            </span>
+          ) : null}
         </div>
       )}
     </div>
@@ -537,100 +604,147 @@ function WorkCurve({ data, color }: { data: Mixer; color: string }) {
 }
 
 /**
- * A process's steps in the day: how often each ran, its typical time against the seven days
- * before, and where the time went. The longest wait is said in words above the table.
+ * Where the time went, per process: one bar split by kind, the longest wait in words, and every
+ * step's numbers behind a click, so the board stays readable and the detail stays at hand.
  */
-function StepTable({ process, data }: { process: Process; data: ProcessDay }) {
-  const { totals, on } = kindTotals(process, data);
-  const rows = data.steps.filter((item) => item.step !== 0 && (item.runs > 0 || item.total > 0));
-  const longestWait = rows
-    .filter((item) => stepOf(process, item.step).kind === 'wait')
-    .sort((a, b) => b.total - a.total)[0];
+function TimeSpent({ processes }: { processes: Record<Process, ProcessDay | null> }) {
+  const [open, setOpen] = useState(false);
   return (
-    <section className="mx-step-table">
-      <div className="mx-step-head">
-        <strong>Etapas · {PROCESS_NAMES[process].title}</strong>
-        <small>
-          {data.cycles} {data.cycles === 1 ? 'ciclo' : 'ciclos'}
-          {data.cycleSeconds ? ` · típico ${span(data.cycleSeconds)}` : ''}
-        </small>
+    <div className="mx-spent">
+      <div className="mx-section-title">
+        Para onde foi o tempo
+        <button type="button" className="mx-more" onClick={() => setOpen(!open)}>
+          {open ? 'Ocultar etapas' : 'Ver todas as etapas'}
+        </button>
       </div>
-      {on > 0 && (
-        <div className="mx-kinds" title="Como o tempo ligado se dividiu">
-          {(['work', 'prep', 'wait'] as const).map((kind) =>
-            totals[kind] > 0 ? (
-              <i
-                key={kind}
-                style={{ width: `${(totals[kind] / on) * 100}%`, background: STEP_KINDS[kind].color }}
-                title={`${STEP_KINDS[kind].label}: ${span(totals[kind])} (${Math.round((totals[kind] / on) * 100)}%)`}
-              />
-            ) : null,
-          )}
-        </div>
-      )}
-      {longestWait && longestWait.total >= 60 && (
-        <p className="mx-callout">
-          Maior espera: <b>{stepOf(process, longestWait.step).label.toLowerCase()}</b> ·{' '}
-          {span(longestWait.total)}
-          {on > 0 && ` (${Math.round((longestWait.total / on) * 100)}% do tempo ligado)`}
-        </p>
-      )}
-      {rows.length === 0 ? (
-        <div className="stops-empty">Nenhuma etapa registrada neste dia.</div>
-      ) : (
-        <table className="stops-table mortar-table mx-table">
-          <thead>
-            <tr>
-              <th>Etapa</th>
-              <th className="n">Vezes</th>
-              <th className="n" title="Mediana de hoje">Típico</th>
-              <th className="n" title="Diferença para o típico dos 7 dias anteriores">vs 7 dias</th>
-              <th className="n">Total</th>
-              <th className="n">%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((item) => {
-              const step = stepOf(process, item.step);
-              // In time, not in percent: a wait of 10 s that became 2 min is "+1 min 50 s", which
-              // anyone reads, where "+1100%" says nothing. Slower is worse for every step.
-              const change =
-                item.median != null && item.typical != null ? item.median - item.typical : null;
-              const tone =
-                change == null ||
-                Math.abs(change) < 5 ||
-                (item.typical ? Math.abs(change) / item.typical < 0.1 : false)
-                  ? ''
-                  : change > 0
-                    ? 'bad'
-                    : 'good';
-              return (
-                <Fragment key={item.step}>
-                  <tr>
-                    <td>
-                      <span className="mortar-dot" style={{ background: STEP_KINDS[step.kind].color }} />
-                      {step.label}
-                    </td>
-                    <td className="n">{integer(item.runs)}</td>
-                    <td className="n">{span(item.median)}</td>
-                    <td className={`n mx-delta ${tone}`}>
-                      {change == null
-                        ? '—'
-                        : tone === ''
-                          ? 'igual'
-                          : `${change > 0 ? '+' : '−'}${span(Math.abs(change))}`}
-                    </td>
-                    <td className="n">{span(item.total)}</td>
-                    <td className="n muted">
-                      {on > 0 ? `${Math.round((item.total / on) * 100)}%` : '—'}
-                    </td>
-                  </tr>
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </section>
+      <div className="mx-spent-grid">
+        {(['pesagem', 'misturador'] as const).map((process) => {
+          const data = processes[process];
+          if (!data) return null;
+          const { totals, on } = kindTotals(process, data);
+          const waits = data.steps
+            .filter((item) => stepOf(process, item.step).kind === 'wait' && item.total >= 60)
+            .sort((a, b) => b.total - a.total);
+          return (
+            <div key={process} className="mx-spent-item">
+              <div className="mx-spent-name">
+                <b>{process === 'pesagem' ? 'Pesagem' : 'Mistura'}</b>
+                <small>
+                  {data.cycles} {data.cycles === 1 ? 'ciclo' : 'ciclos'}
+                  {data.cycleSeconds ? ` · típico ${span(data.cycleSeconds)}` : ''}
+                </small>
+              </div>
+              {on > 0 ? (
+                <>
+                  <div className="mx-kinds">
+                    {(['work', 'prep', 'wait'] as const).map((kind) =>
+                      totals[kind] > 0 ? (
+                        <i
+                          key={kind}
+                          style={{
+                            width: `${(totals[kind] / on) * 100}%`,
+                            background: STEP_KINDS[kind].color,
+                          }}
+                          title={`${STEP_KINDS[kind].label}: ${span(totals[kind])}`}
+                        />
+                      ) : null,
+                    )}
+                  </div>
+                  <div className="mx-kinds-key">
+                    {(['work', 'prep', 'wait'] as const).map((kind) =>
+                      totals[kind] > 0 ? (
+                        <span key={kind}>
+                          <i style={{ background: STEP_KINDS[kind].color }} />
+                          {STEP_KINDS[kind].label} <b>{Math.round((totals[kind] / on) * 100)}%</b>
+                        </span>
+                      ) : null,
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="stops-empty">Sem tempo registrado neste dia.</div>
+              )}
+              {waits[0] && (
+                <p className="mx-callout">
+                  Maior espera: <b>{stepOf(process, waits[0].step).label.toLowerCase()}</b> ·{' '}
+                  {span(waits[0].total)}
+                  {on > 0 && ` (${Math.round((waits[0].total / on) * 100)}% do tempo ligado)`}
+                </p>
+              )}
+              {open && <StepTable process={process} data={data} on={on} />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Every step of a process: how often, its typical time against the seven days before, the total. */
+function StepTable({ process, data, on }: { process: Process; data: ProcessDay; on: number }) {
+  const order = PROCESS_STEPS[process].map((item) => item.step);
+  const rows = data.steps
+    .filter((item) => item.step !== 0 && (item.runs > 0 || item.total > 0))
+    .sort((a, b) => order.indexOf(a.step) - order.indexOf(b.step));
+  if (!rows.length) return <div className="stops-empty">Nenhuma etapa registrada neste dia.</div>;
+  return (
+    <table className="stops-table mortar-table mx-table">
+      <thead>
+        <tr>
+          <th>Etapa</th>
+          <th className="n">Vezes</th>
+          <th className="n" title="Mediana de hoje">
+            Típico
+          </th>
+          <th className="n" title="Diferença para o típico dos 7 dias anteriores">
+            vs 7 dias
+          </th>
+          <th className="n">Total</th>
+          <th className="n">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((item) => {
+          const step = stepOf(process, item.step);
+          // In time, not percent: a 10 s wait that became 2 min reads "+1 min 50 s".
+          const change =
+            item.median != null && item.typical != null ? item.median - item.typical : null;
+          const tone =
+            change == null ||
+            Math.abs(change) < 5 ||
+            (item.typical ? Math.abs(change) / item.typical < 0.1 : false)
+              ? ''
+              : change > 0
+                ? 'bad'
+                : 'good';
+          return (
+            <Fragment key={item.step}>
+              <tr>
+                <td>
+                  <span
+                    className="mortar-dot"
+                    style={{ background: STEP_KINDS[step.kind].color }}
+                  />
+                  {step.label}
+                </td>
+                <td className="n">{integer(item.runs)}</td>
+                <td className="n">{span(item.median)}</td>
+                <td className={`n mx-delta ${tone}`}>
+                  {change == null
+                    ? '—'
+                    : tone === ''
+                      ? 'igual'
+                      : `${change > 0 ? '+' : '−'}${span(Math.abs(change))}`}
+                </td>
+                <td className="n">{span(item.total)}</td>
+                <td className="n muted">
+                  {on > 0 ? `${Math.round((item.total / on) * 100)}%` : '—'}
+                </td>
+              </tr>
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
