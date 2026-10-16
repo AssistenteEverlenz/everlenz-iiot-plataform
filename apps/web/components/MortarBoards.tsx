@@ -379,6 +379,20 @@ function SpoutCard({
           ›
         </span>
       </header>
+      {/* What is on the spout right now: the first thing anyone at the line asks. */}
+      {live && (
+        <div
+          className={`mortar-spout-now${spout.recipe ? '' : ' mortar-spout-now-none'}`}
+          style={{ '--spout': color } as React.CSSProperties}
+        >
+          <span>No bico</span>
+          <b>{spout.product ?? spout.recipe ?? 'Sem receita na IHM'}</b>
+          {spout.recipe && spout.product && spout.product !== spout.recipe && (
+            <small>receita {spout.recipe}</small>
+          )}
+          {spout.recipe && !spout.product && <small>receita sem produto ligado</small>}
+        </div>
+      )}
       <div className="mortar-spout-main">
         <div className="mortar-spout-hero">
           <b>{integer(spout.bags)}</b>

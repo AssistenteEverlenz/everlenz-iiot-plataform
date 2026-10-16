@@ -12902,3 +12902,41 @@ button.mortar-spout:hover .mortar-spout-open {
   .briefing-backdrop,
   .briefing-card { animation: none; }
 }
+
+/* What the spout is filling now, under its name: a bar in the spout's colour. */
+.mortar-spout-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 2px 0 4px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--spout, var(--brand-accent, #12b8a6));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--spout, var(--brand-accent, #12b8a6)) 9%, #fff);
+  text-align: left;
+  /* The same height with or without the recipe line, so the three spouts stay aligned. */
+  min-height: 54px;
+  align-content: center;
+}
+.mortar-spout-now span {
+  color: #71868d;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mortar-spout-now b {
+  color: #0b2028;
+  font-size: 15px;
+  font-weight: 700;
+}
+.mortar-spout-now small {
+  flex-basis: 100%;
+  color: #71868d;
+  font-size: 11px;
+}
+.mortar-spout-now.mortar-spout-now-none b {
+  color: #8a9ca2;
+  font-weight: 600;
+}

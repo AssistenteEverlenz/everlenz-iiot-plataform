@@ -3964,4 +3964,20 @@
   :root[data-theme='dark'] .briefing-foot {
     color: #798e95;
   }
+  :root[data-theme='dark'] .mortar-spout-now {
+    border-left: 3px solid var(--spout, var(--brand-accent, #12b8a6));
+    background: color-mix(in srgb, var(--spout, var(--brand-accent, #12b8a6)) 9%, #12191c);
+  }
+  :root[data-theme='dark'] .mortar-spout-now span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .mortar-spout-now b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mortar-spout-now small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .mortar-spout-now.mortar-spout-now-none b {
+    color: #798e95;
+  }
 }
