@@ -180,8 +180,9 @@ export function SnapshotModal({
           <section className="snapshot-section">
             <strong>Modelo de painel</strong>
             <p className="shifts-help">
-              Os próximos equipamentos cadastrados começam com os cards e as abas deste painel,
-              sem variável: cada card recebe a variável pelo lápis.
+              Os próximos equipamentos do mesmo segmento (cerâmica ou argamassa) começam com os
+              cards e as abas deste painel, sem variável: cada card recebe a variável pelo lápis.
+              Cada segmento tem o seu modelo.
             </p>
             <button
               type="button"
@@ -190,7 +191,7 @@ export function SnapshotModal({
                 void run(
                   'template',
                   () => mutate(`/dashboards/${dashboardId}/template`, 'POST'),
-                  'Este painel agora é o modelo dos novos equipamentos.',
+                  'Este painel agora é o modelo dos novos equipamentos do segmento dele.',
                 )
               }
             >

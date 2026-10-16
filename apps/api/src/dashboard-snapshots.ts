@@ -272,12 +272,78 @@ async function restore(
   return productionRestored;
 }
 
-async function loadTemplate(sql: Executor, tenantId: string) {
-  const template = await sql.query<{ content: SnapshotContent }>(
-    'SELECT content FROM dashboard_templates WHERE tenant_id=$1',
-    [tenantId],
+/*
+ * One model per segment (migration 045). A ceramic plant and a mortar plant share nothing on
+ * their panels: pallets, kiln and wear on one side, spouts, mixer and lots on the other.
+ */
+export type Segment = 'ceramica' | 'argamassa';
+
+/** The segment of a device's plant; a device without one is ceramic, the platform's first. */
+export async function segmentOfDevice(sql: Executor, tenantId: string, deviceId: string) {
+  const found = await sql.query<{ segment: string | null }>(
+    `SELECT to_jsonb(s)->>'segment' segment FROM devices d LEFT JOIN sites s ON s.id=d.site_id
+     WHERE d.tenant_id=$1 AND d.id=$2`,
+    [tenantId, deviceId],
   );
-  return template.rows[0]?.content ?? null;
+  return (found.rows[0]?.segment === 'argamassa' ? 'argamassa' : 'ceramica') as Segment;
+}
+
+/**
+ * Whether the models are kept per segment yet. Production applies migrations by hand, so the
+ * code can arrive first; asking instead of trying keeps the transactions these run in alive.
+ * Once the column is there it stays, so only a yes is remembered.
+ */
+let perSegment = false;
+async function templateSegmentColumn(sql: Executor) {
+  if (perSegment) return true;
+  const found = await sql.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_name='dashboard_templates' AND column_name='segment' LIMIT 1`,
+  );
+  perSegment = found.rows.length > 0;
+  return perSegment;
+}
+
+/**
+ * The mortar model until a mortar panel is saved as one: the four boards of the segment, as the
+ * demonstration plant has them. Without it a mortar plant would start from the ceramic model.
+ */
+const MORTAR_DEFAULT: SnapshotContent = {
+  version: 1,
+  dashboard: { name: 'Argamassa', refresh_ms: 2000, time_window_minutes: 60 },
+  production: null,
+  productionContext: null,
+  widgets: (
+    [
+      ['bagging', 'Ensaque', 'full'],
+      ['mortar_output', 'Produzido por produto', 'large'],
+      ['mortar_yield', 'Rendimento', 'medium'],
+      ['mortar_materials', 'Matéria-prima', 'full'],
+    ] as const
+  ).map(([widget_type, title, width], position) => ({
+    id: `mortar-${widget_type}`,
+    device_id: '',
+    tag_id: null,
+    widget_type,
+    title,
+    position,
+    width,
+    config: {},
+    tab_id: null,
+  })),
+};
+
+async function loadTemplate(sql: Executor, tenantId: string, segment: Segment) {
+  const bySegment = await templateSegmentColumn(sql);
+  // Before 045 the one stored model is the ceramic one.
+  if (!bySegment && segment !== 'ceramica') return MORTAR_DEFAULT;
+  const template = await sql.query<{ content: SnapshotContent }>(
+    bySegment
+      ? 'SELECT content FROM dashboard_templates WHERE tenant_id=$1 AND segment=$2'
+      : 'SELECT content FROM dashboard_templates WHERE tenant_id=$1',
+    bySegment ? [tenantId, segment] : [tenantId],
+  );
+  return template.rows[0]?.content ?? (segment === 'argamassa' ? MORTAR_DEFAULT : null);
 }
 
 async function insertModelCard(
@@ -333,7 +399,7 @@ export async function applyDashboardTemplate(
   dashboardId: string,
   deviceId: string,
 ) {
-  const template = await loadTemplate(sql, tenantId);
+  const template = await loadTemplate(sql, tenantId, await segmentOfDevice(sql, tenantId, deviceId));
   const widgets = template?.widgets ?? [];
   const tabFor = template ? await tabsOf(sql, tenantId, dashboardId, template) : null;
   const cardFor = new Map<string, string>();
@@ -357,7 +423,7 @@ export async function applyTemplateToDashboard(
   dashboardId: string,
   deviceId: string,
 ) {
-  const template = await loadTemplate(sql, tenantId);
+  const template = await loadTemplate(sql, tenantId, await segmentOfDevice(sql, tenantId, deviceId));
   if (!template?.widgets.length) return null;
   const own = (
     await sql.query<{ widget_type: string; tag_id: string | null }>(
@@ -415,7 +481,7 @@ export async function applyTemplateTv(
   dashboardId: string,
   deviceId: string,
 ) {
-  const template = await loadTemplate(sql, tenantId);
+  const template = await loadTemplate(sql, tenantId, await segmentOfDevice(sql, tenantId, deviceId));
   if (!template?.tv?.length) return null;
   const own = (
     await sql.query<{ id: string; widget_type: string; tag_id: string | null; position: number }>(
@@ -592,22 +658,39 @@ export function registerDashboardSnapshotRoutes(
     if (!(await dashboardOf(req, reply, id))) return;
     const current = access.principal(req);
     const content = await capture(db, current.tenantId, id);
+    // The model of the panel's segment: a mortar panel never replaces the ceramic model.
+    const dashboard = await dashboardOf(req, reply, id);
+    const segment = dashboard?.device_id
+      ? await segmentOfDevice(db, current.tenantId, dashboard.device_id)
+      : 'ceramica';
+    const bySegment = await templateSegmentColumn(db);
+    if (!bySegment && segment !== 'ceramica')
+      return reply.code(409).send({
+        error: 'O modelo de argamassa precisa da migração 045 aplicada no banco.',
+      });
     await db.transaction(async (sql) => {
       await sql.query(
-        `INSERT INTO dashboard_templates(tenant_id,source_dashboard_id,content,updated_at)
-         VALUES($1,$2,$3::jsonb,now())
-         ON CONFLICT(tenant_id) DO UPDATE SET source_dashboard_id=EXCLUDED.source_dashboard_id,
-           content=EXCLUDED.content,updated_at=now()`,
-        [current.tenantId, id, JSON.stringify(content)],
+        bySegment
+          ? `INSERT INTO dashboard_templates(tenant_id,segment,source_dashboard_id,content,updated_at)
+             VALUES($1,$4,$2,$3::jsonb,now())
+             ON CONFLICT(tenant_id,segment) DO UPDATE SET source_dashboard_id=EXCLUDED.source_dashboard_id,
+               content=EXCLUDED.content,updated_at=now()`
+          : `INSERT INTO dashboard_templates(tenant_id,source_dashboard_id,content,updated_at)
+             VALUES($1,$2,$3::jsonb,now())
+             ON CONFLICT(tenant_id) DO UPDATE SET source_dashboard_id=EXCLUDED.source_dashboard_id,
+               content=EXCLUDED.content,updated_at=now()`,
+        bySegment
+          ? [current.tenantId, id, JSON.stringify(content), segment]
+          : [current.tenantId, id, JSON.stringify(content)],
       );
       await recordAudit(sql, req, current, {
         action: 'dashboard.template.set',
         targetType: 'dashboard',
         targetId: id,
-        summary: { widgets: content?.widgets.length ?? 0 },
+        summary: { widgets: content?.widgets.length ?? 0, segment },
       });
     });
-    return { widgets: content?.widgets.length ?? 0 };
+    return { widgets: content?.widgets.length ?? 0, segment };
   });
 
   // "Carregar o modelo neste painel": cards and TV from the model. Kept undoable by a snapshot.
