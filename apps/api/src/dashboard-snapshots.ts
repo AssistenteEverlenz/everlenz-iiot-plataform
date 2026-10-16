@@ -321,6 +321,7 @@ const MORTAR_DEFAULT: SnapshotContent = {
     [
       ['bagging', 'Ensaque', 'full', 'ensaque'],
       ['mortar_output', 'Produzido por produto', 'full', 'ensaque'],
+      ['mortar_mixer', 'Misturador', 'full', 'misturador'],
       ['mortar_materials', 'Matéria-prima', 'full', 'misturador'],
       ['mortar_yield', 'Rendimento', 'full', 'misturador'],
     ] as const

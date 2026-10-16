@@ -105,7 +105,8 @@ export interface DashboardWidget {
     | 'bagging'
     | 'mortar_output'
     | 'mortar_materials'
-    | 'mortar_yield';
+    | 'mortar_yield'
+    | 'mortar_mixer';
   title: string;
   position: number;
   /** Which tab of the panel shows it; null means it has none and rides on the first. */

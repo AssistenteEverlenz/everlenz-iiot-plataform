@@ -12940,3 +12940,598 @@ button.mortar-spout:hover .mortar-spout-open {
   color: #8a9ca2;
   font-weight: 600;
 }
+
+
+/* ---------- The mixer board (MortarMixer.tsx) ----------
+   Three layers, top-down: now (recipe, run, the two processes side by side), the day (figures,
+   the work curve with the processes under it), the steps (where the time went). */
+.mx-board {
+  display: grid;
+  gap: 16px;
+}
+.mx-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px 22px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e3eaec;
+}
+.mx-recipe {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.mx-recipe span,
+.mx-label,
+.mx-proc-head small {
+  color: #71868d;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mx-recipe b {
+  overflow: hidden;
+  color: #0b2028;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-run {
+  display: grid;
+  gap: 6px;
+}
+.mx-run span {
+  color: #5d747b;
+  font-size: 12.5px;
+}
+.mx-run span b {
+  color: #0b2028;
+  font-size: 18px;
+}
+.mx-segments {
+  display: flex;
+  gap: 4px;
+}
+.mx-segments i {
+  flex: 1;
+  height: 10px;
+  border-radius: 3px;
+  background: #e6eef0;
+}
+.mx-segments i.done {
+  background: var(--brand-accent, #12b8a6);
+}
+.mx-pills {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+.mx-pills em {
+  padding: 4px 12px;
+  border: 1px solid #cbdadd;
+  border-radius: 999px;
+  color: #3d5a62;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+.mx-pills em.on {
+  border-color: var(--brand-accent, #12b8a6);
+  color: var(--brand-accent, #12b8a6);
+}
+.mx-pills em.manual {
+  border-color: #f2a93b;
+  color: #b0700f;
+}
+.mx-pills small {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+.mx-pills small.stale {
+  color: #c2421f;
+}
+
+/* The two processes, side by side. */
+.mx-procs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.mx-proc {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px 16px 16px;
+  border: 1px solid #e0e8ea;
+  border-radius: 12px;
+  background: #fbfcfc;
+}
+.mx-proc-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.mx-proc-head strong {
+  color: #0b2028;
+  font-size: 15px;
+  font-weight: 700;
+}
+.mx-proc-missing {
+  padding: 10px 12px;
+  border: 1px dashed #cbdadd;
+  border-radius: 8px;
+  color: #71868d;
+  font-size: 12.5px;
+}
+.mx-now {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mx-now > i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+.mx-now.work > i {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand-accent, #12b8a6) 18%, transparent);
+  animation: mx-pulse 1.6s ease-in-out infinite;
+}
+@keyframes mx-pulse {
+  50% {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--brand-accent, #12b8a6) 6%, transparent);
+  }
+}
+.mx-now > div:first-of-type {
+  display: grid;
+  min-width: 0;
+}
+.mx-now > div:first-of-type span {
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 600;
+}
+.mx-now > div:first-of-type b {
+  overflow: hidden;
+  color: #0b2028;
+  font-size: 19px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-now.wait > div:first-of-type b {
+  color: #9a5d00;
+}
+.mx-elapsed {
+  display: grid;
+  justify-items: end;
+  margin-left: auto;
+}
+.mx-elapsed b {
+  color: #0b2028;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mx-elapsed small {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+.mx-elapsed.warn b {
+  color: #b0700f;
+}
+.mx-elapsed.bad b {
+  color: #c2421f;
+}
+/* Time in the step against its typical time: the mark is the typical, the track goes to 150 %. */
+.mx-progress {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: #e6eef0;
+}
+.mx-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--brand-accent, #12b8a6);
+  transition: width 0.6s ease;
+}
+.mx-progress.warn i {
+  background: #f2a93b;
+}
+.mx-progress.bad i {
+  background: #e4572e;
+}
+.mx-progress u {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: #0b2028;
+}
+.mx-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-track li {
+  padding: 3px 9px;
+  border: 1px solid #dfe8ea;
+  border-radius: 6px;
+  background: #fff;
+  color: #71868d;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.mx-track li.wait {
+  border-style: dashed;
+}
+.mx-track li.active {
+  border-color: var(--brand-accent, #12b8a6);
+  background: var(--brand-accent, #12b8a6);
+  color: #fff;
+}
+.mx-track li.wait.active {
+  border-color: #f2a93b;
+  background: #f2a93b;
+}
+
+/* The scale and the recipe. */
+.mx-scale {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed #dde6e8;
+}
+.mx-big {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.mx-big b {
+  color: #0b2028;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.mx-big small {
+  color: #71868d;
+  font-size: 12.5px;
+}
+.mx-big em {
+  margin-left: auto;
+  color: #0b2028;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 700;
+}
+.mx-gauge {
+  height: 14px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #e6eef0;
+}
+.mx-gauge i {
+  display: block;
+  height: 100%;
+  border-radius: 7px;
+  background: var(--brand-accent, #12b8a6);
+  transition: width 0.6s ease;
+}
+.mx-materials {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-materials li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+.mx-materials li > i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.mx-materials li span {
+  color: #3d5a62;
+}
+.mx-materials li b {
+  color: #0b2028;
+  font-variant-numeric: tabular-nums;
+}
+.mx-material-bar {
+  grid-column: 2 / -1;
+  height: 4px;
+  border-radius: 2px;
+  background: #edf2f3;
+}
+.mx-material-bar u {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+.mx-materials li.none {
+  opacity: 0.45;
+}
+.mx-materials li.dosing {
+  outline: 1px solid var(--brand-accent, #12b8a6);
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 8%, #fff);
+}
+.mx-materials li.dosing span::after {
+  content: " · dosando";
+  color: var(--brand-accent, #12b8a6);
+  font-weight: 700;
+}
+
+/* The mixer's timed steps: programmed against real. */
+.mx-times {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px dashed #dde6e8;
+}
+.mx-times-head,
+.mx-times-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1fr 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+.mx-times-head span {
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mx-times-row span {
+  color: #3d5a62;
+  font-size: 13px;
+}
+.mx-times-row b {
+  color: #0b2028;
+  font-size: 17px;
+  font-weight: 600;
+}
+.mx-times-row b small {
+  font-size: 11px;
+}
+.mx-times-row b.good small {
+  color: #148a55;
+}
+.mx-times-row b.warn small {
+  color: #b0700f;
+}
+.mx-times-row b.bad {
+  color: #c2421f;
+}
+
+/* The day. */
+.mx-day {
+  display: grid;
+  gap: 14px;
+}
+.mx-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mx-day-head strong {
+  color: #20353d;
+  font-size: 15px;
+  font-weight: 700;
+}
+.mx-figures {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+.mx-figure {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid #e0e8ea;
+  border-radius: 10px;
+}
+.mx-figure span {
+  color: #71868d;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mx-figure b {
+  color: #0b2028;
+  font-size: 22px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mx-figure b small {
+  color: #71868d;
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-figure em {
+  color: #8a9ca2;
+  font-size: 11px;
+  font-style: normal;
+}
+.mx-figure.good b {
+  color: #148a55;
+}
+.mx-figure.warn b {
+  color: #b0700f;
+}
+.mx-figure.bad b {
+  color: #c2421f;
+}
+.mx-curve {
+  display: grid;
+  gap: 6px;
+}
+.mx-label small {
+  margin-left: 8px;
+  color: #8a9ca2;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.mx-chart {
+  width: 100%;
+  height: 230px;
+}
+.mx-lane {
+  position: relative;
+  display: grid;
+  gap: 2px;
+}
+.mx-lane-name {
+  color: #5d747b;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.mx-lane-track {
+  position: relative;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #f1f5f6;
+}
+.mx-lane-track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.mx-lane-track i:hover {
+  z-index: 1;
+  outline: 2px solid #0b2028;
+  outline-offset: -2px;
+}
+.mx-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 2px;
+  color: #5d747b;
+  font-size: 11px;
+}
+.mx-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mx-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* The steps. */
+.mx-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.mx-step-table {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+.mx-step-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.mx-step-head strong {
+  color: #20353d;
+  font-size: 14px;
+  font-weight: 700;
+}
+.mx-step-head small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+}
+.mx-kinds {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  gap: 2px;
+  border-radius: 5px;
+}
+.mx-callout {
+  margin: 0;
+  padding: 7px 10px;
+  border-left: 3px solid #f2a93b;
+  border-radius: 6px;
+  background: #fdf6ea;
+  color: #6b4a12;
+  font-size: 12.5px;
+}
+.mx-callout b {
+  color: #4a3000;
+}
+.mx-table td {
+  white-space: nowrap;
+}
+.mx-delta.bad {
+  color: #c2421f;
+  font-weight: 700;
+}
+.mx-delta.good {
+  color: #148a55;
+  font-weight: 700;
+}
+@media (max-width: 1100px) {
+  .mx-figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .mx-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .mx-run {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+@media (max-width: 900px) {
+  .mx-procs,
+  .mx-steps {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .mx-recipe b {
+    font-size: 21px;
+  }
+  .mx-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mx-chart {
+    height: 190px;
+  }
+  .mx-step-table .stops-table {
+    display: block;
+    overflow-x: auto;
+  }
+}

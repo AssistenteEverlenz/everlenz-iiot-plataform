@@ -6,6 +6,7 @@ import { mutate, usePoll } from './data';
 import { ModalPortal } from './ModalPortal';
 import { usePlatform } from './PlatformShell';
 import { Bagging, Materials, MortarColors, Output, Yield } from './MortarBoards';
+import { MixerBoard } from './MortarMixer';
 import {
   PERIODS,
   integer,
@@ -44,7 +45,7 @@ export function MortarPanel({
         ? custom
         : windowOf(period);
   const summary = usePoll<Summary>(
-    `/devices/${deviceId}/mortar?from=${range.from}&to=${range.to}`,
+    view === 'mortar_mixer' ? null : `/devices/${deviceId}/mortar?from=${range.from}&to=${range.to}`,
     view === 'bagging' ? 30000 : 120000,
   );
 
@@ -85,6 +86,15 @@ export function MortarPanel({
   );
 
   const data = summary.data;
+  // The mixer board reads its own live route: the run now and the day's work curve.
+  if (view === 'mortar_mixer')
+    return (
+      <MortarColors.Provider value={paletteOf(config)}>
+        <div className="stops-panel mortar-panel">
+          <MixerBoard deviceId={deviceId} />
+        </div>
+      </MortarColors.Provider>
+    );
   return (
     <MortarColors.Provider value={paletteOf(config)}>
       <div className="stops-panel mortar-panel">
@@ -880,6 +890,12 @@ export const MORTAR_CARDS: Array<[MortarView, string, string, string]> = [
     '⇄',
     'Rendimento',
     'O que foi misturado contra o que saiu ensacado, e a diferença.',
+  ],
+  [
+    'mortar_mixer',
+    '◎',
+    'Misturador',
+    'A batelada em andamento, a balança contra a receita, as bateladas do dia e a curva de trabalho.',
   ],
 ];
 export const isMortarView = (type: string): type is MortarView =>

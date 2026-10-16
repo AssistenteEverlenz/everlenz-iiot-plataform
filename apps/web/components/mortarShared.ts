@@ -4,7 +4,12 @@ import { createContext } from 'react';
  * What the mortar cards share: the summary the API returns (apps/api/src/mortar.ts), the
  * colours that mean the same thing on every card, and the way numbers are written.
  */
-export type MortarView = 'bagging' | 'mortar_output' | 'mortar_materials' | 'mortar_yield';
+export type MortarView =
+  | 'bagging'
+  | 'mortar_output'
+  | 'mortar_materials'
+  | 'mortar_yield'
+  | 'mortar_mixer';
 
 export type SpoutState = 'running' | 'idle' | 'off' | 'offline' | 'unknown';
 export type SpoutProduct = {

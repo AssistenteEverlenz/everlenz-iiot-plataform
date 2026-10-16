@@ -35,10 +35,28 @@ type Config = {
   };
 };
 
+/**
+ * The step numbers the mixer's PLC runs its two processes with (migration 046), published by
+ * the HMI under these names: each change of step is a row in mortar_process_steps.
+ */
+const PROCESS_KEYS: Array<[string, 'pesagem' | 'misturador']> = [
+  ['ProcessoPesagem', 'pesagem'],
+  ['ProcessoMisturador', 'misturador'],
+];
+type StepState = { id: string | null; step: number; lastAt: number };
+/**
+ * A silence this long ends the step at the last message heard. Shorter ones -- a network blip --
+ * leave the step running: splitting it would count one step twice and halve its time.
+ */
+const STEP_SILENCE_MS = 10 * 60_000;
+
 export class MortarTracker {
   private configs = new Map<string, { expiresAt: number; config: Config | null }>();
   private spoutRuntimes = new Map<string, SpoutRuntime>();
   private mixRuntimes = new Map<string, MixRuntime>();
+  private steps = new Map<string, StepState>();
+  /** Migration 046 not applied yet: steps are not written, and asked again later. */
+  private stepsPausedUntil = 0;
 
   constructor(
     private db: Database,
@@ -118,6 +136,7 @@ export class MortarTracker {
     samples: { key: string; value: unknown }[],
     receivedAt: Date,
   ) {
+    await this.observeSteps(device, tags, samples, receivedAt.getTime());
     const config = await this.config(device, tags);
     if (!config) return;
     const present = (key: string | null) => key != null && samples.some((item) => item.key === key);
@@ -133,6 +152,67 @@ export class MortarTracker {
       if (present(spout.countKey)) await this.observeSpout(device, config, spout, read, at);
     if (config.mix && present(config.mix.countKey))
       await this.observeMix(device, config.mix, read, at);
+  }
+
+  /**
+   * A step of the weighing or the mixer begins when its number changes: the row of the step
+   * that ran until now is closed at this message and the new one opens. A long silence
+   * (STEP_SILENCE_MS) closes the step at the last message heard, so a night with the HMI off is
+   * not counted as the last step of the day.
+   */
+  private async observeSteps(
+    device: Device,
+    tags: TagConfig[],
+    samples: { key: string; value: unknown }[],
+    at: number,
+  ) {
+    if (at < this.stepsPausedUntil) return;
+    const published = PROCESS_KEYS.filter(([key]) => samples.some((item) => item.key === key));
+    if (!published.length) return;
+    try {
+      const recipe = recipeOf(samples.find((item) => item.key === 'ReceitaAtual')?.value);
+      for (const [key, process] of published) {
+        const sample = samples.find((item) => item.key === key)!;
+        const tag = tags.find((item) => item.key === key);
+        const value = numberOf(tag ? convertTag(sample.value, tag) : sample.value);
+        if (value == null) continue;
+        const step = Math.round(value);
+        const memo = `${device.id}:${process}`;
+        let state = this.steps.get(memo);
+        if (!state) {
+          const open = (
+            await this.db.query<{ id: string; step: number }>(
+              `SELECT id,step FROM mortar_process_steps
+               WHERE device_id=$1 AND process=$2 AND ended_at IS NULL
+               ORDER BY started_at DESC LIMIT 1`,
+              [device.id, process],
+            )
+          ).rows[0];
+          state = open ? { id: open.id, step: Number(open.step), lastAt: at } : undefined;
+        }
+        const silent = state
+          ? at - state.lastAt > Math.max(STEP_SILENCE_MS, this.offlineSeconds * 1000)
+          : false;
+        if (state && state.step === step && !silent) {
+          state.lastAt = at;
+          this.steps.set(memo, state);
+          continue;
+        }
+        if (state?.id)
+          await this.db.query('UPDATE mortar_process_steps SET ended_at=$2 WHERE id=$1', [
+            state.id,
+            new Date(silent ? state.lastAt : at),
+          ]);
+        const created = await this.db.query<{ id: string }>(
+          `INSERT INTO mortar_process_steps(tenant_id,device_id,process,step,recipe,started_at)
+           VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
+          [device.tenant_id, device.id, process, step, recipe, new Date(at)],
+        );
+        this.steps.set(memo, { id: created.rows[0].id, step, lastAt: at });
+      }
+    } catch {
+      this.stepsPausedUntil = at + 10 * 60_000;
+    }
   }
 
   private async observeSpout(
