@@ -43,7 +43,7 @@
     "tsx": "^4.20.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.0",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.0"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
