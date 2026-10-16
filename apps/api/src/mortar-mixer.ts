@@ -173,6 +173,9 @@ export function registerMortarMixerRoutes(
       total: byKey('PesoDesejadoTotal'),
       mixTime: byKey('TempoMistura'),
       dischargeTime: byKey('TempoDescarga'),
+      // The recipe's own setpoints, when the PLC publishes them; else they are learnt below.
+      mixSetpoint: byKey('TempoMisturaProgramado'),
+      dischargeSetpoint: byKey('TempoDescargaProgramado'),
       automatic: byKey('ModoAutomatico'),
       cycle: byKey('InicioCiclo'),
     };
@@ -226,6 +229,39 @@ export function registerMortarMixerRoutes(
     const updatedAt = [...latest.values()]
       .map((item) => item.at?.getTime() ?? 0)
       .reduce((max, at) => Math.max(max, at), 0);
+
+    /**
+     * Where a stopwatch stopped in the last finished runs of its step: the time the recipe
+     * programs. The median of the last five, so one run cut short does not change it.
+     */
+    const learnt = new Map<string, number | null>();
+    const learntSetpoint = async (step: number, tagId: string | null) => {
+      if (!tagId) return null;
+      const key = `${step}:${tagId}`;
+      if (learnt.has(key)) return learnt.get(key)!;
+      let value: number | null = null;
+      try {
+        const peaks = (
+          await db.query<{ peak: number | null }>(
+            `SELECT (SELECT max(s.value_number) FROM telemetry_samples s
+                     WHERE s.tenant_id=$1 AND s.tag_id=$2
+                       AND s.timestamp >= p.started_at AND s.timestamp <= p.ended_at + interval '30 seconds')::float peak
+             FROM mortar_process_steps p
+             WHERE p.device_id=$3 AND p.process='misturador' AND p.step=$4 AND p.ended_at IS NOT NULL
+             ORDER BY p.started_at DESC LIMIT 5`,
+            [tenantId, tagId, id, step],
+          )
+        ).rows
+          .map((row) => (row.peak == null ? null : Number(row.peak)))
+          .filter((peak): peak is number => peak != null && peak > 0)
+          .sort((a, b) => a - b);
+        value = peaks.length ? peaks[Math.floor(peaks.length / 2)] : null;
+      } catch {
+        value = null;
+      }
+      learnt.set(key, value);
+      return value;
+    };
 
     // The plant day, and the scale through it.
     const dayStart = new Date(Date.parse(`${query.date}T00:00:00Z`) + PLANT_OFFSET_MS);
@@ -322,8 +358,26 @@ export function registerMortarMixerRoutes(
       target,
       scaleState,
       materials: materials.map((item) => ({ label: item.label, kg: number(item.tagId) })),
-      mixSeconds: number(ids.mixTime),
-      dischargeSeconds: number(ids.dischargeTime),
+      /*
+       * TempoMistura and TempoDescarga are the PLC's stopwatches (Bella Massa, 2026-10-16): they
+       * count up while the step runs and stop at the recipe's time, so "97 s" is how long it has
+       * mixed, not what it should. What the recipe programs comes from its own variable when the
+       * PLC publishes one, else from where the stopwatch stopped in the last finished runs.
+       */
+      mix: {
+        elapsed: number(ids.mixTime),
+        programmed: number(ids.mixSetpoint) ?? (await learntSetpoint(15, ids.mixTime)),
+        source: number(ids.mixSetpoint) != null ? 'plc' : 'learnt',
+      },
+      discharge: {
+        elapsed: number(ids.dischargeTime),
+        programmed:
+          number(ids.dischargeSetpoint) ?? (await learntSetpoint(21, ids.dischargeTime)),
+        source: number(ids.dischargeSetpoint) != null ? 'plc' : 'learnt',
+      },
+      mixSeconds: number(ids.mixSetpoint) ?? (await learntSetpoint(15, ids.mixTime)),
+      dischargeSeconds:
+        number(ids.dischargeSetpoint) ?? (await learntSetpoint(21, ids.dischargeTime)),
       day: {
         date: query.date,
         start: dayStart.toISOString(),

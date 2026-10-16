@@ -55,8 +55,12 @@ type Mixer = {
   target: number | null;
   scaleState: 'dosing' | 'loaded' | 'empty' | null;
   materials: Array<{ label: string; kg: number | null }>;
+  /** The recipe's time, programmed (from the PLC or learnt); not the stopwatch. */
   mixSeconds: number | null;
   dischargeSeconds: number | null;
+  /** The stopwatches of the PLC: how long the step has run, against what it should. */
+  mix?: { elapsed: number | null; programmed: number | null; source: 'plc' | 'learnt' };
+  discharge?: { elapsed: number | null; programmed: number | null; source: 'plc' | 'learnt' };
   day: {
     date: string;
     start: string;
@@ -378,6 +382,12 @@ function Mixing({ data, process }: { data: Mixer; process: ProcessDay | null }) 
   const programmedFor = (step: number) =>
     step === 15 ? data.mixSeconds : step === 21 ? data.dischargeSeconds : null;
   const programmed = now ? programmedFor(now.step.step) : null;
+  // How long the step has run: the PLC's own stopwatch when it publishes one, else since the
+  // step began.
+  const stopwatch = now?.step.step === 15 ? data.mix?.elapsed : now?.step.step === 21 ? data.discharge?.elapsed : null;
+  const ran = now ? (stopwatch != null && stopwatch > 0 ? stopwatch : now.elapsed) : 0;
+  const learnt =
+    (now?.step.step === 15 ? data.mix?.source : data.discharge?.source) === 'learnt';
   const kinds = kindTotals('misturador', process);
   const rows: Array<[string, number | null, number | null, number | null]> = [
     [
@@ -394,7 +404,7 @@ function Mixing({ data, process }: { data: Mixer; process: ProcessDay | null }) 
     ],
   ];
   const longest = Math.max(1, ...rows.flatMap(([, a, b, c]) => [a ?? 0, b ?? 0, c ?? 0]));
-  const progress = now && programmed ? Math.min(1, now.elapsed / programmed) : null;
+  const progress = now && programmed ? Math.min(1, ran / programmed) : null;
   return (
     <section className="mx-half mixing">
       <div className="mx-half-head">
@@ -406,17 +416,16 @@ function Mixing({ data, process }: { data: Mixer; process: ProcessDay | null }) 
       {now && programmed ? (
         <>
           <div className="mx-hero">
-            <b className={now.elapsed > programmed ? 'over' : ''}>
-              {countdown(programmed - now.elapsed)}
-            </b>
-            <span>{now.elapsed <= programmed ? 'para terminar' : 'além do programado'}</span>
+            <b className={ran > programmed ? 'over' : ''}>{countdown(programmed - ran)}</b>
+            <span>{ran <= programmed ? 'para terminar' : 'além do programado'}</span>
             <em>
               {now.step.step === 15 ? 'mistura' : 'descarga'} de {span(programmed)}
+              {learnt ? ' · programado lido do cronômetro' : ' · programado na receita'}
             </em>
           </div>
           <div className="mx-progress-big">
             <i
-              className={now.elapsed > programmed ? 'over' : ''}
+              className={ran > programmed ? 'over' : ''}
               style={{ width: `${(progress ?? 0) * 100}%` }}
             />
           </div>
