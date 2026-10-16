@@ -1108,7 +1108,7 @@ export async function createApp(
           dashboardId,
           current.tenantId,
           id,
-          `Gestão à Vista · ${body.name.trim()}`,
+          body.name.trim(),
           `gestao-a-vista-${code.toLowerCase()}`,
           `Painel operacional de ${body.name.trim()}`,
         ],
