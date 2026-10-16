@@ -260,3 +260,33 @@ export async function effectiveShifts(
       : new Map<number, number>();
   return extendOccurrences(input.occurrences, producing, input.now, minutes, input.dates);
 }
+
+/** Past this much work after the registered end, the day's chart opens to midnight. */
+const OPEN_DAY_MS = 2 * 3600_000;
+
+/**
+ * The stretch of the day a day chart draws (the user, 2026-10-16): no empty hours of a machine
+ * switched off. It begins at the first shift -- earlier when the line started before it -- and
+ * ends at the registered end, or where the line kept working past it; working more than two
+ * hours past it opens the chart to the end of the day. The day's totals still count every hour.
+ */
+export function chartSpanOf(
+  occurrences: ShiftOccurrence[],
+  day: { start: Date; end: Date },
+): { start: Date; end: Date } {
+  if (!occurrences.length) return day;
+  const plannedOf = (item: ShiftOccurrence) =>
+    'planned' in item ? (item as EffectiveOccurrence).planned : { start: item.start, end: item.end };
+  const registered = occurrences.filter((item) => !('extra' in item && (item as EffectiveOccurrence).extra));
+  const start = Math.min(...occurrences.map((item) => item.start.getTime()));
+  const workedEnd = Math.max(...occurrences.map((item) => item.end.getTime()));
+  const registeredEnd = registered.length
+    ? Math.max(...registered.map((item) => plannedOf(item).end.getTime()))
+    : workedEnd;
+  const end =
+    workedEnd > registeredEnd + OPEN_DAY_MS ? day.end.getTime() : Math.max(registeredEnd, workedEnd);
+  return {
+    start: new Date(Math.max(start, day.start.getTime())),
+    end: new Date(Math.min(end, day.end.getTime())),
+  };
+}

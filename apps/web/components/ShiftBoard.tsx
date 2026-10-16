@@ -682,7 +682,12 @@ export function ShiftBoard({
     comparingDay ? `/devices/${deviceId}/production-photo?date=${comparingDay}&kind=day` : null,
     600000,
   );
-  const median = usePoll<{ days: number; curve: Array<number | null> }>(
+  const median = usePoll<{
+    days: number;
+    curve: Array<number | null>;
+    /** The median by the clock: minutes since the plant's midnight. */
+    points?: Array<{ m: number; value: number }>;
+  }>(
     medianDays ? `/devices/${deviceId}/production-median?days=${medianDays}` : null,
     600000,
   );
@@ -725,10 +730,24 @@ export function ShiftBoard({
       ? (calculated ?? [])
       : [];
   const shown = day ? (photo.data?.photo?.detail ?? null) : (response.data ?? null);
-  // The other day's realized curve, by position in the shift, so a late start still lines up.
-  const overlay = medianDays && median.data?.curve.length
-    ? { label: medianLabel(against), actual: median.data.curve }
-    : null;
+  // The median of the past days drawn under today's curve, matched by the clock: day charts
+  // start where the line started, so the n-th point of two days is not the same hour.
+  const overlay = (() => {
+    if (!medianDays || !median.data?.curve.length) return null;
+    const points = median.data.points;
+    const curve = shown?.board?.curve;
+    if (!points?.length || !curve?.length)
+      return { label: medianLabel(against), actual: median.data.curve };
+    const byMinute = new Map(points.map((point) => [point.m, point.value]));
+    const minuteOf = (iso: string) => {
+      const local = new Date(new Date(iso).getTime() - 3 * 3600_000);
+      return Math.round((local.getUTCHours() * 60 + local.getUTCMinutes()) / 5) * 5;
+    };
+    return {
+      label: medianLabel(against),
+      actual: curve.map((point) => byMinute.get(minuteOf(point.t)) ?? null),
+    };
+  })();
   const below = comparingDay
     ? (other.data?.photo?.detail ?? null)
     : againstToday && day

@@ -15,7 +15,7 @@ import {
 import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
 import { loadShifts } from './shift-production.js';
-import { effectiveShifts, type EffectiveOccurrence } from './effective-shifts.js';
+import { chartSpanOf, effectiveShifts, type EffectiveOccurrence } from './effective-shifts.js';
 import {
   mortarUtilizationError,
   mortarUtilizationFrom,
@@ -112,7 +112,9 @@ async function windowOf(
       : { start: chosen[0].start, end: chosen[chosen.length - 1].end };
   // No shift and nothing made: no working time at all, not a whole day of idleness.
   const windows = chosen.flatMap((item) => productiveWindows(item));
-  return { date, today, isDefault, ofDate, chosen, span, windows };
+  // What the chart draws: on the day view, the hours worked (chartSpanOf).
+  const chart = query.mode === 'day' ? chartSpanOf(chosen, wholeDay) : span;
+  return { date, today, isDefault, ofDate, chosen, span, windows, chart };
 }
 
 async function loadLinks(db: Database, tenantId: string) {
@@ -235,7 +237,7 @@ export function registerMortarBoardRoutes(
     const metric = settings?.target_metric ?? 'bags';
     const perShift = settings?.target_per_shift == null ? null : Number(settings.target_per_shift);
     const now = new Date();
-    const { date, today, isDefault, ofDate, chosen, span, windows } = await windowOf(
+    const { date, today, isDefault, ofDate, chosen, span, windows, chart } = await windowOf(
       db,
       tenantId,
       device.site_id,
@@ -415,7 +417,15 @@ export function registerMortarBoardRoutes(
     const timeline: Array<{ t: string; state: string; mix: Record<string, number> }> = [];
     const spoutCurves: Record<string, Array<number | null>> = {};
     for (const spout of spouts.rows) spoutCurves[spout.id] = [];
-    for (let at = span.start.getTime(); at <= span.end.getTime(); at += STEP_MS) {
+    // Bags made before the chart's first point are carried in: the curve ends at the total.
+    for (const [at, slot] of slots)
+      if (at < chart.start.getTime()) {
+        doneBags += slot.bags;
+        doneKg += slot.kg;
+        for (const [spoutId, value] of Object.entries(slot.spouts))
+          perSpoutDone[spoutId] = (perSpoutDone[spoutId] ?? 0) + value;
+      }
+    for (let at = chart.start.getTime(); at <= chart.end.getTime(); at += STEP_MS) {
       const instant = new Date(at);
       const past = at <= now.getTime();
       const slot = slots.get(at - STEP_MS);
@@ -439,7 +449,7 @@ export function registerMortarBoardRoutes(
             ? actual + pace * productiveSecondsIn(windows, until, instant)
             : null,
       });
-      if (at < span.end.getTime()) {
+      if (at < chart.end.getTime()) {
         const next = slots.get(at);
         const total = next ? next.running + next.idle + next.off : 0;
         const inPause = productiveSecondsIn(windows, instant, new Date(at + STEP_MS)) === 0;
@@ -486,8 +496,8 @@ export function registerMortarBoardRoutes(
       });
     };
     const shifted = (days: number) => ({
-      start: new Date(span.start.getTime() - days * 86_400_000),
-      end: new Date(span.end.getTime() - days * 86_400_000),
+      start: new Date(chart.start.getTime() - days * 86_400_000),
+      end: new Date(chart.end.getTime() - days * 86_400_000),
     });
     let compare: { label: string; actual: Array<number | null> } | null = null;
     if (query.compare === 'median') {
@@ -652,7 +662,7 @@ export function registerMortarBoardRoutes(
       shifts: chosen.map(occurrenceJson),
       available: ofDate.map(occurrenceJson),
       board: {
-        span: { start: span.start.toISOString(), end: span.end.toISOString() },
+        span: { start: chart.start.toISOString(), end: chart.end.toISOString() },
         plannedSeconds: planned,
         remainingSeconds: remaining,
         metric,

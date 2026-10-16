@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { expandShifts, plantInstant } from '../packages/shared/src/index.js';
-import { extendOccurrences, type Producing } from '../apps/api/src/effective-shifts.js';
+import {
+  chartSpanOf,
+  extendOccurrences,
+  type Producing,
+} from '../apps/api/src/effective-shifts.js';
 import { memoryDatabase } from './pglite.js';
 import { migrate } from '../packages/database/src/migrate.js';
 import { seed, TENANT, HAIWELL } from '../packages/database/src/seed.js';
@@ -141,4 +145,33 @@ describe('the shift as worked, on the board and in the reports', () => {
       ),
     ).toEqual(['shift 132 07:00-17:00']);
   }, 60_000);
+});
+
+describe('the day chart', () => {
+  const day = (date: string) => ({
+    start: plantInstant(date, '00:00'),
+    end: plantInstant(date, '23:59'),
+  });
+  const chartOf = (producing: Producing) => {
+    const shifts = extendOccurrences(expandShifts(SHIFT, DAY, DAY), producing, late, 120, {
+      from: DAY,
+      to: DAY,
+    });
+    const chart = chartSpanOf(shifts, day(DAY));
+    return `${hhmm(chart.start)}-${hhmm(chart.end)}`;
+  };
+
+  it('starts at the shift when the line started inside it, and ends at the registered end', () => {
+    expect(chartOf(run(new Map(), DAY, '07:15', '16:40'))).toBe('07:00-17:00');
+  });
+
+  it('starts where the line started before the shift, and ends where it kept working', () => {
+    const producing = run(new Map(), DAY, '05:00', '18:30');
+    expect(chartOf(producing)).toBe('05:00-18:30');
+  });
+
+  it('opens to the end of the day when the line worked more than two hours past the shift', () => {
+    const producing = run(new Map(), DAY, '07:00', '20:30');
+    expect(chartOf(producing)).toBe('07:00-23:59');
+  });
 });

@@ -31,6 +31,7 @@ import { recordAudit } from './audit.js';
 import { MINIMUM_SECONDS, mergeStops } from './stop-consolidation.js';
 import { loadAdherence } from './shift-adherence.js';
 import {
+  chartSpanOf,
   effectiveShifts,
   extensionMinutesOf,
   type EffectiveOccurrence,
@@ -655,10 +656,14 @@ async function buildBoard(
     actual: number | null;
     projected: number | null;
   }> = [];
+  // The day's chart draws the hours worked (chartSpanOf), not a machine switched off at night;
+  // what was made before its first point is carried in, so the curve still ends at the total.
+  const chart = spanOverride && occurrences.length ? chartSpanOf(occurrences, span) : span;
+  const firstBucket = Math.floor(chart.start.getTime() / BUCKET_MS) * BUCKET_MS;
   let cumulative = 0;
-  const firstBucket = Math.floor(span.start.getTime() / BUCKET_MS) * BUCKET_MS;
-  for (let at = firstBucket; at <= span.end.getTime(); at += BUCKET_MS) {
-    const pointTime = new Date(Math.max(at, span.start.getTime()));
+  for (const [at, totals] of byBucket) if (at < firstBucket) cumulative += metricValue(totals, metric);
+  for (let at = firstBucket; at <= chart.end.getTime(); at += BUCKET_MS) {
+    const pointTime = new Date(Math.max(at, chart.start.getTime()));
     const beforeNow = at <= now.getTime();
     if (at > firstBucket)
       cumulative += metricValue(
@@ -674,7 +679,7 @@ async function buildBoard(
           : null,
       actual: beforeNow ? cumulative : null,
       projected:
-        at >= until.getTime() - BUCKET_MS && at <= span.end.getTime()
+        at >= until.getTime() - BUCKET_MS && at <= chart.end.getTime()
           ? actual +
             ratePerSecond *
               productiveSecondsIn(windows, until, new Date(Math.max(at, until.getTime())))
@@ -703,9 +708,10 @@ async function buildBoard(
   }> = [];
   const started = firstProducingAt(buckets, stateSpan);
   const closingFrom = closingFromAt(buckets, stateSpan, closingSeconds);
-  for (let at = firstBucket; at < until.getTime(); at += BUCKET_MS) {
+  const timelineEnd = Math.min(until.getTime(), chart.end.getTime());
+  for (let at = firstBucket; at < timelineEnd; at += BUCKET_MS) {
     const start = new Date(at);
-    const end = new Date(Math.min(at + BUCKET_MS, until.getTime()));
+    const end = new Date(Math.min(at + BUCKET_MS, timelineEnd));
     const productive = productiveSecondsIn(windows, start, end);
     if (productive < 1) {
       const worked = (statesByBucket.get(at)?.producing ?? 0) > 0;
@@ -757,7 +763,8 @@ async function buildBoard(
     }
   }
   return {
-    span: { start: span.start.toISOString(), end: span.end.toISOString() },
+    // The stretch the chart draws: on the day view, the hours worked, not 00:00 to 23:59.
+    span: { start: chart.start.toISOString(), end: chart.end.toISOString() },
     plannedSeconds: planned,
     remainingSeconds: remaining,
     metric,
@@ -3058,7 +3065,9 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     if (!(await access.requireDevice(req, reply, id))) return;
     const query = z.object({ days: z.coerce.number().int().min(2).max(400).default(7) }).parse(req.query);
     const tenantId = access.principal(req).tenantId;
-    const rows = await db.query<{ photo: { detail?: { board?: { curve?: Array<{ actual: number | null }> } } } }>(
+    const rows = await db.query<{
+      photo: { detail?: { board?: { curve?: Array<{ t?: string; actual: number | null }> } } };
+    }>(
       `SELECT photo FROM production_photos
        WHERE tenant_id=$1 AND device_id=$2 AND kind='day'
        ORDER BY production_date DESC LIMIT $3`,
@@ -3085,7 +3094,38 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2,
       );
     }
-    return { days: curves.length, curve };
+    /*
+     * The same median by the clock (minutes since the plant's midnight): day charts start where
+     * the line started (chartSpanOf), so the n-th point of two days is not the same hour. A day
+     * counts from its first point on -- before it, what it had made so far -- until its last.
+     */
+    const minuteOf = (iso: string) => {
+      const local = new Date(new Date(iso).getTime() - 3 * 3600_000);
+      return Math.round((local.getUTCHours() * 60 + local.getUTCMinutes()) / 5) * 5;
+    };
+    const byMinute = new Map<number, number[]>();
+    for (const day of curves) {
+      const timed = day.filter((point) => point.t && typeof point.actual === 'number');
+      if (!timed.length) continue;
+      const first = minuteOf(timed[0].t!);
+      for (let minute = 0; minute < first; minute += 5)
+        byMinute.set(minute, [...(byMinute.get(minute) ?? []), timed[0].actual as number]);
+      for (const point of timed) {
+        const minute = minuteOf(point.t!);
+        byMinute.set(minute, [...(byMinute.get(minute) ?? []), point.actual as number]);
+      }
+    }
+    const points = [...byMinute.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([minute, values]) => {
+        values.sort((a, b) => a - b);
+        const middle = Math.floor(values.length / 2);
+        return {
+          m: minute,
+          value: values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2,
+        };
+      });
+    return { days: curves.length, curve, points };
   });
 
   app.get('/api/devices/:id/production-photo', async (req, reply) => {
