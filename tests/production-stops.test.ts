@@ -134,7 +134,39 @@ describe('production stops', () => {
     expect(rows[0].state).toBe('offline');
     // Back with the first block on Monday, not at the start of the gap on Saturday.
     expect(rows[0].ended_at?.toISOString()).toBe('2026-10-19T10:20:00.000Z');
-  }, 60_000);
+
+    // Back on Monday but not producing yet (Capixaba: manual and idle from 07:20): the silence
+    // ends when the machine speaks again, not at Friday's last block plus the idle limit.
+    await db.query('DELETE FROM telemetry_samples WHERE received_at > $1', [new Date('2026-10-19T00:00:00Z')]);
+    await db.query('DELETE FROM production_stops');
+    await db.query(
+      `INSERT INTO production_stops(tenant_id,device_id,state,started_at,production_date)
+       VALUES($1,$2,'offline','2026-10-16T19:04:32Z','2026-10-16')`,
+      [TENANT, HAIWELL],
+    );
+    await send(new Date('2026-10-19T10:20:00Z'), new Date('2026-10-19T10:40:00Z'), false);
+    await send(new Date('2026-10-19T10:40:00Z'), new Date('2026-10-19T11:00:00Z'), true);
+    await rebuildStops(db, HAIWELL, new Date('2026-10-17T16:10:00Z'), new Date('2026-10-19T11:00:00Z'));
+    expect(
+      (await stops(db)).map((row) => [row.state, row.started_at.toISOString(), row.ended_at?.toISOString()]),
+    ).toEqual([
+      ['offline', '2026-10-16T19:04:32.000Z', '2026-10-19T10:20:00.000Z'],
+      ['idle', '2026-10-19T10:21:00.000Z', '2026-10-19T10:40:00.000Z'],
+    ]);
+
+    // No reading left from before the gap (pruned): the open stop stays as it was.
+    await db.query('DELETE FROM telemetry_samples WHERE received_at < $1', [new Date('2026-10-19T00:00:00Z')]);
+    await db.query('DELETE FROM production_stops');
+    await db.query(
+      `INSERT INTO production_stops(tenant_id,device_id,state,started_at,production_date)
+       VALUES($1,$2,'offline','2026-10-16T19:04:32Z','2026-10-16')`,
+      [TENANT, HAIWELL],
+    );
+    await rebuildStops(db, HAIWELL, new Date('2026-10-17T16:10:00Z'), new Date('2026-10-19T11:00:00Z'));
+    const [silence] = await stops(db);
+    expect(silence.state).toBe('offline');
+    expect(silence.ended_at?.getTime()).toBeGreaterThan(new Date('2026-10-19T10:00:00Z').getTime());
+  }, 120_000);
 
   it('rebuilds the stops of a stretch the recorder missed from the stored readings', async () => {
     // The shift close failed for two days (2026-10-17) and took the recorder down with it.

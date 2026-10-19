@@ -82,7 +82,10 @@ export function stopTransition(
   let startedAt = since ?? now;
   let close: Date | null = null;
   if (current) {
-    close = startedAt > new Date(current.started_at) ? startedAt : now;
+    // Back from a silence still stopped: the silence lasted until the machine spoke again, now.
+    // "Idle since" counts from the last piece, made before the silence (Capixaba: Friday's last
+    // block, so the whole weekend offline was rewritten as idle from Friday).
+    close = current.state !== 'offline' && startedAt > new Date(current.started_at) ? startedAt : now;
     // The next reason starts where the last one ended, never before: "idle since" is worked out
     // from the last piece and can lie before a manual stop that was already open, which wrote
     // two overlapping stops for one (99 pairs in a week).
@@ -185,7 +188,13 @@ export async function recordStops(db: Database, now = new Date()) {
  * keeps its start and gets its real end. Readings are kept three days
  * (retention.ts), so a gap can be rebuilt within that.
  */
-export async function rebuildStops(db: Database, deviceId: string, from: Date, to: Date) {
+export async function rebuildStops(
+  db: Database,
+  deviceId: string,
+  from: Date,
+  to: Date,
+  options: { dryRun?: boolean } = {},
+) {
   const device = (
     await db.query<{
       tenant_id: string;
@@ -324,21 +333,22 @@ export async function rebuildStops(db: Database, deviceId: string, from: Date, t
     advance(tick);
     const now = new Date(tick);
     const live = runtime as Runtime | null;
-    const { state, since } = live
-      ? stateOf(
-          {
-            tenant_id: device.tenant_id,
-            device_id: deviceId,
-            site_id: device.site_id,
-            last_at: new Date(live.lastAt),
-            last_increment_at: live.lastIncrementAt ? new Date(live.lastIncrementAt) : null,
-            auto: live.auto,
-            product_code: product,
-            idle_seconds: device.idle_seconds,
-          },
-          now,
-        )
-      : { state: 'unknown' as const, since: null };
+    // Nothing known of the machine yet (its readings before the gap already pruned): the stop
+    // open stays as it is, as the recorder would have left it.
+    if (!live) continue;
+    const { state, since } = stateOf(
+      {
+        tenant_id: device.tenant_id,
+        device_id: deviceId,
+        site_id: device.site_id,
+        last_at: new Date(live.lastAt),
+        last_increment_at: live.lastIncrementAt ? new Date(live.lastIncrementAt) : null,
+        auto: live.auto,
+        product_code: product,
+        idle_seconds: device.idle_seconds,
+      },
+      now,
+    );
     const step = stopTransition(current, state, since, now);
     if (step.close && current) {
       if (current.row) current.row.ended_at = step.close;
@@ -352,6 +362,8 @@ export async function rebuildStops(db: Database, deviceId: string, from: Date, t
     }
   }
 
+  const result = { stops: rows.length, carriedIn: Boolean(carriedIn), carriedEnd, rows };
+  if (options.dryRun) return result;
   const schedule = (await loadSchedules(db, [device.site_id])).get(device.site_id) ?? DEFAULT_SHIFTS;
   await db.transaction(async (sql) => {
     await sql.query('DELETE FROM production_stops WHERE device_id=$1 AND started_at>=$2', [deviceId, from]);
@@ -383,5 +395,5 @@ export async function rebuildStops(db: Database, deviceId: string, from: Date, t
         ],
       );
   });
-  return { stops: rows.length, carriedIn: Boolean(carriedIn), carriedEnd };
+  return result;
 }
