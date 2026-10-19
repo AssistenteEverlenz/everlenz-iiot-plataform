@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { memoryDatabase } from './pglite.js';
 import { migrate } from '../packages/database/src/migrate.js';
 import { seed, TENANT, HAIWELL } from '../packages/database/src/seed.js';
-import { recordStops } from '../apps/api/src/production-stops.js';
+import { rebuildStops, recordStops } from '../apps/api/src/production-stops.js';
 
 async function base() {
   const { db } = await memoryDatabase();
@@ -95,4 +95,50 @@ describe('production stops', () => {
     expect(await recordStops(db, now)).toEqual({ opened: 1, closed: 0 });
     expect((await stops(db))[0].state).toBe('manual');
   }, 30_000);
+
+  it('rebuilds the stops of a stretch the recorder missed from the stored readings', async () => {
+    // The shift close failed for two days (2026-10-17) and took the recorder down with it.
+    const db = await base();
+    const site = (await db.query<{ site_id: string }>('SELECT site_id FROM devices WHERE id=$1', [HAIWELL]))
+      .rows[0].site_id;
+    const tag = (
+      await db.query<{ id: string }>(
+        "INSERT INTO tags(tenant_id,device_id,key,name,data_type) VALUES($1,$2,'Blocos','Blocos','number') RETURNING id",
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    await db.query('UPDATE production_settings SET blocks_tag_id=$1 WHERE device_id=$2', [tag, HAIWELL]);
+    const at = (time: string) => new Date(`2026-10-17T${time}:00Z`);
+    // A message every 15 s from 12:00 to 16:00; the counter moves 14:10-15:00 and 15:30-16:00.
+    let count = 1000;
+    let message = 1;
+    for (let t = at('12:00').getTime(); t < at('16:00').getTime(); t += 15_000) {
+      const running = (t >= at('14:10').getTime() && t < at('15:00').getTime()) || t >= at('15:30').getTime();
+      if (running) count += 1;
+      await db.query(
+        `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality,raw_message_id)
+         VALUES($1,$2,$3,$4,$5,$5,$6,'good',$7)`,
+        [TENANT, site, HAIWELL, tag, new Date(t), count, message++],
+      );
+    }
+    // What the recorder left: a stop open since before the gap, and one written wrong after it.
+    const insert = (state: string, start: Date, end: Date | null = null) =>
+      db.query(
+        `INSERT INTO production_stops(tenant_id,device_id,state,started_at,ended_at,production_date)
+         VALUES($1,$2,$3,$4,$5,'2026-10-17')`,
+        [TENANT, HAIWELL, state, start, end],
+      );
+    await insert('idle', at('13:50'));
+    await insert('offline', at('15:45'), at('15:50'));
+
+    const result = await rebuildStops(db, HAIWELL, at('14:00'), at('16:00'));
+    expect(result?.carriedIn).toBe(true);
+    const rows = await stops(db);
+    expect(rows.map((row) => [row.state, row.started_at.toISOString().slice(11, 19), row.ended_at?.toISOString().slice(11, 19)])).toEqual([
+      // The open stop ends with the first block, the line stands from one idle minute after its
+      // last block until it moves again, and nothing is left open.
+      ['idle', '13:50:00', '14:10:00'],
+      ['idle', '15:00:45', '15:30:00'],
+    ]);
+  }, 60_000);
 });
