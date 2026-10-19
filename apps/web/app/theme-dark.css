@@ -4291,13 +4291,75 @@
   :root[data-theme='dark'] .mixer-config-row.head {
     color: #8d9ea3;
   }
-  :root[data-theme='dark'] .utilization-tolerance {
+  :root[data-theme='dark'] .um-section {
     border-top: 1px solid #202e32;
   }
-  :root[data-theme='dark'] .utilization-tolerance small {
+  :root[data-theme='dark'] .um-step {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 12%, #12191c);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .um-head h3 {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .um-head p {
     color: #8d9ea3;
   }
-  :root[data-theme='dark'] .utilization-tolerance-input {
+  :root[data-theme='dark'] .um-figure {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .um-choice button {
+    border: 1px solid #223035;
+    background: #12191c;
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .um-choice button:hover {
+    border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .um-choice button.active {
+    border-color: var(--brand-accent, #12b8a6);
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 8%, #12191c);
+    box-shadow: inset 0 0 0 1px var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .um-choice small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .um-formula small,
+  :root[data-theme='dark'] .um-note {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .um-stepper {
+    border: 1px solid #223035;
+  }
+  :root[data-theme='dark'] .um-stepper button {
+    border: 0;
+    background: #162023;
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .um-stepper button:hover:not(:disabled) {
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .um-stepper input {
+    border: 0;
+    background: #12191c;
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .um-stepper span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .um-presets button {
+    border: 1px solid #223035;
+    background: #12191c;
     color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .um-presets button:hover:not(:disabled) {
+    border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .um-presets button.active {
+    border-color: var(--brand-accent, #12b8a6);
+    background: var(--brand-accent, #12b8a6);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .um-footnote {
+    color: #798e95;
   }
 }

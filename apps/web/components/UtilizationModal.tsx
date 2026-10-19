@@ -90,7 +90,7 @@ export function UtilizationModal({
         <div className="modal-title">
           <div>
             <div className="eyebrow">APROVEITAMENTO DA MÁQUINA</div>
-            <h2>Como calcular</h2>
+            <h2>Cálculo e tolerância</h2>
           </div>
           <button
             type="button"
@@ -101,75 +101,118 @@ export function UtilizationModal({
             ×
           </button>
         </div>
-        <div className="utilization-options">
-          <label className={`utilization-option ${custom ? '' : 'active'}`}>
-            <input type="radio" checked={!custom} onChange={() => setCustom(false)} />
-            <span>
+        <section className="um-section">
+          <header className="um-head">
+            <span className="um-step">1</span>
+            <div>
+              <h3>Como calcular</h3>
+              <p>{problem ?? 'O número do medidor, no período aberto no quadro.'}</p>
+            </div>
+            <b className="um-figure">{preview == null ? '—' : `${formatNumber(preview * 100)}%`}</b>
+          </header>
+          <div className="um-choice" role="radiogroup" aria-label="Como calcular">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!custom}
+              className={custom ? '' : 'active'}
+              onClick={() => setCustom(false)}
+            >
               <b>Padrão</b>
-              <small>Produzindo ÷ (produzindo + ociosa). Parada manual não pesa contra a máquina.</small>
-            </span>
-          </label>
-          <label className={`utilization-option ${custom ? 'active' : ''}`}>
-            <input type="radio" checked={custom} onChange={() => setCustom(true)} />
-            <span>
+              <small>produzindo ÷ (produzindo + ociosa)</small>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={custom}
+              className={custom ? 'active' : ''}
+              onClick={() => setCustom(true)}
+            >
               <b>Fórmula própria</b>
-              <small>Uma conta sua sobre os tempos do período. O resultado é o próprio %.</small>
-            </span>
-          </label>
-        </div>
-        {custom && (
-          <div className="utilization-builder">
-            <FormulaInput
-              value={text}
-              options={options}
-              placeholder={DEFAULT_UTILIZATION_FORMULA}
-              onChange={setText}
-            />
-            <small>
-              Digite o nome de um tempo e escolha na lista. Ex.: painel.horas_produzindo /
-              (painel.horas_produzindo + painel.horas_paradas) * 100
-            </small>
+              <small>uma conta sua sobre os tempos</small>
+            </button>
           </div>
-        )}
-        <div className="utilization-preview">
-          <span>{problem ?? (custom ? 'resultado da sua fórmula' : 'produzindo ÷ (produzindo + ociosa)')}</span>
-          <b>{preview == null ? '—' : `${formatNumber(preview * 100)}%`}</b>
-          <small>no período aberto no quadro</small>
-        </div>
-        <div className="utilization-tolerance">
-          <label>
-            <span>
-              <b>Tolerância do turno previsto × real</b>
-              <small>
-                Início, pausas e fim que ficarem até este tanto antes ou depois do horário contam
-                como no horário: a diferença aparece, mas não soma como perdida ou ganha. Passou
-                disso, conta a diferença inteira. 0 = conta todo minuto.
-              </small>
-            </span>
-            <span className="utilization-tolerance-input">
+          {custom ? (
+            <div className="um-formula">
+              <FormulaInput
+                value={text}
+                options={options}
+                placeholder={DEFAULT_UTILIZATION_FORMULA}
+                onChange={setText}
+              />
+              <small>Digite o nome de um tempo e escolha na lista. O resultado é o próprio %.</small>
+            </div>
+          ) : (
+            <p className="um-note">Parada manual não pesa contra a máquina.</p>
+          )}
+        </section>
+
+        <section className="um-section">
+          <header className="um-head">
+            <span className="um-step">2</span>
+            <div>
+              <h3>Tolerância do previsto × real</h3>
+              <p>
+                Início, pausas e fim até este tanto fora do horário contam como no horário. Passou
+                disso, conta a diferença inteira.
+              </p>
+            </div>
+          </header>
+          <div className="um-tolerance">
+            <div className="um-stepper">
+              <button
+                type="button"
+                aria-label="Menos um minuto"
+                disabled={!stored.data?.toleranceAvailable || toleranceMinutes <= 0}
+                onClick={() => setTolerance(String(Math.max(0, toleranceMinutes - 1)))}
+              >
+                −
+              </button>
               <input
                 type="number"
                 min={0}
                 max={120}
                 step={1}
                 inputMode="numeric"
+                aria-label="Tolerância em minutos"
                 disabled={!stored.data?.toleranceAvailable}
                 value={tolerance ?? ''}
                 onChange={(event) => setTolerance(event.target.value)}
               />
-              min
-            </span>
-          </label>
+              <span>min</span>
+              <button
+                type="button"
+                aria-label="Mais um minuto"
+                disabled={!stored.data?.toleranceAvailable || toleranceMinutes >= 120}
+                onClick={() => setTolerance(String(Math.min(120, toleranceMinutes + 1)))}
+              >
+                +
+              </button>
+            </div>
+            <div className="um-presets">
+              {[0, 5, 10, 15].map((minutes) => (
+                <button
+                  key={minutes}
+                  type="button"
+                  className={tolerance != null && toleranceMinutes === minutes ? 'active' : ''}
+                  disabled={!stored.data?.toleranceAvailable}
+                  onClick={() => setTolerance(String(minutes))}
+                >
+                  {minutes ? `${minutes} min` : 'Sem tolerância'}
+                </button>
+              ))}
+            </div>
+          </div>
           {stored.data && !stored.data.toleranceAvailable && (
             <small className="form-error">Disponível depois da migração 050 no banco.</small>
           )}
           {toleranceProblem && <small className="form-error">{toleranceProblem}</small>}
-        </div>
-        <div className="notice full-field">
-          <b>Vale para este equipamento</b>
-          Muda o número no quadro, na TV e no painel ao vivo. Fotos de dias já fechados guardam o
+        </section>
+
+        <p className="um-footnote">
+          Vale só para este equipamento: quadro, TV e painel ao vivo. Dias já fechados guardam o
           número que tinham.
-        </div>
+        </p>
         {error && <div className="form-error">{error}</div>}
         <div className="modal-actions">
           <button type="button" disabled={saving} onClick={() => onClose(false)}>
