@@ -3,7 +3,7 @@
 //
 //   npx -y pnpm@10.28.2 exec tsx scripts/rebuild-stops.ts <from ISO instant> [machine names...] [--dry]
 //
-// From that instant up to now; with names, only those machines (a name may carry its own start
+// From that instant up to now; with names (or ids), only those machines (a name may carry its own start
 // as "Name=ISO"). --dry writes nothing and prints the stops it would write. Readings are kept
 // three days, so it must run within that.
 import type { Database } from '../packages/database/src/index.js';
@@ -28,8 +28,10 @@ export async function rebuildAllStops(
   );
   const result = [];
   for (const device of devices.rows) {
-    if (options.names && !options.names.has(device.name)) continue;
-    const start = options.names?.get(device.name) ?? from;
+    // A machine named by its name or by its id (an id survives a shell that garbles accents).
+    const key = [device.id, device.name].find((item) => options.names?.has(item));
+    if (options.names && !key) continue;
+    const start = (key && options.names?.get(key)) || from;
     const rebuilt = await rebuildStops(db, device.id, start, options.to ?? new Date(), {
       dryRun: options.dryRun,
     });
