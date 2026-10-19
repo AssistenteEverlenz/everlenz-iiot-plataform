@@ -3,7 +3,14 @@ import { z } from 'zod';
 import type { Database } from '@iiot/database';
 import { addDays, plantDate, plantInstant } from '@iiot/shared';
 import type { createAccessControl } from './auth.js';
-import { currentState, loadConfig, productionDetailData } from './shift-production.js';
+import {
+  adherenceToleranceOf,
+  currentState,
+  loadConfig,
+  loadShiftsFor,
+  productionDetailData,
+} from './shift-production.js';
+import { loadAdherence } from './shift-adherence.js';
 
 /**
  * The summary a panel opens with.
@@ -111,6 +118,15 @@ export async function buildBriefing(
       yesterdayStart,
       new Date(yesterdayStart.getTime() + (now.getTime() - dayStart.getTime())),
     );
+    // The shift as registered against as it happened (shift-adherence.ts): when the line really
+    // started, left for and came back from each pause, and stopped.
+    const registered = (await loadShiftsFor(db, current.tenantId, config.site_id, today)).filter(
+      (item) => item.productionDate === today,
+    );
+    const [adherence, tolerance] = await Promise.all([
+      loadAdherence(db, id, registered, now),
+      adherenceToleranceOf(db, current.tenantId, id),
+    ]);
     let sinceVisit: { at: string; made: number; stops: number } | null = null;
     // Only a visit from the last day and a half is "since your last visit"; older is just news.
     if (previous && now.getTime() - previous.getTime() < 36 * 3600_000) {
@@ -153,6 +169,8 @@ export async function buildBriefing(
       },
       yesterday,
       sinceVisit,
+      adherence,
+      tolerance,
     };
 }
 

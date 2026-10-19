@@ -15,7 +15,7 @@ import { usePoll } from './data';
  * default) is on time: shown in grey and left out of the totals. Past it, all of it counts.
  */
 
-interface Adherence {
+export interface Adherence {
   blocks: Array<{
     planned: { start: string; end: string };
     start: string | null;

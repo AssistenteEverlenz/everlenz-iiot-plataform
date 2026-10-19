@@ -14039,3 +14039,124 @@ button.mortar-spout:hover .mortar-spout-open {
     font-size: 24px;
   }
 }
+
+/* The shift of the day at a glance in the summary (BriefingShift.tsx): the registered shift and
+   the real one as two lanes on one clock, red where the shift lost time, green where it gained. */
+.briefing-shift {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e3ebed;
+  border-radius: 12px;
+}
+.briefing-shift header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.briefing-shift header span {
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.briefing-shift header b {
+  font-size: 14px;
+  font-weight: 600;
+}
+.briefing-shift header b.good {
+  color: var(--brand-accent, #12b8a6);
+}
+.briefing-shift header b.lost,
+.bs-lost b {
+  color: #e4572e;
+}
+.briefing-shift header b.gained {
+  color: #1d8a5f;
+}
+.briefing-shift header b.muted {
+  color: #71868d;
+}
+.bs-lanes {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px 10px;
+}
+.bs-lanes > small {
+  color: #8a9ca2;
+  font-size: 10.5px;
+}
+.bs-lane {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: #f1f5f6;
+}
+.bs-lane.real {
+  height: 12px;
+}
+.bs-lane i,
+.bs-lane u {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+}
+.bs-lane.planned i {
+  background: #b9c8cd;
+}
+.bs-lane.real i {
+  background: var(--brand-accent, #12b8a6);
+}
+.bs-lane u {
+  z-index: 1;
+  text-decoration: none;
+}
+.bs-lane u.lost {
+  background: repeating-linear-gradient(
+    -45deg,
+    #e4572e 0 3px,
+    color-mix(in srgb, #e4572e 55%, #fff) 3px 6px
+  );
+}
+.bs-lane u.gained {
+  background: #1d8a5f;
+}
+.bs-now {
+  position: absolute;
+  z-index: 2;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #0b2028;
+}
+.bs-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  color: #4d6770;
+  font-size: 12px;
+}
+.bs-facts span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.bs-facts b {
+  color: #0b2028;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.bs-facts small {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+.bs-facts .bs-lost {
+  margin-left: auto;
+}

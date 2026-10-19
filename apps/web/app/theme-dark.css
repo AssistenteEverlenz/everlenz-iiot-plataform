@@ -4362,4 +4362,57 @@
   :root[data-theme='dark'] .um-footnote {
     color: #798e95;
   }
+  :root[data-theme='dark'] .briefing-shift {
+    border: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .briefing-shift header span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .briefing-shift header b.good {
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .briefing-shift header b.lost,
+  :root[data-theme='dark'] .bs-lost b {
+    color: #e38f77;
+  }
+  :root[data-theme='dark'] .briefing-shift header b.gained {
+    color: #88ddbb;
+  }
+  :root[data-theme='dark'] .briefing-shift header b.muted {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .bs-lanes > small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .bs-lane {
+    background: #192327;
+  }
+  :root[data-theme='dark'] .bs-lane.planned i {
+    background: #364d55;
+  }
+  :root[data-theme='dark'] .bs-lane.real i {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .bs-lane u.lost {
+    background: repeating-linear-gradient(
+    -45deg,
+    #e4572e 0 3px,
+    color-mix(in srgb, #e4572e 55%, #12191c) 3px 6px
+  );
+  }
+  :root[data-theme='dark'] .bs-lane u.gained {
+    background: #1d8a5f;
+  }
+  :root[data-theme='dark'] .bs-now {
+    background: #0b2028;
+  }
+  :root[data-theme='dark'] .bs-facts {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .bs-facts b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .bs-facts small {
+    color: #798e95;
+  }
 }

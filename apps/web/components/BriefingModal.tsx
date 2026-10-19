@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { usePoll } from './data';
 import { ModalPortal } from './ModalPortal';
+import { BriefingShift } from './BriefingShift';
 import { metricInfo, type ProductionMetric } from './ShiftBoard';
+import type { Adherence } from './ShiftAdherence';
 
 // The summary a panel opens with (apps/api/src/briefing.ts). The plants' people come back five to
 // nine times a day, a minute each time, on the phone, to ask how production is going: this says
@@ -31,6 +33,9 @@ interface Briefing {
   stopped: { count: number; seconds: number };
   yesterday: number;
   sinceVisit: { at: string; made: number; stops: number } | null;
+  /** The shift as registered against as it happened; absent before the API had it. */
+  adherence?: Adherence | null;
+  tolerance?: number;
 }
 
 /** A visit is over after ten quiet minutes (the same rule as the usage page). */
@@ -161,6 +166,10 @@ export function BriefingModal({ deviceId, dashboardId }: { deviceId: string; das
             )}
             {verdict && <p className={`briefing-verdict ${verdict.tone}`}>{verdict.text}</p>}
           </section>
+
+          {data.adherence?.blocks.length ? (
+            <BriefingShift adherence={data.adherence} tolerance={data.tolerance ?? 0} now={data.now} />
+          ) : null}
 
           <section className="briefing-tiles">
             <div>
