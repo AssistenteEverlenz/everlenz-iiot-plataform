@@ -242,6 +242,21 @@ export async function loadConfig(db: Database, tenantId: string, deviceId: strin
   return result.rows[0] ?? null;
 }
 
+/**
+ * Minutes either way within which the real start, pauses and end are on time (migration 050):
+ * shown, not counted. Read through to_jsonb, so a base without the column reads 0.
+ */
+export async function adherenceToleranceOf(db: Database, tenantId: string, deviceId: string) {
+  const row = (
+    await db.query<{ tolerance: string | null }>(
+      `SELECT to_jsonb(ps)->>'adherence_tolerance_minutes' tolerance FROM production_settings ps
+       WHERE tenant_id=$1 AND device_id=$2`,
+      [tenantId, deviceId],
+    )
+  ).rows[0];
+  return Number(row?.tolerance ?? 0) || 0;
+}
+
 /** The shift occurrences that can belong to one production day (it may start the day before). */
 export async function loadShiftsFor(db: Database, tenantId: string, siteId: string, date: string) {
   const { shifts } = await loadShifts(db, tenantId, siteId);
@@ -2465,28 +2480,73 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     return loadConfig(db, current.tenantId, id);
   });
 
-  // How "Aproveitamento da máquina" is counted, edited from the board's own card.
+  /** Whether migration 050 is applied: the tolerance can be saved. */
+  const toleranceColumn = async () =>
+    (
+      await db.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_name='production_settings' AND column_name='adherence_tolerance_minutes'`,
+      )
+    ).rows.length > 0;
+
+  // What the card's pencil opens with: the formula and the tolerance of the shift times.
+  app.get('/api/devices/:id/production-utilization', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const tenantId = access.principal(req).tenantId;
+    return {
+      formula: (await utilizationFormulas(db, tenantId, [id])).get(id) ?? null,
+      tolerance: await adherenceToleranceOf(db, tenantId, id),
+      toleranceAvailable: await toleranceColumn(),
+    };
+  });
+
+  // How "Aproveitamento da máquina" is counted, and the tolerance of "Turno previsto × real",
+  // edited from the board's own card. A field left out is kept.
   app.patch('/api/devices/:id/production-utilization', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
-    const body = z.object({ formula: z.string().max(500).nullable() }).parse(req.body);
+    const body = z
+      .object({
+        formula: z.string().max(500).nullable().optional(),
+        tolerance: z.number().int().min(0).max(120).optional(),
+      })
+      .parse(req.body);
     const formula = body.formula?.trim() || null;
     const problem = formula ? utilizationFormulaError(formula) : null;
     if (problem) return reply.code(400).send({ error: problem });
+    if (body.tolerance !== undefined && !(await toleranceColumn()))
+      return reply.code(409).send({
+        error: 'A tolerância precisa da migração 050 aplicada no banco.',
+      });
     const current = access.principal(req);
     const updated = await db.transaction(async (sql) => {
-      const result = await sql.query(
-        `UPDATE production_settings SET utilization_formula=$3::jsonb,utilization_basis=NULL,
-           updated_at=now()
-         WHERE tenant_id=$1 AND device_id=$2`,
-        [current.tenantId, id, formula ? JSON.stringify({ formula }) : null],
+      const exists = await sql.query(
+        'SELECT 1 FROM production_settings WHERE tenant_id=$1 AND device_id=$2',
+        [current.tenantId, id],
       );
-      if (!result.rowCount) return false;
+      if (!exists.rows.length) return false;
+      if (body.formula !== undefined)
+        await sql.query(
+          `UPDATE production_settings SET utilization_formula=$3::jsonb,utilization_basis=NULL,
+             updated_at=now()
+           WHERE tenant_id=$1 AND device_id=$2`,
+          [current.tenantId, id, formula ? JSON.stringify({ formula }) : null],
+        );
+      if (body.tolerance !== undefined)
+        await sql.query(
+          `UPDATE production_settings SET adherence_tolerance_minutes=$3,updated_at=now()
+           WHERE tenant_id=$1 AND device_id=$2`,
+          [current.tenantId, id, body.tolerance],
+        );
       await recordAudit(sql, req, current, {
         action: 'device.production_utilization.update',
         targetType: 'device',
         targetId: id,
-        summary: { formula },
+        summary: {
+          ...(body.formula !== undefined ? { formula } : {}),
+          ...(body.tolerance !== undefined ? { tolerance: body.tolerance } : {}),
+        },
       });
       return true;
     });
@@ -2494,7 +2554,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       return reply
         .code(400)
         .send({ error: 'Configure primeiro o contador de produção do equipamento.' });
-    return { formula };
+    return { formula, tolerance: body.tolerance };
   });
 
   // The target alone, edited from the production board's "Meta" card: a fixed value or an HMI
@@ -3010,7 +3070,10 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const occurrences = (await loadShiftsFor(db, tenantId, config.site_id, query.date)).filter(
       (item) => item.productionDate === query.date && item.start.getTime() < to && item.end.getTime() > from,
     );
-    return { adherence: await loadAdherence(db, id, occurrences, new Date()) };
+    return {
+      adherence: await loadAdherence(db, id, occurrences, new Date()),
+      tolerance: await adherenceToleranceOf(db, tenantId, id),
+    };
   });
 
   // The photo of one history row, when it has one: the history reads it instead of the readings.

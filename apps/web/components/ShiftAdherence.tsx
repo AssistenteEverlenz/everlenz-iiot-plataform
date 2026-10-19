@@ -9,9 +9,10 @@ import { usePoll } from './data';
  * A start is production that holds, not the first blocks of adjusting the line; those are kept,
  * on hover.
  *
- * No tolerance (the user, 2026-10-14): every difference is shown as it is. Red is time the
- * shift lost (a late start, an early leave, a late return, an early end); green is time it
- * gained; a pause the line ran through is said in words.
+ * Every difference is shown as it is. Red is time the shift lost (a late start, an early leave, a
+ * late return, an early end); green is time it gained; a pause the line ran through is said in
+ * words. A difference within the machine's tolerance (migration 050, the pencil of the card; 0 by
+ * default) is on time: shown in grey and left out of the totals. Past it, all of it counts.
  */
 
 interface Adherence {
@@ -48,6 +49,8 @@ interface Row {
   note?: string;
   /** Blocks that passed around it before production held (or after it ended), shown on hover. */
   hint?: string;
+  /** Within the tolerance: shown, not counted. */
+  tolerated?: boolean;
 }
 
 const clock = (iso: string) =>
@@ -63,14 +66,21 @@ const hours = (minutes: number) =>
  * it happens) and the difference. A pause is always two rows, leaving and coming back, so the
  * columns hold times only and line up.
  */
-export function rowsOf(data: Adherence, unitWord = 'blocos'): Row[] {
+export function rowsOf(data: Adherence, unitWord = 'blocos', tolerance = 0): Row[] {
   const rows: Row[] = [];
+  // Inside the tolerance either way, a difference costs and gains nothing.
+  const push = (row: Row) =>
+    rows.push(
+      tolerance > 0 && row.shift != null && row.shift !== 0 && Math.abs(row.shift) <= tolerance
+        ? { ...row, effect: 0, tolerated: true }
+        : row,
+    );
   const several = data.blocks.length > 1;
   data.blocks.forEach((block, index) => {
     const tag = several ? ` ${index + 1}` : '';
     const late = block.start ? minutesBetween(block.start, block.planned.start) : null;
     // Starting late loses shift time; starting early gains it.
-    rows.push({
+    push({
       key: `start-${index}`,
       label: `Início${tag}`,
       planned: clock(block.planned.start),
@@ -93,7 +103,7 @@ export function rowsOf(data: Adherence, unitWord = 'blocos'): Row[] {
       const through = !pause.ahead && !pause.start;
       const leave = pause.start ? minutesBetween(pause.start, pause.planned.start) : null;
       const back = pause.end ? minutesBetween(pause.end, pause.planned.end) : null;
-      rows.push({
+      push({
         key: `p${index}-${at}-out`,
         label: `${name} · saída`,
         planned: clock(pause.planned.start),
@@ -103,7 +113,7 @@ export function rowsOf(data: Adherence, unitWord = 'blocos'): Row[] {
         shift: leave,
         note: through ? 'sem parar' : undefined,
       });
-      rows.push({
+      push({
         key: `p${index}-${at}-in`,
         label: `${name} · volta`,
         planned: clock(pause.planned.end),
@@ -119,7 +129,7 @@ export function rowsOf(data: Adherence, unitWord = 'blocos'): Row[] {
     });
     const early = block.end ? minutesBetween(block.end, block.planned.end) : null;
     // Stopping before the end loses time; running past it is extra time.
-    rows.push({
+    push({
       key: `end-${index}`,
       label: `Fim${tag}`,
       planned: clock(block.planned.end),
@@ -148,13 +158,14 @@ export function ShiftAdherence({
   /** What the line counts, for the hint on a start ("Primeiros sacos às…"). */
   unitWord?: string;
 }) {
-  const data = usePoll<{ adherence: Adherence | null }>(
+  const data = usePoll<{ adherence: Adherence | null; tolerance?: number }>(
     `/devices/${deviceId}/${source}?date=${date}&start=${encodeURIComponent(span.start)}&end=${encodeURIComponent(span.end)}`,
     60000,
   );
   const adherence = data.data?.adherence;
   if (!adherence?.blocks.length) return null;
-  const rows = rowsOf(adherence, unitWord);
+  const tolerance = data.data?.tolerance ?? 0;
+  const rows = rowsOf(adherence, unitWord, tolerance);
   const lost = rows.reduce((sum, row) => sum + Math.min(0, row.effect ?? 0), 0);
   const gained = rows.reduce((sum, row) => sum + Math.max(0, row.effect ?? 0), 0);
   return (
@@ -175,11 +186,13 @@ export function ShiftAdherence({
             </b>
             <em
               role="cell"
-              className={row.effect == null || row.effect === 0 ? 'even' : row.effect < 0 ? 'lost' : 'gained'}
+              className={row.tolerated ? 'even tolerated' : row.effect == null || row.effect === 0 ? 'even' : row.effect < 0 ? 'lost' : 'gained'}
               title={
                 row.effect == null
                   ? undefined
-                  : row.effect < 0
+                  : row.tolerated
+                    ? `Dentro da tolerância de ${tolerance} min: não conta`
+                    : row.effect < 0
                     ? `${Math.abs(row.effect)} min de turno perdidos`
                     : row.effect > 0
                       ? `${row.effect} min a mais de turno`
@@ -191,8 +204,9 @@ export function ShiftAdherence({
           </div>
         ))}
       </div>
-      {(lost < 0 || gained > 0) && (
+      {(lost < 0 || gained > 0 || tolerance > 0) && (
         <div className="shift-adherence-total">
+          {tolerance > 0 && <span className="tolerance">Tolerância de {tolerance} min</span>}
           {lost < 0 && (
             <span className="lost">
               <b>{hours(-lost)}</b> de turno perdidos nos horários

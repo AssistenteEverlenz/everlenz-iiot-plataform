@@ -5692,6 +5692,14 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   font-weight: 400;
   font-size: 11px;
 }
+/* Within the tolerance: the difference read, not counted. */
+.shift-adherence-row em.even.tolerated {
+  color: #8a9ca2;
+  font-size: 12px;
+}
+.shift-adherence-total .tolerance {
+  color: #8a9ca2;
+}
 .shift-adherence-total {
   display: flex;
   flex-wrap: wrap;
@@ -11098,7 +11106,7 @@ button.mortar-figure:hover > u {
 }
 .utilization-option:hover,
 .utilization-option.active { border-color: var(--brand-accent, #12b8a6); }
-.utilization-option input { margin: 3px 0 0; accent-color: var(--brand-accent, #12b8a6); }
+.utilization-option input { width: auto; min-width: 0; margin: 3px 0 0; accent-color: var(--brand-accent, #12b8a6); }
 .utilization-option span { display: grid; gap: 3px; }
 .utilization-option b { font-size: 13px; font-weight: 600; }
 .utilization-option small { color: #71868d; font-size: 12px; }
@@ -13833,4 +13841,43 @@ button.mortar-spout:hover .mortar-spout-open {
   .mixer-config-row.head {
     display: none;
   }
+}
+
+/* The tolerance of the shift times, in the pencil of the machine's utilization. */
+.utilization-tolerance {
+  display: grid;
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid #e3eaec;
+}
+.utilization-tolerance label {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.utilization-tolerance label > span:first-child {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+.utilization-tolerance b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.utilization-tolerance small {
+  color: #71868d;
+  font-size: 12px;
+}
+.utilization-tolerance-input {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  color: #4d6770;
+  font-size: 13px;
+}
+.utilization-tolerance-input input {
+  width: 72px;
+  min-width: 0;
+  text-align: right;
 }

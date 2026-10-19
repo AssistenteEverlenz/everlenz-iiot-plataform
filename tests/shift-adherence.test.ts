@@ -96,4 +96,16 @@ describe('turno previsto × real', () => {
     expect(by['Pausa · volta']).toMatchObject({ shift: 19, effect: -19 });
     expect(by['Fim']).toMatchObject({ planned: '17:30', real: '17:01', shift: -29, effect: -29 });
   });
+
+  it('leaves a difference within the tolerance out of the totals, and counts all of one past it', () => {
+    const data = adherenceOf(occurrences, [stop('02:00', '06:12'), stop('10:59', '12:49'), stop('17:01', '23:00')], at('21:00'));
+    const by = Object.fromEntries(rowsOf(data, 'blocos', 15).map((row: { label: string }) => [row.label, row]));
+    // 12 min late is on time with 15 min of tolerance: still shown, worth nothing.
+    expect(by['Início']).toMatchObject({ real: '06:12', shift: 12, effect: 0, tolerated: true });
+    expect(by['Pausa · saída']).toMatchObject({ shift: -1, effect: 0, tolerated: true });
+    // 19 min late back is past it: all 19 minutes count, not the 4 over.
+    expect(by['Pausa · volta']).toMatchObject({ shift: 19, effect: -19 });
+    expect(by['Fim']).toMatchObject({ shift: -29, effect: -29 });
+    expect(by['Fim'].tolerated).toBeUndefined();
+  });
 });

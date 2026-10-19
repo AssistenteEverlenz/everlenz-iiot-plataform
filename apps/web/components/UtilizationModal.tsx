@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { mutate } from './data';
+import { useEffect, useState } from 'react';
+import { mutate, usePoll } from './data';
 import { FormulaInput } from './FormulaInput';
 import { formatNumber } from './ShiftBoard';
 import {
@@ -16,6 +16,8 @@ import {
 // How "Aproveitamento da máquina" is counted, chosen per equipment from the board's own card:
 // the default producing ÷ (producing + idle), or a formula the plant writes over the period's
 // state times, typed like the other cards' formulas. Its result is the percentage itself.
+// Also the tolerance of "Turno previsto × real" (migration 050): a real time within it of the
+// registered one is on time, shown but not counted.
 
 /** The gauge caption: the default in words, or the plant's own formula as written. */
 export function utilizationCaption(formula: string | null | undefined) {
@@ -38,6 +40,20 @@ export function UtilizationModal({
   const [text, setText] = useState(formula ?? DEFAULT_UTILIZATION_FORMULA);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const stored = usePoll<{ tolerance: number; toleranceAvailable: boolean }>(
+    `/devices/${deviceId}/production-utilization`,
+    600000,
+  );
+  const [tolerance, setTolerance] = useState<string | null>(null);
+  useEffect(() => {
+    if (tolerance == null && stored.data) setTolerance(String(stored.data.tolerance));
+  }, [stored.data, tolerance]);
+  const toleranceMinutes = Number(tolerance ?? 0);
+  const toleranceProblem =
+    tolerance != null &&
+    (!Number.isInteger(toleranceMinutes) || toleranceMinutes < 0 || toleranceMinutes > 120)
+      ? 'A tolerância vai de 0 a 120 minutos.'
+      : null;
   const values = utilizationValues(time);
   const options = Object.entries(UTILIZATION_VARIABLES).map(([name, description]) => ({
     name,
@@ -53,6 +69,10 @@ export function UtilizationModal({
     try {
       await mutate(`/devices/${deviceId}/production-utilization`, 'PATCH', {
         formula: custom ? text : null,
+        // Sent only when the base has the column and the value was read: never a blind 0.
+        ...(stored.data?.toleranceAvailable && tolerance != null
+          ? { tolerance: toleranceMinutes }
+          : {}),
       });
       onClose(true);
     } catch (reason) {
@@ -116,6 +136,35 @@ export function UtilizationModal({
           <b>{preview == null ? '—' : `${formatNumber(preview * 100)}%`}</b>
           <small>no período aberto no quadro</small>
         </div>
+        <div className="utilization-tolerance">
+          <label>
+            <span>
+              <b>Tolerância do turno previsto × real</b>
+              <small>
+                Início, pausas e fim que ficarem até este tanto antes ou depois do horário contam
+                como no horário: a diferença aparece, mas não soma como perdida ou ganha. Passou
+                disso, conta a diferença inteira. 0 = conta todo minuto.
+              </small>
+            </span>
+            <span className="utilization-tolerance-input">
+              <input
+                type="number"
+                min={0}
+                max={120}
+                step={1}
+                inputMode="numeric"
+                disabled={!stored.data?.toleranceAvailable}
+                value={tolerance ?? ''}
+                onChange={(event) => setTolerance(event.target.value)}
+              />
+              min
+            </span>
+          </label>
+          {stored.data && !stored.data.toleranceAvailable && (
+            <small className="form-error">Disponível depois da migração 050 no banco.</small>
+          )}
+          {toleranceProblem && <small className="form-error">{toleranceProblem}</small>}
+        </div>
         <div className="notice full-field">
           <b>Vale para este equipamento</b>
           Muda o número no quadro, na TV e no painel ao vivo. Fotos de dias já fechados guardam o
@@ -129,7 +178,7 @@ export function UtilizationModal({
           <button
             type="button"
             className="primary-button"
-            disabled={saving || Boolean(problem)}
+            disabled={saving || Boolean(problem) || Boolean(toleranceProblem)}
             onClick={() => void save()}
           >
             {saving && <span className="button-spinner" />}

@@ -1648,6 +1648,12 @@
   :root[data-theme='dark'] .shift-adherence-row em.even {
     color: #b7c6cb;
   }
+  :root[data-theme='dark'] .shift-adherence-row em.even.tolerated {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .shift-adherence-total .tolerance {
+    color: #798e95;
+  }
   :root[data-theme='dark'] .shift-adherence-total {
     color: #a5b6bc;
   }
@@ -4284,5 +4290,14 @@
   }
   :root[data-theme='dark'] .mixer-config-row.head {
     color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .utilization-tolerance {
+    border-top: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .utilization-tolerance small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .utilization-tolerance-input {
+    color: #a5b6bc;
   }
 }
