@@ -238,6 +238,43 @@ export async function rebuildStops(db: Database, deviceId: string, from: Date, t
       to,
     ],
   );
+  // The machine as it stood before the warm-up: its last message and each signal's last value.
+  // A machine switched off for the weekend sends nothing in the warm-up, and without this the
+  // replay read it as unknown and closed its open "offline" stop at `from` (Capixaba,
+  // 2026-10-17: the weekend read as producing, and Monday's start as 04:00).
+  const warmStart = new Date(from.getTime() - WARM_MS);
+  const lastMessage = (
+    await db.query<{ at: Date | string; product_code: string | null }>(
+      `SELECT received_at at,product_code FROM telemetry_samples
+       WHERE device_id=$1 AND received_at<$2 AND received_at>=$3
+       ORDER BY received_at DESC LIMIT 1`,
+      [deviceId, warmStart, new Date(warmStart.getTime() - 30 * 86_400_000)],
+    )
+  ).rows[0];
+  if (lastMessage) {
+    const values = await db.query<{ tag_id: string; value: number | null }>(
+      `SELECT DISTINCT ON (tag_id) tag_id,
+         coalesce(value_number,CASE WHEN value_boolean THEN 1 WHEN NOT value_boolean THEN 0 END) value
+       FROM telemetry_samples
+       WHERE device_id=$1 AND tag_id=ANY($2::uuid[]) AND received_at<$3 AND received_at>=$4
+       ORDER BY tag_id,received_at DESC`,
+      [
+        deviceId,
+        [device.blocks_tag_id, device.pallets_tag_id, device.auto_tag_id].filter(Boolean),
+        warmStart,
+        new Date(warmStart.getTime() - 30 * 86_400_000),
+      ],
+    );
+    const valueOf = (tagId: string | null) =>
+      tagId ? (values.rows.find((row) => row.tag_id === tagId)?.value ?? null) : null;
+    messages.rows.unshift({
+      at: lastMessage.at,
+      product_code: lastMessage.product_code,
+      pieces: valueOf(device.blocks_tag_id),
+      pallets: valueOf(device.pallets_tag_id),
+      auto: valueOf(device.auto_tag_id),
+    });
+  }
   const number = (value: unknown) =>
     value == null || !Number.isFinite(Number(value)) ? null : Number(value);
   // Readings are stored only when they change (migration 027): each signal holds its last value.

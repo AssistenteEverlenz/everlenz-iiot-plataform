@@ -96,6 +96,46 @@ describe('production stops', () => {
     expect((await stops(db))[0].state).toBe('manual');
   }, 30_000);
 
+  it('keeps a machine switched off for the weekend offline until it comes back', async () => {
+    // Capixaba, 2026-10-17: nothing sent from Friday night to Monday 07:20, so nothing in the
+    // warm-up; the replay must still read it as offline, not close its stop on Saturday.
+    const db = await base();
+    const site = (await db.query<{ site_id: string }>('SELECT site_id FROM devices WHERE id=$1', [HAIWELL]))
+      .rows[0].site_id;
+    const tag = (
+      await db.query<{ id: string }>(
+        "INSERT INTO tags(tenant_id,device_id,key,name,data_type) VALUES($1,$2,'Blocos','Blocos','number') RETURNING id",
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    await db.query('UPDATE production_settings SET blocks_tag_id=$1 WHERE device_id=$2', [tag, HAIWELL]);
+    let count = 500;
+    let message = 1;
+    const send = async (from: Date, to: Date, running: boolean) => {
+      for (let t = from.getTime(); t < to.getTime(); t += 15_000) {
+        if (running) count += 1;
+        await db.query(
+          `INSERT INTO telemetry_samples(tenant_id,site_id,device_id,tag_id,timestamp,received_at,value_number,quality,raw_message_id)
+           VALUES($1,$2,$3,$4,$5,$5,$6,'good',$7)`,
+          [TENANT, site, HAIWELL, tag, new Date(t), count, message++],
+        );
+      }
+    };
+    await send(new Date('2026-10-16T18:30:00Z'), new Date('2026-10-16T19:04:00Z'), true);
+    await send(new Date('2026-10-19T10:20:00Z'), new Date('2026-10-19T11:00:00Z'), true);
+    await db.query(
+      `INSERT INTO production_stops(tenant_id,device_id,state,started_at,production_date)
+       VALUES($1,$2,'offline','2026-10-16T19:04:32Z','2026-10-16')`,
+      [TENANT, HAIWELL],
+    );
+    await rebuildStops(db, HAIWELL, new Date('2026-10-17T16:10:00Z'), new Date('2026-10-19T11:00:00Z'));
+    const rows = await stops(db);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].state).toBe('offline');
+    // Back with the first block on Monday, not at the start of the gap on Saturday.
+    expect(rows[0].ended_at?.toISOString()).toBe('2026-10-19T10:20:00.000Z');
+  }, 60_000);
+
   it('rebuilds the stops of a stretch the recorder missed from the stored readings', async () => {
     // The shift close failed for two days (2026-10-17) and took the recorder down with it.
     const db = await base();
