@@ -1572,7 +1572,7 @@ describe('SQL integration (PostgreSQL engine via PGlite, not Docker/Mosquitto)',
       // variables card by card (production and bar charts read the pallets counter here).
       const loaded = await api.inject({ method: 'POST', url: `/api/dashboards/${target}/template/apply` });
       expect(loaded.statusCode).toBe(200);
-      expect(loaded.json()).toEqual({ cards: 4, withVariable: 2, screens: 2 });
+      expect(loaded.json()).toEqual({ cards: 4, withVariable: 2, screens: 2, tabs: 0 });
       const cards = await db.query<{ widget_type: string; tag_id: string | null; position: number }>(
         'SELECT widget_type,tag_id,position FROM dashboard_widgets WHERE dashboard_id=$1 ORDER BY position',
         [target],

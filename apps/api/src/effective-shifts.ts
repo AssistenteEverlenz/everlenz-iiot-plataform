@@ -64,11 +64,15 @@ function heldBackward(producing: Producing, at: number) {
     sum += Math.min(BUCKET_S, producing.get(at - index * BUCKET_MS) ?? 0);
   return sum >= HOLD_SHARE * BUCKET_S * HOLD_BUCKETS;
 }
-/** Where production in a bucket begins and ends, read as packed at the edge it touches. */
+/**
+ * Where production in a bucket begins and ends, read as packed at the edge it touches. On the
+ * whole second: the producing seconds are fractional, and a shift's length is stored as integer
+ * seconds (an extra shift of 12920.022 s stopped the shift close, 2026-10-17).
+ */
 const startIn = (producing: Producing, at: number) =>
-  at + (BUCKET_S - Math.min(BUCKET_S, producing.get(at) ?? 0)) * 1000;
+  at + Math.round(BUCKET_S - Math.min(BUCKET_S, producing.get(at) ?? 0)) * 1000;
 const endIn = (producing: Producing, at: number) =>
-  at + Math.min(BUCKET_S, producing.get(at) ?? 0) * 1000;
+  at + Math.round(Math.min(BUCKET_S, producing.get(at) ?? 0)) * 1000;
 
 /**
  * Pure: the registered shifts of a range of days stretched to the production around them, plus
@@ -162,7 +166,7 @@ export function extendOccurrences(
         start: window.start,
         end: window.end,
         breaks: [],
-        plannedSeconds: (end - island.start) / 1000,
+        plannedSeconds: Math.round((end - island.start) / 1000),
         planned: window,
         extra: true,
         extendedBefore: 0,

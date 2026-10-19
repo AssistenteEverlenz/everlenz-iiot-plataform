@@ -105,6 +105,30 @@ async function recordJobFailure(job: string, error: unknown) {
     .catch(() => undefined);
 }
 
+// Each stop of the line, while it is happening: seconds can be counted afterwards, stops cannot
+// (apps/api/src/production-stops.ts). On its own, so a failing shift close never silences it
+// (it did for two days from 2026-10-17, and the board lost the real start of the shifts).
+let recordingStops = false;
+async function recordLineStops() {
+  if (recordingStops) return;
+  recordingStops = true;
+  try {
+    const stops = await recordStops(database);
+    if (stops.opened || stops.closed) app.log.info({ event: 'production_stops', ...stops });
+  } catch (error) {
+    app.log.warn({
+      event: 'production_stops_failed',
+      message: error instanceof Error ? error.message : String(error),
+    });
+    await recordJobFailure('record_stops', error);
+  } finally {
+    recordingStops = false;
+  }
+}
+const stopsTimer = setInterval(() => void recordLineStops(), 60 * 1000);
+stopsTimer.unref();
+setTimeout(() => void recordLineStops(), 15_000).unref();
+
 let closingShifts = false;
 async function closeShifts() {
   if (closingShifts) return;
@@ -115,10 +139,6 @@ async function closeShifts() {
     // Right after the close, while the readings are there: the photo the history will read.
     const photos = await captureProductionPhotos(database);
     if (photos) app.log.info({ event: 'production_photos_taken', photos });
-    // Each stop of the line, while it is happening: seconds can be counted afterwards, stops
-    // cannot (apps/api/src/production-stops.ts).
-    const stops = await recordStops(database);
-    if (stops.opened || stops.closed) app.log.info({ event: 'production_stops', ...stops });
     // The WhatsApp summary of each day that has just closed (production-messages.ts).
     const messages = await queueProductionMessages(database);
     if (messages) app.log.info({ event: 'production_messages_queued', messages });

@@ -75,6 +75,17 @@ describe('effective shifts', () => {
     expect(`${hhmm(all[0].start)}-${hhmm(all[0].end)}`).toBe('06:00-13:45');
   });
 
+  it('keeps whole seconds when the producing seconds are fractional (planned_seconds is an integer)', () => {
+    // Campo Forte, 2026-10-17: an extra shift of 12920.022 s stopped the shift close for two days.
+    const producing = run(new Map(), SAT, '06:00', '09:30', 299.989);
+    producing.set(at(SAT, '05:55'), 200.4);
+    producing.set(at(SAT, '09:30'), 120.011);
+    const [extra] = extendOccurrences(shifts(SAT), producing, late, 120, { from: SAT, to: SAT });
+    expect(Number.isInteger(extra.plannedSeconds)).toBe(true);
+    expect(extra.start.getTime() % 1000).toBe(0);
+    expect(extra.end.getTime() % 1000).toBe(0);
+  });
+
   it('runs until now while the line is still in the stretch, and keeps the registered shift otherwise', () => {
     const producing = run(new Map(), DAY, '07:00', '18:30');
     // 18:50: twenty minutes stopped after producing until 18:30 -- the stop counts.

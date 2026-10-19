@@ -1313,7 +1313,7 @@ export async function closeShiftReports(
           report.date,
           report.start,
           report.end,
-          report.planned,
+          Math.round(report.planned),
           report.summary.pieces,
           report.summary.pallets,
           report.summary.tons,
