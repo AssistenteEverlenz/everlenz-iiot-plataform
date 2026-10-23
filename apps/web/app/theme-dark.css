@@ -4542,9 +4542,6 @@
   :root[data-theme='dark'] .why-group-head b {
     color: #e0e6e8;
   }
-  :root[data-theme='dark'] .why-group-head small {
-    color: #798e95;
-  }
   :root[data-theme='dark'] .why-group-head strong {
     color: #e0e6e8;
   }
@@ -4673,5 +4670,51 @@
   }
   :root[data-theme='dark'] .why-partner {
     color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .ledger-sum span {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .ledger-sum b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .ledger-sum b i {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .ledger-total {
+    border-top: 2px solid #20353d;
+  }
+  :root[data-theme='dark'] .ledger-total span {
+    color: #e0e6e8 !important;
+  }
+  :root[data-theme='dark'] .ledger-total u {
+    color: #88ddbb;
+  }
+  :root[data-theme='dark'] .ledger-caption {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .ledger-lines > li > button {
+    border: 1px solid transparent;
+    background: none;
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .ledger-lines > li > button:hover,
+  :root[data-theme='dark'] .ledger-lines > li.open > button {
+    border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .ledger-name small {
+    color: #a2b2b7;
+  }
+  :root[data-theme='dark'] .ledger-tag {
+    background: color-mix(in srgb, var(--why) 13%, #12191c);
+    color: color-mix(in srgb, var(--why) 80%, #f2f2f2);
+  }
+  :root[data-theme='dark'] .ledger-lines b.more {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .ledger-lines b.less {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .ledger-lines b.even {
+    color: #a2b2b7;
   }
 }

@@ -29,7 +29,13 @@ export type BridgeKind =
   | 'noProduct'
   | 'unassigned'
   | 'unlinked';
-export type BridgeSource = { campaign?: string; label: string | null; at: string; kg: number; note?: string };
+export type BridgeSource = {
+  campaign?: string;
+  label: string | null;
+  at: string;
+  kg: number;
+  note?: string;
+};
 export type ReconcileData = {
   from: string;
   to: string;
@@ -58,25 +64,46 @@ const GROUPS: Record<Group, { title: string; hint: string; color: string; icon: 
     title: 'Corrigir dados',
     hint: 'IHM e cadastro',
     color: '#d39a2f',
-    icon: <Icon d="M12 8v5M12 16.5v.5M10.3 3.9L2.5 17.5a2 2 0 001.7 3h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />,
+    icon: (
+      <Icon d="M12 8v5M12 16.5v.5M10.3 3.9L2.5 17.5a2 2 0 001.7 3h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+    ),
   },
   plant: {
     title: 'Conferir na fábrica',
     hint: 'processo e ensacadeira',
     color: '#d8664a',
-    icon: <Icon d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.5 2.5-2.5-.5-.5-2.5 2.5-2.5z" />,
+    icon: (
+      <Icon d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.5 2.5-2.5-.5-.5-2.5 2.5-2.5z" />
+    ),
   },
 };
 
 const KINDS: Record<BridgeKind, { label: string; group: Group; why: string; icon: ReactNode }> = {
-  carryIn: { label: 'Veio do silo', group: 'normal', why: 'Misturado antes do período, ensacado nele.', icon: <SiloIcon /> },
-  carryOut: { label: 'Ficou no silo', group: 'normal', why: 'Misturado no período, ensacado depois.', icon: <SiloIcon /> },
-  silo: { label: 'Ainda no silo', group: 'normal', why: 'Ainda está saindo em sacos.', icon: <SiloIcon /> },
+  carryIn: {
+    label: 'Veio do silo',
+    group: 'normal',
+    why: 'Misturado antes do período, ensacado nele.',
+    icon: <SiloIcon />,
+  },
+  carryOut: {
+    label: 'Ficou no silo',
+    group: 'normal',
+    why: 'Misturado no período, ensacado depois.',
+    icon: <SiloIcon />,
+  },
+  silo: {
+    label: 'Ainda no silo',
+    group: 'normal',
+    why: 'Ainda está saindo em sacos.',
+    icon: <SiloIcon />,
+  },
   offline: {
     label: 'IHM sem sinal',
     group: 'data',
     why: 'A IHM ficou sem sinal e mandou tudo junto depois, com o horário errado.',
-    icon: <Icon d="M2 8.5a15 15 0 0120 0M5 12a10 10 0 0114 0M8.5 15.5a5 5 0 017 0M12 19h.01M3 3l18 18" />,
+    icon: (
+      <Icon d="M2 8.5a15 15 0 0120 0M5 12a10 10 0 0114 0M8.5 15.5a5 5 0 017 0M12 19h.01M3 3l18 18" />
+    ),
   },
   unassigned: {
     label: 'Saco sem mistura',
@@ -130,7 +157,17 @@ const KINDS: Record<BridgeKind, { label: string; group: Group; why: string; icon
 
 function Icon({ d }: { d: string }) {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d={d} />
     </svg>
   );
@@ -146,14 +183,19 @@ const brDay = (iso: string) => {
   const local = new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString();
   return `${local.slice(8, 10)}/${local.slice(5, 7)}`;
 };
-const plantDay = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+const plantDay = (iso: string) =>
+  new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
 /** Tons from one ton up, kilos under it. */
 const weight = (kg: number) =>
   Math.abs(kg) >= 1000 ? `${tons(Math.abs(kg))} t` : `${integer(Math.abs(kg))} kg`;
 const signed = (kg: number) => `${kg > 0.5 ? '+' : kg < -0.5 ? '−' : ''}${weight(kg)}`;
 function daysOf(from: string, to: string) {
   const days: string[] = [];
-  for (let at = Date.parse(`${from}T12:00:00Z`); at <= Date.parse(`${to}T12:00:00Z`) && days.length < 62; at += 86_400_000)
+  for (
+    let at = Date.parse(`${from}T12:00:00Z`);
+    at <= Date.parse(`${to}T12:00:00Z`) && days.length < 62;
+    at += 86_400_000
+  )
     days.push(new Date(at).toISOString().slice(0, 10));
   return days;
 }
@@ -166,10 +208,19 @@ function BagRuler({ real, nominal }: { real: number; nominal: number }) {
   const off = (real - nominal) / nominal;
   const tone = Math.abs(off) <= 0.03 ? 'ok' : off < 0 ? 'light' : 'heavy';
   return (
-    <span className={`bag-ruler ${tone}`} title={`${real.toFixed(1)} kg por saco, nominal ${nominal} kg`}>
+    <span
+      className={`bag-ruler ${tone}`}
+      title={`${real.toFixed(1)} kg por saco, nominal ${nominal} kg`}
+    >
       <span className="bag-ruler-track">
         <i className="nominal" style={{ left: at(nominal) }} />
-        <i className="fill" style={{ left: at(Math.min(real, nominal)), width: `calc(${at(Math.max(real, nominal))} - ${at(Math.min(real, nominal))})` }} />
+        <i
+          className="fill"
+          style={{
+            left: at(Math.min(real, nominal)),
+            width: `calc(${at(Math.max(real, nominal))} - ${at(Math.min(real, nominal))})`,
+          }}
+        />
         <u style={{ left: at(real) }} />
       </span>
       <b>{real.toFixed(1).replace('.', ',')} kg</b>
@@ -180,7 +231,10 @@ function BagRuler({ real, nominal }: { real: number; nominal: number }) {
 
 /** A line's detail: date, product and weight -- or the ruler, for the bag weight. */
 function SourceLine({ kind, source }: { kind: BridgeKind; source: BridgeSource }) {
-  const when = source.note && /^\d{4}-\d{2}-\d{2}$/.test(source.note) ? brDay(`${source.note}T15:00:00Z`) : brDay(source.at);
+  const when =
+    source.note && /^\d{4}-\d{2}-\d{2}$/.test(source.note)
+      ? brDay(`${source.note}T15:00:00Z`)
+      : brDay(source.at);
   const [real, nominal] = kind === 'bagWeight' ? (source.note ?? '').split('|').map(Number) : [];
   return (
     <li>
@@ -192,6 +246,45 @@ function SourceLine({ kind, source }: { kind: BridgeKind; source: BridgeSource }
       {real && nominal ? <BagRuler real={real} nominal={nominal} /> : <i />}
       <b className={source.kg < 0 ? 'minus' : 'plus'}>{signed(source.kg)}</b>
     </li>
+  );
+}
+
+/**
+ * A cause's detail for the sum: one line per day, the products of that day together, so the
+ * moves that cancel inside a day (a morning the HMI sent at once) read as what they left. The
+ * bag weight stays one line per product, each with its ruler.
+ */
+function DayLines({ kind, sources }: { kind: BridgeKind; sources: BridgeSource[] }) {
+  if (kind === 'bagWeight')
+    return (
+      <ul>
+        {sources.slice(0, 10).map((source, index) => (
+          <SourceLine key={index} kind={kind} source={source} />
+        ))}
+      </ul>
+    );
+  const days = new Map<string, { at: string; kg: number; labels: Set<string>; before: boolean }>();
+  for (const source of sources) {
+    const key = source.note === 'before' ? 'before' : source.note && /^\d{4}-/.test(source.note) ? source.note : plantDay(source.at);
+    const day = days.get(key) ?? { at: source.at, kg: 0, labels: new Set<string>(), before: key === 'before' };
+    day.kg += source.kg;
+    if (source.label) day.labels.add(source.label.replace(/\s*\d+(?:[.,]\d+)?\s*kg\s*$/i, ''));
+    days.set(key, day);
+  }
+  const rows = [...days.entries()]
+    .filter(([, day]) => Math.abs(day.kg) >= 50)
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  return (
+    <ul>
+      {rows.map(([key, day]) => (
+        <li key={key}>
+          <em>{day.before ? 'antes' : brDay(key === 'before' ? day.at : `${key}T15:00:00Z`)}</em>
+          <span>{[...day.labels].join(', ') || 'sem produto'}</span>
+          <i />
+          <b>{signed(day.kg)}</b>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -220,28 +313,35 @@ export function PeriodBridge({
   return (
     <section className="why">
       {head && (
-      <header className="why-head">
-        <div className={`why-close ${share != null && Math.abs(1 - share) <= 0.02 ? 'ok' : 'off'}`}>
-          <b>{share == null ? '—' : `${(share * 100).toFixed(1).replace('.', ',')}%`}</b>
-          <span>do misturado virou saco</span>
-        </div>
-        <p>
-          {Math.abs(difference) < 1 ? (
-            'Cada quilo misturado saiu em sacos.'
-          ) : (
-            <>
-              <b>{weight(difference)}</b> {difference < 0 ? 'a menos' : 'a mais'} em sacos. Veja o que explica:
-            </>
-          )}
-        </p>
-      </header>
+        <header className="why-head">
+          <div
+            className={`why-close ${share != null && Math.abs(1 - share) <= 0.02 ? 'ok' : 'off'}`}
+          >
+            <b>{share == null ? '—' : `${(share * 100).toFixed(1).replace('.', ',')}%`}</b>
+            <span>do misturado virou saco</span>
+          </div>
+          <p>
+            {Math.abs(difference) < 1 ? (
+              'Cada quilo misturado saiu em sacos.'
+            ) : (
+              <>
+                <b>{weight(difference)}</b> {difference < 0 ? 'a menos' : 'a mais'} em sacos. Veja o
+                que explica:
+              </>
+            )}
+          </p>
+        </header>
       )}
       <div className="why-groups">
         {groups.map(({ group, items }) => {
           const info = GROUPS[group];
           const total = items.reduce((sum, item) => sum + item.kg, 0);
           return (
-            <div key={group} className="why-group" style={{ '--why': info.color } as React.CSSProperties}>
+            <div
+              key={group}
+              className="why-group"
+              style={{ '--why': info.color } as React.CSSProperties}
+            >
               <div className="why-group-head">
                 <span className="why-group-icon">{info.icon}</span>
                 <div>
@@ -253,12 +353,20 @@ export function PeriodBridge({
               <ul>
                 {items.map((item) => {
                   const kind = KINDS[item.kind];
-                  const marked = new Set(item.sources.map((source) => (source.note && /^\d{4}/.test(source.note) ? source.note : plantDay(source.at))));
+                  const marked = new Set(
+                    item.sources.map((source) =>
+                      source.note && /^\d{4}/.test(source.note) ? source.note : plantDay(source.at),
+                    ),
+                  );
                   const opened = open === item.kind;
                   const evened = item.kind === 'changeover' && Math.abs(item.kg) < 50;
                   return (
                     <li key={item.kind} className={opened ? 'open' : ''}>
-                      <button type="button" onClick={() => setOpen(opened ? null : item.kind)} aria-expanded={opened}>
+                      <button
+                        type="button"
+                        onClick={() => setOpen(opened ? null : item.kind)}
+                        aria-expanded={opened}
+                      >
                         <span className="why-icon">{kind.icon}</span>
                         <span className="why-label">{kind.label}</span>
                         <span className="why-bar" aria-hidden="true">
@@ -273,7 +381,11 @@ export function PeriodBridge({
                         {days.length > 1 && (
                           <span className="why-days" aria-label="Dias em que aconteceu">
                             {days.map((day) => (
-                              <i key={day} className={marked.has(day) ? 'on' : ''} title={brDay(`${day}T15:00:00Z`)} />
+                              <i
+                                key={day}
+                                className={marked.has(day) ? 'on' : ''}
+                                title={brDay(`${day}T15:00:00Z`)}
+                              />
                             ))}
                           </span>
                         )}
@@ -286,7 +398,9 @@ export function PeriodBridge({
                               <SourceLine key={index} kind={item.kind} source={source} />
                             ))}
                           </ul>
-                          {item.sources.length > 10 && <small>e mais {item.sources.length - 10}</small>}
+                          {item.sources.length > 10 && (
+                            <small>e mais {item.sources.length - 10}</small>
+                          )}
                         </div>
                       )}
                     </li>
@@ -297,6 +411,118 @@ export function PeriodBridge({
           );
         })}
       </div>
+    </section>
+  );
+}
+
+/**
+ * The difference as a sum anyone can check: mixed minus bagged is the difference, and the causes
+ * under it add up to it, line by line, closing with the total. A cause that left bags missing
+ * adds to the difference (+); one that put bags in excess takes from it (−). The lines are
+ * rounded to a tenth of a ton so that, as printed, they add up exactly to the total.
+ */
+export function DifferenceLedger({ data }: { data: ReconcileData }) {
+  const [open, setOpen] = useState<BridgeKind | null>(null);
+  const tenth = (kg: number) => Math.round(kg / 100);
+  const difference = data.mixedKg - data.baggedKg;
+  // Each cause's share of the difference: bags missing make it bigger.
+  const raw = data.bridge.map((item) => ({ item, kg: -item.kg }));
+  // Rounded so the printed lines add up to the printed total (largest remainder).
+  const target = tenth(difference);
+  const floors = raw.map((entry) => Math.floor(entry.kg / 100));
+  let left = target - floors.reduce((sum, value) => sum + value, 0);
+  const order = raw
+    .map((entry, index) => ({ index, rest: entry.kg / 100 - floors[index] }))
+    .sort((a, b) => b.rest - a.rest);
+  const tenths = [...floors];
+  for (const { index } of order) {
+    if (left <= 0) break;
+    tenths[index] += 1;
+    left -= 1;
+  }
+  const lines = raw
+    .map((entry, index) => ({ ...entry, tenths: tenths[index] }))
+    .sort((a, b) => b.tenths - a.tenths || b.kg - a.kg);
+  const t = (value: number) => `${(Math.abs(value) / 10).toFixed(1).replace('.', ',')} t`;
+  const sign = (value: number) => (value > 0 ? '+' : value < 0 ? '−' : '');
+  const minus = (value: number) => (value < 0 ? '−' : '');
+  return (
+    <section className="ledger">
+      <div className="ledger-sum">
+        <div>
+          <span>Misturado</span>
+          <b>{t(tenth(data.mixedKg))}</b>
+        </div>
+        <div>
+          <span>Ensacado</span>
+          <b>
+            <i>−</i> {t(tenth(data.baggedKg))}
+          </b>
+        </div>
+        <div className="ledger-total">
+          <span>Diferença</span>
+          <b>
+            {minus(target)}
+            {t(target)}
+          </b>
+        </div>
+      </div>
+      {lines.length > 0 && (
+        <>
+          <div className="ledger-caption">De onde vem a diferença</div>
+          <ul className="ledger-lines">
+            {lines.map(({ item, tenths: value }) => {
+              const kind = KINDS[item.kind];
+              const group = GROUPS[kind.group];
+              const opened = open === item.kind;
+              return (
+                <li
+                  key={item.kind}
+                  className={opened ? 'open' : ''}
+                  style={{ '--why': group.color } as React.CSSProperties}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setOpen(opened ? null : item.kind)}
+                    aria-expanded={opened}
+                  >
+                    <span className="why-icon">{kind.icon}</span>
+                    <span className="ledger-name">
+                      {kind.label}
+                      <small>
+                        {value > 0 ? 'faltou saco' : value < 0 ? 'saco a mais' : 'se compensa'}
+                      </small>
+                    </span>
+                    <em className="ledger-tag">{group.title}</em>
+                    <b className={value > 0 ? 'more' : value < 0 ? 'less' : 'even'}>
+                      {sign(value)}
+                      {t(value)}
+                    </b>
+                  </button>
+                  {opened && (
+                    <div className="why-detail">
+                      <p>{kind.why}</p>
+                      <DayLines
+                        kind={item.kind}
+                        sources={item.sources.map((source) => ({ ...source, kg: -source.kg }))}
+                      />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="ledger-sum ledger-end">
+            <div className="ledger-total">
+              <span>Total</span>
+              <b>
+                {minus(target)}
+                {t(target)} <u aria-label="fecha com a diferença">✓</u>
+              </b>
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -326,7 +552,13 @@ export type CampaignData = {
   lastBagAt: string | null;
   offline: boolean;
   open: boolean;
-  causes: Array<{ kind: BridgeKind; kg: number; partner?: string; realBagKg?: number; nominalKg?: number }>;
+  causes: Array<{
+    kind: BridgeKind;
+    kg: number;
+    partner?: string;
+    realBagKg?: number;
+    nominalKg?: number;
+  }>;
 };
 
 export function CampaignBridge({ campaign }: { campaign: CampaignData }) {
@@ -344,10 +576,13 @@ export function CampaignBridge({ campaign }: { campaign: CampaignData }) {
           <b>{weight(campaign.mixedKg)}</b>
           <em>
             {campaign.batches} {campaign.batches === 1 ? 'batelada' : 'bateladas'}
-            {Math.abs(dosed) >= 1 && ` · ${dosed > 0 ? '+' : '−'}${integer(Math.abs(dosed))} kg da receita`}
+            {Math.abs(dosed) >= 1 &&
+              ` · ${dosed > 0 ? '+' : '−'}${integer(Math.abs(dosed))} kg da receita`}
           </em>
         </div>
-        <span className="why-arrow" aria-hidden="true">→</span>
+        <span className="why-arrow" aria-hidden="true">
+          →
+        </span>
         <div>
           <span className="why-icon">
             <Icon d="M6 8h12l1.5 12h-15zM9 8a3 3 0 016 0" />
@@ -356,12 +591,29 @@ export function CampaignBridge({ campaign }: { campaign: CampaignData }) {
           <b>{weight(campaign.baggedKg)}</b>
           <em>{integer(campaign.bags)} sacos</em>
         </div>
-        <span className="why-arrow" aria-hidden="true">=</span>
-        <div className={Math.abs(difference) <= campaign.mixedKg * 0.02 ? 'ok' : difference < 0 ? 'minus' : 'plus'}>
-          <small>{Math.abs(difference) <= campaign.mixedKg * 0.02 ? 'Fechou' : difference < 0 ? 'Faltou' : 'Sobrou'}</small>
+        <span className="why-arrow" aria-hidden="true">
+          =
+        </span>
+        <div
+          className={
+            Math.abs(difference) <= campaign.mixedKg * 0.02
+              ? 'ok'
+              : difference < 0
+                ? 'minus'
+                : 'plus'
+          }
+        >
+          <small>
+            {Math.abs(difference) <= campaign.mixedKg * 0.02
+              ? 'Fechou'
+              : difference < 0
+                ? 'Faltou'
+                : 'Sobrou'}
+          </small>
           <b>{signed(difference)}</b>
           <em>
-            {campaign.lots.length} {campaign.lots.length === 1 ? 'lote' : 'lotes'} de {campaign.mix ?? 'sem produto'}
+            {campaign.lots.length} {campaign.lots.length === 1 ? 'lote' : 'lotes'} de{' '}
+            {campaign.mix ?? 'sem produto'}
           </em>
         </div>
       </div>
@@ -383,7 +635,10 @@ export function CampaignBridge({ campaign }: { campaign: CampaignData }) {
                   <span className="why-partner">⇄ {cause.partner}</span>
                 ) : (
                   <span className="why-bar" aria-hidden="true">
-                    <i className={cause.kg < 0 ? 'minus' : 'plus'} style={{ width: `${Math.max(4, (Math.abs(cause.kg) / peak) * 50)}%` }} />
+                    <i
+                      className={cause.kg < 0 ? 'minus' : 'plus'}
+                      style={{ width: `${Math.max(4, (Math.abs(cause.kg) / peak) * 50)}%` }}
+                    />
                   </span>
                 )}
                 <b className={cause.kg < 0 ? 'minus' : 'plus'}>{signed(cause.kg)}</b>

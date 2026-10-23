@@ -21,7 +21,7 @@ import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
 import { MortarShiftBoard, type MortarBoardResponse } from './MortarShift';
 import { LotsTable, useLots } from './MortarLots';
-import { PeriodBridge, useReconcile } from './MortarBridge';
+import { DifferenceLedger, useReconcile } from './MortarBridge';
 import { UnlinkedNotice } from './MortarUnlinked';
 import {
   PRODUCT_COLORS,
@@ -261,7 +261,13 @@ export function Bagging({
   const opened = spouts.find((spout) => spout.id === spoutOpen);
   const spoutCards = (
     <>
-      <Unlinked bags={totals.unlinkedBags} onLink={onLink} deviceId={deviceId} from={data.from} to={data.to} />
+      <Unlinked
+        bags={totals.unlinkedBags}
+        onLink={onLink}
+        deviceId={deviceId}
+        from={data.from}
+        to={data.to}
+      />
       <div className="mortar-divider" role="separator" />
       <div className="mortar-spouts">
         {spouts.map((spout, index) => (
@@ -414,7 +420,13 @@ function SpoutsInWindow({
   const data = summary.data;
   return (
     <>
-      <Unlinked bags={unlinkedBags} onLink={onLink} deviceId={deviceId} from={boardDate} to={boardDate} />
+      <Unlinked
+        bags={unlinkedBags}
+        onLink={onLink}
+        deviceId={deviceId}
+        from={boardDate}
+        to={boardDate}
+      />
       <div className="mortar-divider" role="separator" />
       <div className="mortar-spouts">
         {spouts.map((spout, index) => (
@@ -1084,7 +1096,15 @@ export function Unlinked({
 }) {
   if (!bags) return null;
   if (deviceId && from && to)
-    return <UnlinkedNotice bags={bags} deviceId={deviceId} from={from} to={to} canLink={Boolean(onLink)} />;
+    return (
+      <UnlinkedNotice
+        bags={bags}
+        deviceId={deviceId}
+        from={from}
+        to={to}
+        canLink={Boolean(onLink)}
+      />
+    );
   return (
     <div className="mortar-warning">
       <span>
@@ -1173,7 +1193,13 @@ export function Output({
           hint={products[0] ? `mais produzido: ${products[0].name}` : 'nenhum produzido no período'}
         />
       </div>
-      <Unlinked bags={totals.unlinkedBags} onLink={onLink} deviceId={deviceId} from={data.from} to={data.to} />
+      <Unlinked
+        bags={totals.unlinkedBags}
+        onLink={onLink}
+        deviceId={deviceId}
+        from={data.from}
+        to={data.to}
+      />
       <div className="mortar-switches">
         <div className="widget-period" role="group" aria-label="Visualização">
           {DISPLAYS.map(([key, label]) => (
@@ -1922,6 +1948,20 @@ export function Yield({
   const { yield: result } = data;
   const bridge = useReconcile(deviceId, data.from, data.to).data;
   const peak = Math.max(1, result.mixedKg, result.baggedKg);
+  // With the causes known, the card is the sum itself: mixed − bagged = difference = its causes.
+  if (bridge)
+    return (
+      <>
+        <DifferenceLedger data={bridge} />
+        <Unlinked
+          bags={result.unlinkedBags}
+          onLink={onLink}
+          deviceId={deviceId}
+          from={data.from}
+          to={data.to}
+        />
+      </>
+    );
   return (
     <>
       <div className="mortar-figures">
@@ -1950,20 +1990,26 @@ export function Yield({
           </div>
           <div>
             <span>Ensacado</span>
-            <i style={{ width: `${(result.baggedKg / peak) * 100}%`, background: palette.accent }} />
+            <i
+              style={{ width: `${(result.baggedKg / peak) * 100}%`, background: palette.accent }}
+            />
             <b>{tons(result.baggedKg)} t</b>
           </div>
         </div>
       )}
-      {bridge ? (
-        <PeriodBridge data={bridge} head={false} />
-      ) : (
+      {!bridge && (
         <Explain>
           A diferença soma a perda do processo e o que ainda está no silo pulmão: num período curto
           o silo pesa mais, num mês ela mostra a perda de verdade.
         </Explain>
       )}
-      <Unlinked bags={result.unlinkedBags} onLink={onLink} deviceId={deviceId} from={data.from} to={data.to} />
+      <Unlinked
+        bags={result.unlinkedBags}
+        onLink={onLink}
+        deviceId={deviceId}
+        from={data.from}
+        to={data.to}
+      />
     </>
   );
 }

@@ -19,6 +19,7 @@ import {
 import { mutate, usePoll } from './data';
 import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
+import { DifferenceLedger, useReconcile } from './MortarBridge';
 import { MortarShiftBoard } from './MortarShift';
 import { ProductsModal } from './MortarPanel';
 import { usePlatform } from './PlatformShell';
@@ -564,8 +565,8 @@ function Summary({
     <div className="mp-overview">
       {/* The period in one sentence: what anyone should know before looking at a chart. */}
       <p className="mp-headline">
-        De {brDay(data.from)} a {brDay(data.to)} a linha ensacou{' '}
-        <b>{integer(totals.bags)} sacos</b> ({tons(totals.kg)} t)
+        De {brDay(data.from)} a {brDay(data.to)} a linha ensacou <b>{integer(totals.bags)} sacos</b>{' '}
+        ({tons(totals.kg)} t)
         {change != null && Math.abs(change) >= 0.005 && (
           <>
             ,{' '}
@@ -949,7 +950,10 @@ function ProductBars({ data, colorOf }: { data: History; colorOf: (name: string)
   return (
     <div className="mp-bars">
       {data.products.map((item) => (
-        <div key={item.name} title={`${item.name}: ${integer(item.bags)} sacos, ${tons(item.kg)} t`}>
+        <div
+          key={item.name}
+          title={`${item.name}: ${integer(item.bags)} sacos, ${tons(item.kg)} t`}
+        >
           <span>
             <i style={{ background: colorOf(item.name) }} /> {item.name}
           </span>
@@ -1032,8 +1036,8 @@ function DaysTab({
             best &&
             best.bags > 0 && (
               <>
-                {worked} dias produzidos · recorde <b>{brDay(best.date)}</b>,{' '}
-                {integer(best.bags)} sacos
+                {worked} dias produzidos · recorde <b>{brDay(best.date)}</b>, {integer(best.bags)}{' '}
+                sacos
               </>
             )
           }
@@ -1060,11 +1064,14 @@ function SpoutsTab({ data }: { data: History }) {
     ),
   }));
   const lastOf = (id: string) =>
-    rows.reduce((at, row, index) => ((row as Record<string, unknown>)[id] != null ? index : at), -1);
+    rows.reduce(
+      (at, row, index) => ((row as Record<string, unknown>)[id] != null ? index : at),
+      -1,
+    );
   const values = rows.flatMap((row) =>
-    data.spouts.map((spout) => (row as Record<string, unknown>)[spout.id]).filter(
-      (v): v is number => typeof v === 'number',
-    ),
+    data.spouts
+      .map((spout) => (row as Record<string, unknown>)[spout.id])
+      .filter((v): v is number => typeof v === 'number'),
   );
   const floor = values.length ? Math.max(0, Math.floor(Math.min(...values) / 10) * 10 - 10) : 0;
   const best = data.heatmap.reduce<(typeof data.heatmap)[number] | null>(
@@ -1074,8 +1081,7 @@ function SpoutsTab({ data }: { data: History }) {
   const weakest = [...data.spouts]
     .filter((spout) => (spout.effectiveness ?? spout.availability) != null)
     .sort(
-      (a, b) =>
-        (a.effectiveness ?? a.availability ?? 0) - (b.effectiveness ?? b.availability ?? 0),
+      (a, b) => (a.effectiveness ?? a.availability ?? 0) - (b.effectiveness ?? b.availability ?? 0),
     )[0];
   return (
     <div className="mp-overview">
@@ -1111,7 +1117,10 @@ function SpoutsTab({ data }: { data: History }) {
               return (
                 <tr key={spout.id}>
                   <td>
-                    <span className="mortar-dot" style={{ background: color(SPOUT_COLORS, index) }} />
+                    <span
+                      className="mortar-dot"
+                      style={{ background: color(SPOUT_COLORS, index) }}
+                    />
                     <b>{spout.name}</b>
                   </td>
                   <td className="n">{integer(spout.bags)}</td>
@@ -1145,7 +1154,10 @@ function SpoutsTab({ data }: { data: History }) {
 
       <div className="mp-grid">
         <section className="card mp-card">
-          <Head title="Eficiência de cada bico" hint={`${unitOf(data.group)} a ${unitOf(data.group)}`} />
+          <Head
+            title="Eficiência de cada bico"
+            hint={`${unitOf(data.group)} a ${unitOf(data.group)}`}
+          />
           <div className="mp-chart tall">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={rows} margin={{ top: 8, right: 44, bottom: 0, left: 0 }}>
@@ -1181,7 +1193,11 @@ function SpoutsTab({ data }: { data: History }) {
                     dot={false}
                     connectNulls
                     isAnimationActive={false}
-                    label={endLabel(lastOf(spout.id) + 1, () => spout.name, color(SPOUT_COLORS, index))}
+                    label={endLabel(
+                      lastOf(spout.id) + 1,
+                      () => spout.name,
+                      color(SPOUT_COLORS, index),
+                    )}
                   />
                 ))}
               </LineChart>
@@ -1195,7 +1211,10 @@ function SpoutsTab({ data }: { data: History }) {
             note={
               best && (
                 <>
-                  pico: <b>{WEEKDAYS[best.weekday - 1]}, {best.hour}h</b>
+                  pico:{' '}
+                  <b>
+                    {WEEKDAYS[best.weekday - 1]}, {best.hour}h
+                  </b>
                 </>
               )
             }
@@ -1219,7 +1238,10 @@ function ProductsTab({ data }: { data: History }) {
       label: slotLabel(slot.slot, data.group),
       ...Object.fromEntries(productNames.map((name) => [name, slot.products[name] ?? 0])),
     }));
-  const stockTotal = data.stock.reduce((sum, item) => sum + (item.series.at(-1) ?? item.opening), 0);
+  const stockTotal = data.stock.reduce(
+    (sum, item) => sum + (item.series.at(-1) ?? item.opening),
+    0,
+  );
   const leading = data.products.filter((item) => item.abc === 'A').length;
   return (
     <div className="mp-overview">
@@ -1260,7 +1282,9 @@ function ProductsTab({ data }: { data: History }) {
                   <td className="n">{tons(item.kg)}</td>
                   <td>
                     <div className="mortar-share">
-                      <i style={{ width: `${item.share * 100}%`, background: colorOf(item.name) }} />
+                      <i
+                        style={{ width: `${item.share * 100}%`, background: colorOf(item.name) }}
+                      />
                       <span>{percent(item.share)}</span>
                     </div>
                   </td>
@@ -1270,11 +1294,24 @@ function ProductsTab({ data }: { data: History }) {
           </table>
         </section>
         <section className="card mp-card">
-          <Head title="Como o mix mudou" hint={`a parte de cada produto em cada ${unitOf(data.group)}`} />
+          <Head
+            title="Como o mix mudou"
+            hint={`a parte de cada produto em cada ${unitOf(data.group)}`}
+          />
           <div className="mp-chart">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={mix} stackOffset="expand" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={12} />
+              <BarChart
+                data={mix}
+                stackOffset="expand"
+                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+              >
+                <XAxis
+                  dataKey="label"
+                  tick={AXIS}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={12}
+                />
                 <YAxis
                   tick={AXIS}
                   width={40}
@@ -1353,7 +1390,9 @@ function ProductsTab({ data }: { data: History }) {
                   </div>
                   <b>{tons(item.kg)} t</b>
                   <small>
-                    {item.perTonBagged != null ? `${integer(item.perTonBagged)} kg por t ensacada` : ''}
+                    {item.perTonBagged != null
+                      ? `${integer(item.perTonBagged)} kg por t ensacada`
+                      : ''}
                     {item.cost != null ? ` · ${money(item.cost)}` : ''}
                   </small>
                 </div>
@@ -1946,7 +1985,13 @@ type DayBalanceData = {
     bags: number;
     baggedKg: number | null;
   }>;
-  totals: { batches: number; mixedKg: number; bags: number; baggedKg: number; unlinkedBags: number };
+  totals: {
+    batches: number;
+    mixedKg: number;
+    bags: number;
+    baggedKg: number;
+    unlinkedBags: number;
+  };
 };
 
 const signedTons = (kg: number) => `${kg > 0 ? '+' : kg < 0 ? '−' : ''}${tons(Math.abs(kg))} t`;
@@ -1957,7 +2002,11 @@ const signedTons = (kg: number) => `${kg > 0 ? '+' : kg < 0 ? '−' : ''}${tons(
  * midnight, so a product mixed late shows its bags the next morning.
  */
 function DayBalance({ deviceId, date }: { deviceId: string; date: string }) {
-  const balance = usePoll<DayBalanceData>(`/devices/${deviceId}/mortar/day-balance?date=${date}`, 300000);
+  const balance = usePoll<DayBalanceData>(
+    `/devices/${deviceId}/mortar/day-balance?date=${date}`,
+    300000,
+  );
+  const reconcile = useReconcile(deviceId, date, date);
   const data = balance.data;
   if (!data || (!data.totals.batches && !data.totals.bags)) return null;
   const difference = data.totals.baggedKg - data.totals.mixedKg;
@@ -1967,7 +2016,8 @@ function DayBalance({ deviceId, date }: { deviceId: string; date: string }) {
         <span>Misturado × ensacado no dia</span>
         <div>
           <span>
-            <b>{tons(data.totals.mixedKg)} t</b> misturadas · {integer(data.totals.batches)} bateladas
+            <b>{tons(data.totals.mixedKg)} t</b> misturadas · {integer(data.totals.batches)}{' '}
+            bateladas
           </span>
           <span>
             <b>{tons(data.totals.baggedKg)} t</b> ensacadas · {integer(data.totals.bags)} sacos
@@ -1990,7 +2040,9 @@ function DayBalance({ deviceId, date }: { deviceId: string; date: string }) {
             <tr key={row.product}>
               <td>
                 {row.product}
-                {!row.linked && row.bags > 0 && <small className="muted"> · receita sem produto</small>}
+                {!row.linked && row.bags > 0 && (
+                  <small className="muted"> · receita sem produto</small>
+                )}
               </td>
               <td className="n">{row.batches ? integer(row.batches) : '—'}</td>
               <td className="n">{row.mixedKg ? `${tons(row.mixedKg)} t` : '—'}</td>
@@ -2003,15 +2055,20 @@ function DayBalance({ deviceId, date }: { deviceId: string; date: string }) {
           ))}
         </tbody>
       </table>
-      <p className="mortar-day-balance-note">
-        {difference >= 0 ? 'Ensacou ' : 'Ficaram '}
-        <b>{tons(Math.abs(difference))} t</b>
-        {difference >= 0 ? ' a mais do que misturou no dia' : ' misturadas sem ensacar no dia'}. O
-        silo pulmão leva massa de um dia para o outro: o que é misturado no fim do dia sai em
-        sacos na manhã seguinte, por isso a diferença fecha somando os dias.
-        {data.totals.unlinkedBags > 0 &&
-          ` ${integer(data.totals.unlinkedBags)} sacos são de receitas sem produto e ficam fora das toneladas.`}
-      </p>
+      {/* The day's difference as a sum, cause by cause (MortarBridge.tsx). */}
+      {reconcile.data ? (
+        <DifferenceLedger data={reconcile.data} />
+      ) : (
+        <p className="mortar-day-balance-note">
+          {difference >= 0 ? 'Ensacou ' : 'Ficaram '}
+          <b>{tons(Math.abs(difference))} t</b>
+          {difference >= 0 ? ' a mais do que misturou no dia' : ' misturadas sem ensacar no dia'}. O
+          silo pulmão leva massa de um dia para o outro: o que é misturado no fim do dia sai em
+          sacos na manhã seguinte, por isso a diferença fecha somando os dias.
+          {data.totals.unlinkedBags > 0 &&
+            ` ${integer(data.totals.unlinkedBags)} sacos são de receitas sem produto e ficam fora das toneladas.`}
+        </p>
+      )}
     </section>
   );
 }
