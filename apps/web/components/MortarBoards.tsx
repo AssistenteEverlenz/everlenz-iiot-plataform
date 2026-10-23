@@ -21,7 +21,7 @@ import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
 import { MortarShiftBoard, type MortarBoardResponse } from './MortarShift';
 import { LotsTable, useLots } from './MortarLots';
-import { YieldBoard, useReconcile } from './MortarBridge';
+import { YieldBoard, rememberReconcile, useReconcile } from './MortarBridge';
 import { UnlinkedNotice } from './MortarUnlinked';
 import {
   PRODUCT_COLORS,
@@ -1486,14 +1486,17 @@ export function Materials({ data, deviceId }: { data: Summary; deviceId: string 
         >
           <div className="mortar-hero-top">
             <span>Misturado</span>
+            {/* What the scale weighed, as the yield card says: the recipe's weight is the reference
+                under it (the same 11 batches read 22.9 t by recipe and 23.3 t on the scale). */}
             <b>
-              {tons(mix.kg)} <small>t</small>
+              {tons(data.yield.mixedKg)} <small>t</small>
             </b>
             <em>
               {integer(mix.batches)} bateladas
               {mix.cycleMinutes != null &&
                 ` · uma a cada ${mix.cycleMinutes.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} min`}
-              {mix.batches > 0 && ` · ${kilos(mix.kg / mix.batches)} por batelada`}
+              {mix.batches > 0 && ` · ${kilos(data.yield.mixedKg / mix.batches)} por batelada`}
+              {Math.abs(data.yield.mixedKg - mix.kg) >= 1 && ` · receita ${tons(mix.kg)} t`}
             </em>
           </div>
           {mix.kg > 0 && (
@@ -1947,6 +1950,8 @@ export function Yield({
   const palette = useContext(MortarColors);
   const { yield: result } = data;
   const bridge = useReconcile(deviceId, data.from, data.to).data;
+  // The card's guide (the "i" in its header) reads the sum on screen.
+  if (bridge && deviceId) rememberReconcile(deviceId, bridge);
   const peak = Math.max(1, result.mixedKg, result.baggedKg);
   // With the causes known, the card is the sum itself: mixed − bagged = difference = its causes.
   if (bridge)

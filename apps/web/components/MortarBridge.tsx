@@ -52,8 +52,8 @@ export type ReconcileData = {
   }>;
 };
 
-type Group = 'normal' | 'data' | 'plant';
-const GROUPS: Record<Group, { title: string; hint: string; color: string; icon: ReactNode }> = {
+export type Group = 'normal' | 'data' | 'plant';
+export const GROUPS: Record<Group, { title: string; hint: string; color: string; icon: ReactNode }> = {
   normal: {
     title: 'Normal',
     hint: 'massa a caminho no silo',
@@ -78,7 +78,7 @@ const GROUPS: Record<Group, { title: string; hint: string; color: string; icon: 
   },
 };
 
-const KINDS: Record<BridgeKind, { label: string; group: Group; why: string; icon: ReactNode }> = {
+export const KINDS: Record<BridgeKind, { label: string; group: Group; why: string; icon: ReactNode }> = {
   carryIn: {
     label: 'Veio do silo',
     group: 'normal',
@@ -155,7 +155,7 @@ const KINDS: Record<BridgeKind, { label: string; group: Group; why: string; icon
   },
 };
 
-function Icon({ d }: { d: string }) {
+export function Icon({ d }: { d: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -172,10 +172,10 @@ function Icon({ d }: { d: string }) {
     </svg>
   );
 }
-function SiloIcon() {
+export function SiloIcon() {
   return <Icon d="M6 5a6 2 0 0112 0v11l-3 4H9l-3-4zM6 5a6 2 0 0012 0M10 20v1.5M14 20v1.5" />;
 }
-function TagIcon() {
+export function TagIcon() {
   return <Icon d="M3 12V4h8l9 9-8 8zM7.5 7.5h.01" />;
 }
 
@@ -201,7 +201,7 @@ function daysOf(from: string, to: string) {
 }
 
 /** The bag's real weight against its nominal one, as a ruler. */
-function BagRuler({ real, nominal }: { real: number; nominal: number }) {
+export function BagRuler({ real, nominal }: { real: number; nominal: number }) {
   const low = nominal * 0.8;
   const high = nominal * 1.1;
   const at = (kg: number) => `${((Math.min(high, Math.max(low, kg)) - low) / (high - low)) * 100}%`;
@@ -526,6 +526,14 @@ export function DifferenceLedger({ data }: { data: ReconcileData }) {
     </section>
   );
 }
+
+/**
+ * The last sum each yield card drew, by device: the guide of the card (MortarGuide.tsx) reads it
+ * to say how much of each item the period on screen has.
+ */
+const shown = new Map<string, ReconcileData>();
+export const rememberReconcile = (deviceId: string, data: ReconcileData) => shown.set(deviceId, data);
+export const recallReconcile = (deviceId: string) => shown.get(deviceId);
 
 export function useReconcile(deviceId: string | null | undefined, from: string, to: string) {
   return usePoll<ReconcileData>(

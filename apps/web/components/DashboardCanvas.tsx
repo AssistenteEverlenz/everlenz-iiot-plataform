@@ -51,6 +51,7 @@ import { ShiftBoard } from './ShiftBoard';
 import { StopsPanel } from './StopsPanel';
 import { WearPanel } from './WearModal';
 import { ModalPortal } from './ModalPortal';
+import { YieldGuide } from './MortarGuide';
 import type { MortarCardConfig } from './mortarShared';
 import {
   MortarCardSettings,
@@ -508,6 +509,8 @@ function Widget({
   dragEnd: () => void;
 }) {
   const color = widget.config.color ?? '#12b8a6';
+  // The yield card's guide: what each line of its sum means (MortarGuide.tsx).
+  const [guide, setGuide] = useState(false);
   // "Cortes por minuto" and the like: the plant's own arithmetic over the HMI's variables,
   // shown under the reading of the card that carries the formulas.
   const calculated = calculatedFields(widget.config).map((field) => ({
@@ -736,6 +739,16 @@ function Widget({
           <div className="widget-head-period">{periodChips}</div>
         )}
         <div className="widget-actions">
+          {widget.widget_type === 'mortar_yield' && widget.device_id && (
+            <button
+              className="icon-button info-button"
+              title="Como ler este card"
+              aria-label="Como ler este card"
+              onClick={() => setGuide(true)}
+            >
+              i
+            </button>
+          )}
           <button className="icon-button" title="Editar indicador" onClick={edit}>
             ✎
           </button>
@@ -744,6 +757,11 @@ function Widget({
           </button>
         </div>
       </div>
+      {guide && widget.device_id && (
+        <ModalPortal>
+          <YieldGuide deviceId={widget.device_id} onClose={() => setGuide(false)} />
+        </ModalPortal>
+      )}
       {missing && (
         <div className="widget-missing" role="alert">
           <span aria-hidden="true">⚠</span>

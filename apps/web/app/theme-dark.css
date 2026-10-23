@@ -4841,4 +4841,150 @@
   :root[data-theme='dark'] .yb-clear small {
     color: #a5b6bc;
   }
+  :root[data-theme='dark'] .icon-button.info-button {
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .guide-station i {
+    background: #12191c;
+    box-shadow: 0 1px 0 rgba(11, 32, 40, 0.06);
+  }
+  :root[data-theme='dark'] .guide-station b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .guide-station small {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .guide-station.mix {
+    background: #2d2619;
+    color: #d2b893;
+  }
+  :root[data-theme='dark'] .guide-station.silo {
+    background: #1a2027;
+    color: #79939c;
+  }
+  :root[data-theme='dark'] .guide-station.bag {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 10%, #12191c);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .guide-flow {
+    background: repeating-linear-gradient(90deg, #415d66 0 6px, transparent 6px 11px);
+  }
+  :root[data-theme='dark'] .guide-flow::after {
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 8px solid #415d66;
+  }
+  :root[data-theme='dark'] .guide-lead {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .guide-lead b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .guide-signs span {
+    background: #172125;
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .guide-signs small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .guide-groups span {
+    border: 1px solid color-mix(in srgb, var(--why) 30%, #12191c);
+    background: color-mix(in srgb, var(--why) 7%, #12191c);
+  }
+  :root[data-theme='dark'] .guide-groups i {
+    background: var(--why);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .guide-groups b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .guide-groups small {
+    color: #9aadb3;
+  }
+  :root[data-theme='dark'] .guide-section {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .guide-card {
+    border: 1px solid #202d32;
+    border-top: 3px solid var(--why);
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .guide-card.quiet {
+    border-top-color: color-mix(in srgb, var(--why) 45%, #12191c);
+    background: #141d1f;
+  }
+  :root[data-theme='dark'] .guide-card header b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .guide-card header small {
+    color: color-mix(in srgb, var(--why) 80%, #f2f2f2);
+  }
+  :root[data-theme='dark'] .guide-card header em {
+    background: color-mix(in srgb, var(--why) 10%, #12191c);
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .guide-card header em small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .guide-scene {
+    background: #162023;
+  }
+  :root[data-theme='dark'] .guide-step i {
+    background: #12191c;
+    color: #a5b6bc;
+    box-shadow: 0 1px 0 rgba(11, 32, 40, 0.06);
+  }
+  :root[data-theme='dark'] .guide-step small {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .guide-step.mix i {
+    background: #332b1d;
+    color: #d2b893;
+  }
+  :root[data-theme='dark'] .guide-step.silo i {
+    background: #1b222c;
+    color: #79939c;
+  }
+  :root[data-theme='dark'] .guide-step.bag i {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 14%, #12191c);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .guide-step.bad i {
+    background: #301c16;
+    color: #d88b78;
+  }
+  :root[data-theme='dark'] .guide-step.muted i {
+    background: #1b262a;
+    color: #a2b2b7;
+  }
+  :root[data-theme='dark'] .guide-joint {
+    color: #a7b6bb;
+  }
+  :root[data-theme='dark'] .guide-joint.not {
+    color: #d88b78;
+  }
+  :root[data-theme='dark'] .guide-ruler small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .guide-card > p {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .guide-todo {
+    background: color-mix(in srgb, var(--why) 8%, #12191c);
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .guide-todo span {
+    color: var(--why);
+  }
+  @container (max-width: 720px) {
+    :root[data-theme='dark'] .guide-flow {
+      background: repeating-linear-gradient(180deg, #415d66 0 5px, transparent 5px 9px);
+    }
+    :root[data-theme='dark'] .guide-flow::after {
+      border-top: 8px solid #415d66;
+      border-right: 6px solid transparent;
+      border-bottom: 0;
+      border-left: 6px solid transparent;
+    }
+  }
 }
