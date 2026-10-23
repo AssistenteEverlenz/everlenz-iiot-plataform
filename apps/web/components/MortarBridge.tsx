@@ -650,3 +650,237 @@ export function CampaignBridge({ campaign }: { campaign: CampaignData }) {
     </section>
   );
 }
+
+/** What to do about each cause that is not just the silo, in one sentence. */
+const TODO: Partial<Record<BridgeKind, string>> = {
+  offline: 'Verifique a conexão da IHM e o envio do que ela guardou offline.',
+  unassigned: 'Confira o nome da receita nos bicos e o contador de bateladas.',
+  unlinked: 'Vincule a receita do bico a um produto.',
+  noProduct: 'Vincule a receita do misturador a um produto.',
+  notBagged: 'Confira a receita selecionada nos bicos durante essa mistura.',
+  wrongName: 'Confira a receita selecionada nos bicos.',
+  changeover: 'Na troca de produto, mude a receita dos bicos quando o silo esvaziar.',
+  bagWeight: 'Confira o peso de corte da ensacadeira para esses produtos.',
+  loss: 'Veja limpeza, purga e descarte do período.',
+};
+
+/** A ring: the share of the mix that became bags (full above 100 %, when the silo gave more). */
+function Ring({ share }: { share: number | null }) {
+  const r = 26;
+  const length = 2 * Math.PI * r;
+  const shown = share == null ? 0 : Math.min(1, share);
+  const tone =
+    share == null ? 'none' : Math.abs(1 - share) <= 0.02 ? 'ok' : share > 1 ? 'over' : 'under';
+  return (
+    <svg className={`yb-ring ${tone}`} viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+      <circle cx="32" cy="32" r={r} className="track" />
+      <circle
+        cx="32"
+        cy="32"
+        r={r}
+        className="value"
+        strokeDasharray={`${length * shown} ${length}`}
+        transform="rotate(-90 32 32)"
+      />
+      <text x="32" y="36" textAnchor="middle">
+        {share == null ? '—' : `${Math.round(share * 100)}%`}
+      </text>
+    </svg>
+  );
+}
+
+/**
+ * The yield card: the three figures; the sum that explains the difference, as a receipt; where
+ * the difference went -- a tug of war between the causes that put bags in excess (left) and the
+ * ones that left bags missing (right), with a pin where it stopped; and what asks for someone,
+ * cause by cause, with what to do.
+ */
+export function YieldBoard({
+  data,
+  batches,
+  bags,
+}: {
+  data: ReconcileData;
+  batches: number;
+  bags: number;
+}) {
+  const difference = data.mixedKg - data.baggedKg;
+  const share = data.mixedKg ? data.baggedKg / data.mixedKg : null;
+  const closed = share != null && Math.abs(1 - share) <= 0.02;
+  const verdict = closed
+    ? 'Fechou: o misturado virou saco'
+    : difference < 0
+      ? 'Ensacou mais do que misturou'
+      : 'Ensacou menos do que misturou';
+  // In the difference's sign: + bags missing, − bags in excess.
+  const causes = data.bridge
+    .map((item) => ({ item, value: -item.kg, kind: KINDS[item.kind] }))
+    .filter((entry) => Math.abs(entry.value) >= 50);
+  const more = causes.filter((entry) => entry.value > 0).sort((a, b) => b.value - a.value);
+  const less = causes.filter((entry) => entry.value < 0).sort((a, b) => a.value - b.value);
+  const scale = Math.max(
+    1,
+    more.reduce((sum, entry) => sum + entry.value, 0),
+    -less.reduce((sum, entry) => sum + entry.value, 0),
+  );
+  const pin = Math.max(-1, Math.min(1, difference / scale));
+  const actions = causes
+    .filter((entry) => entry.kind.group !== 'normal')
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+  const silo = causes
+    .filter((entry) => entry.kind.group === 'normal')
+    .reduce((sum, entry) => sum + entry.value, 0);
+  const groupTotals = (Object.keys(GROUPS) as Group[])
+    .map((group) => ({
+      group,
+      value: causes
+        .filter((entry) => entry.kind.group === group)
+        .reduce((sum, entry) => sum + entry.value, 0),
+      any: causes.some((entry) => entry.kind.group === group),
+    }))
+    .filter((entry) => entry.any);
+  const segment = (entry: (typeof causes)[number]) => (
+    <i
+      key={entry.item.kind}
+      className="yb-seg"
+      style={{
+        width: `${(Math.abs(entry.value) / scale) * 100}%`,
+        background: GROUPS[entry.kind.group].color,
+      }}
+      title={`${entry.kind.label}: ${signed(entry.value)}`}
+    >
+      <span className="yb-seg-icon">{entry.kind.icon}</span>
+      <span className="yb-seg-label">{entry.kind.label}</span>
+    </i>
+  );
+  return (
+    <section className="yb">
+      <div className="yb-kpis">
+        <div className="yb-kpi mixed">
+          <span className="yb-kpi-icon">
+            <Icon d="M4 20h16M7 20V10h10v10M12 10V4M8 6h8" />
+          </span>
+          <div>
+            <small>Misturado</small>
+            <b>
+              {tons(data.mixedKg)} <i>t</i>
+            </b>
+            <em>
+              {integer(batches)} {batches === 1 ? 'batelada' : 'bateladas'}
+            </em>
+          </div>
+        </div>
+        <div className="yb-kpi bagged">
+          <span className="yb-kpi-icon">
+            <Icon d="M6 8h12l1.5 12h-15zM9 8a3 3 0 016 0" />
+          </span>
+          <div>
+            <small>Ensacado</small>
+            <b>
+              {tons(data.baggedKg)} <i>t</i>
+            </b>
+            <em>{integer(bags)} sacos</em>
+          </div>
+        </div>
+        <div className={`yb-kpi diff ${closed ? 'ok' : difference < 0 ? 'over' : 'under'}`}>
+          <Ring share={share} />
+          <div>
+            <small>Diferença</small>
+            <b>
+              {difference < -0.5 ? '−' : ''}
+              {tons(Math.abs(difference))} <i>t</i>
+            </b>
+            <em>{verdict}</em>
+          </div>
+        </div>
+      </div>
+
+      <div className="yb-body">
+        <div className="yb-receipt">
+          <div className="yb-title">A conta</div>
+          <DifferenceLedger data={data} />
+        </div>
+
+        <div className="yb-side">
+          {causes.length > 0 && (
+            <div className="yb-tug">
+              <div className="yb-title">Para onde foi a diferença</div>
+              <div className="yb-tug-ends">
+                <span>← saco a mais</span>
+                <span>faltou saco →</span>
+              </div>
+              <div className="yb-tug-bar">
+                <div className="yb-tug-half left">{less.map(segment)}</div>
+                <div className="yb-tug-half right">{more.map(segment)}</div>
+                <u className="yb-tug-pin" style={{ left: `${50 + pin * 50}%` }}>
+                  <span>
+                    diferença {difference < -0.5 ? '−' : ''}
+                    {weight(difference)}
+                  </span>
+                </u>
+              </div>
+              <div className="yb-groups">
+                {groupTotals.map(({ group, value }) => (
+                  <span key={group} style={{ '--why': GROUPS[group].color } as React.CSSProperties}>
+                    <u />
+                    {GROUPS[group].title}
+                    <b>{signed(value)}</b>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="yb-actions">
+            <div className="yb-title">O que pede ação</div>
+            {actions.length === 0 ? (
+              <div className="yb-clear">
+                <span
+                  className="why-icon"
+                  style={{ '--why': GROUPS.normal.color } as React.CSSProperties}
+                >
+                  {GROUPS.normal.icon}
+                </span>
+                <div>
+                  <b>Nada a corrigir</b>
+                  <small>
+                    {Math.abs(silo) >= 50
+                      ? `A diferença é massa a caminho no silo (${signed(silo)}).`
+                      : 'Cada quilo misturado saiu em sacos.'}
+                  </small>
+                </div>
+              </div>
+            ) : (
+              <ul>
+                {actions.map(({ item, value, kind }) => {
+                  const group = GROUPS[kind.group];
+                  return (
+                    <li key={item.kind} style={{ '--why': group.color } as React.CSSProperties}>
+                      <div className="yb-action-head">
+                        <span className="why-icon">{kind.icon}</span>
+                        <div>
+                          <b>{kind.label}</b>
+                          <small>{group.title}</small>
+                        </div>
+                        <strong>{signed(value)}</strong>
+                      </div>
+                      {TODO[item.kind] && <p className="yb-todo">{TODO[item.kind]}</p>}
+                      <div className="why-detail yb-action-detail">
+                        <DayLines
+                          kind={item.kind}
+                          sources={item.sources
+                            .map((source) => ({ ...source, kg: -source.kg }))
+                            .slice(0, item.kind === 'bagWeight' ? 4 : 50)}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}

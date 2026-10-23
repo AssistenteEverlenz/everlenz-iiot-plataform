@@ -21,7 +21,7 @@ import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
 import { MortarShiftBoard, type MortarBoardResponse } from './MortarShift';
 import { LotsTable, useLots } from './MortarLots';
-import { DifferenceLedger, useReconcile } from './MortarBridge';
+import { YieldBoard, useReconcile } from './MortarBridge';
 import { UnlinkedNotice } from './MortarUnlinked';
 import {
   PRODUCT_COLORS,
@@ -1952,7 +1952,7 @@ export function Yield({
   if (bridge)
     return (
       <>
-        <DifferenceLedger data={bridge} />
+        <YieldBoard data={bridge} batches={data.mix.batches} bags={data.bagging.totals.bags} />
         <Unlinked
           bags={result.unlinkedBags}
           onLink={onLink}

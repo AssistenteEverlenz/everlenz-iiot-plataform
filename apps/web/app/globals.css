@@ -15001,3 +15001,380 @@ button.mortar-spout:hover .mortar-spout-open {
     grid-template-columns: 26px minmax(0, 1fr) 70px;
   }
 }
+
+/* The yield card (MortarBridge.tsx, YieldBoard): three figures, the sum as a receipt, the tug of
+   war of the causes with a pin where the difference stopped, and what asks for someone. */
+.yb {
+  display: grid;
+  gap: 16px;
+  container-type: inline-size;
+  font-variant-numeric: tabular-nums;
+}
+.yb-title {
+  margin-bottom: 10px;
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.yb-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.yb-kpi {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid #e3ebed;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f9fbfb);
+}
+.yb-kpi > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.yb-kpi small {
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.yb-kpi b {
+  color: #0b2028;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.yb-kpi b i {
+  color: #8a9ca2;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 500;
+}
+.yb-kpi em {
+  overflow: hidden;
+  color: #71868d;
+  font-size: 12.5px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yb-kpi-icon {
+  display: grid;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 14px;
+}
+.yb-kpi-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.yb-kpi.mixed .yb-kpi-icon {
+  background: #f5ecdd;
+  color: #a5793a;
+}
+.yb-kpi.bagged .yb-kpi-icon {
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 14%, #fff);
+  color: var(--brand-accent, #12b8a6);
+}
+.yb-kpi.diff.ok {
+  border-color: #bfe3d2;
+  background: linear-gradient(180deg, #f6fcf9, #eef9f3);
+}
+.yb-kpi.diff.over {
+  border-color: #f0dcb4;
+  background: linear-gradient(180deg, #fffcf5, #fdf6e8);
+}
+.yb-kpi.diff.under {
+  border-color: #f2cfc4;
+  background: linear-gradient(180deg, #fffaf8, #fdf1ed);
+}
+.yb-ring {
+  flex: none;
+}
+.yb-ring circle {
+  fill: none;
+  stroke-width: 7;
+}
+.yb-ring .track {
+  stroke: #e7eeef;
+}
+.yb-ring .value {
+  stroke-linecap: round;
+}
+.yb-ring.ok .value {
+  stroke: #1d8a5f;
+}
+.yb-ring.over .value {
+  stroke: #d39a2f;
+}
+.yb-ring.under .value {
+  stroke: #d8664a;
+}
+.yb-ring text {
+  fill: #0b2028;
+  font-size: 13px;
+  font-weight: 600;
+}
+.yb-body {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.85fr) minmax(0, 1.4fr);
+  align-items: start;
+  gap: 16px;
+}
+/* The receipt: paper, dashed rules, a torn edge at the bottom. */
+.yb-receipt {
+  padding: 16px 18px 26px;
+  border: 1px solid #ece5d6;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: #fcfaf5;
+  -webkit-mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - 8px) no-repeat,
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 14px 8px repeat-x;
+  mask:
+    linear-gradient(#000 0 0) top / 100% calc(100% - 8px) no-repeat,
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 14px 8px repeat-x;
+}
+.yb-receipt .ledger-sum,
+.yb-receipt .ledger-lines,
+.yb-receipt .ledger-caption {
+  max-width: none;
+}
+.yb-receipt .ledger-total {
+  border-top: 1.5px dashed #9aa9ad;
+}
+.yb-receipt .ledger-tag {
+  display: none;
+}
+.yb-receipt .ledger-lines > li > button {
+  grid-template-columns: 26px minmax(0, 1fr) 76px;
+}
+.yb-side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+/* The tug of war: excess bags pull left, missing bags pull right; the pin is the difference. */
+.yb-tug {
+  padding: 14px 16px 12px;
+  border: 1px solid #e3ebed;
+  border-radius: 14px;
+}
+.yb-tug-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 26px;
+  color: #8a9ca2;
+  font-size: 11.5px;
+}
+.yb-tug-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 34px;
+  border-radius: 10px;
+  background: #f1f5f6;
+}
+.yb-tug-bar::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: 50%;
+  width: 1px;
+  background: #b9c8cd;
+}
+.yb-tug-half {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+.yb-tug-half.left {
+  flex-direction: row-reverse;
+  border-radius: 10px 0 0 10px;
+}
+.yb-tug-half.right {
+  border-radius: 0 10px 10px 0;
+}
+.yb-seg {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  overflow: hidden;
+  color: #fff;
+  font-size: 11.5px;
+  font-style: normal;
+  white-space: nowrap;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.7);
+}
+.yb-seg-icon {
+  display: grid;
+  flex: none;
+}
+.yb-seg-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.yb-seg-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.yb-tug-pin {
+  position: absolute;
+  z-index: 1;
+  top: -7px;
+  bottom: -7px;
+  width: 3px;
+  border-radius: 2px;
+  background: #0b2028;
+  transform: translateX(-50%);
+}
+.yb-tug-pin span {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #0b2028;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.yb-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 14px;
+  color: #4d6770;
+  font-size: 12.5px;
+}
+.yb-groups span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.yb-groups u {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--why);
+}
+.yb-groups b {
+  color: #0b2028;
+  font-weight: 600;
+}
+.yb-actions > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.yb-actions > ul > li {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #e3ebed;
+  border-left: 3px solid var(--why);
+  border-radius: 12px;
+}
+.yb-action-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.yb-action-head b {
+  display: block;
+  color: #0b2028;
+  font-size: 14px;
+  font-weight: 600;
+}
+.yb-action-head small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+}
+.yb-action-head strong {
+  color: #0b2028;
+  font-size: 17px;
+  font-weight: 600;
+}
+.yb-todo {
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--why) 9%, #fff);
+  color: #20353d;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.yb-action-detail {
+  padding: 0;
+}
+/* One day per line; the bag weight's ruler goes under its product. */
+.yb-action-detail li {
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  row-gap: 4px;
+}
+.yb-action-detail li > i:empty {
+  display: none;
+}
+.yb-action-detail li > .bag-ruler {
+  grid-row: 2;
+  grid-column: 2 / -1;
+}
+.yb-action-detail li > b {
+  grid-row: 1;
+  grid-column: 3;
+}
+.yb-clear {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #bfe3d2;
+  border-radius: 12px;
+  background: #f3fbf7;
+}
+.yb-clear b {
+  display: block;
+  color: #1d6b4b;
+  font-size: 14px;
+}
+.yb-clear small {
+  color: #4d6770;
+  font-size: 12.5px;
+}
+@container (max-width: 960px) {
+  .yb-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container (max-width: 620px) {
+  .yb-kpis {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .yb-kpi b {
+    font-size: 26px;
+  }
+  .yb-seg-label {
+    display: none;
+  }
+}
