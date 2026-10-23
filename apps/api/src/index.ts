@@ -9,6 +9,7 @@ import {
 } from './shift-production.js';
 import { pruneReadings } from './retention.js';
 import { recordStops } from './production-stops.js';
+import { linkTruncatedRecipes } from './mortar-links.js';
 import { dispatchProductionMessages, queueProductionMessages } from './production-messages.js';
 const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
@@ -193,6 +194,18 @@ async function prune() {
 }
 setInterval(() => void prune(), 15 * 60 * 1000).unref();
 setTimeout(() => void prune(), 5 * 60 * 1000).unref();
+
+// Recipe names the HMI cut short, linked to their product (mortar-links.ts).
+async function linkRecipes() {
+  try {
+    const linked = await linkTruncatedRecipes(database);
+    if (linked.length) app.log.info({ event: 'mortar_recipes_linked', linked });
+  } catch (error) {
+    await recordJobFailure('link_recipes', error);
+  }
+}
+setInterval(() => void linkRecipes(), 15 * 60 * 1000).unref();
+setTimeout(() => void linkRecipes(), 30_000).unref();
 
 let stopping = false;
 async function shutdown() {

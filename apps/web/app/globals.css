@@ -14160,3 +14160,89 @@ button.mortar-spout:hover .mortar-spout-open {
 .bs-facts .bs-lost {
   margin-left: auto;
 }
+
+/* A lot's bags against what its mass makes (MortarLots.tsx): within 5 % is the bag weight. */
+.mortar-lot-diff {
+  font-style: normal;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.mortar-lot-diff.over {
+  color: #e4572e;
+}
+.mortar-lot-diff.under {
+  color: #c27c0e;
+}
+.mortar-figure b.mortar-lot-diff {
+  font-size: inherit;
+}
+
+/* The spout card: what is on the spout now large, the spout's total beside it small, and every
+   product of the period with its bags underneath. */
+.mortar-spout-total {
+  flex-basis: 100%;
+  color: #71868d;
+  font-size: 12px;
+}
+.mortar-spout-hero .mortar-spout-total b {
+  color: #20353d;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.mortar-spout-products.mortar-spout-made {
+  display: block;
+  line-height: 1.5;
+}
+.mortar-spout-made b {
+  color: #20353d;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-spout-made .now b {
+  color: var(--brand-accent, #12b8a6);
+}
+
+/* The day mixed against the day bagged, at the top of a day opened on the Produção page. */
+.mortar-day-balance {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e3eaec;
+}
+.mortar-day-balance > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+.mortar-day-balance > header > span {
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mortar-day-balance > header > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  color: #4d6770;
+  font-size: 13px;
+}
+.mortar-day-balance > header b {
+  color: #0b2028;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-day-balance-note {
+  margin: 0;
+  color: #71868d;
+  font-size: 12px;
+}
+.mortar-day-balance-note b {
+  color: #20353d;
+}

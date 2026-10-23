@@ -1937,6 +1937,85 @@ function CompareTab({
 
 // ---- Windows ----------------------------------------------------------------------------------------
 
+type DayBalanceData = {
+  products: Array<{
+    product: string;
+    linked: boolean;
+    batches: number;
+    mixedKg: number;
+    bags: number;
+    baggedKg: number | null;
+  }>;
+  totals: { batches: number; mixedKg: number; bags: number; baggedKg: number; unlinkedBags: number };
+};
+
+const signedTons = (kg: number) => `${kg > 0 ? '+' : kg < 0 ? '−' : ''}${tons(Math.abs(kg))} t`;
+
+/**
+ * What the day mixed and what it bagged, product by product (API mortar/day-balance): the
+ * batches and their tons beside the bags and theirs. The buffer silo carries mass across
+ * midnight, so a product mixed late shows its bags the next morning.
+ */
+function DayBalance({ deviceId, date }: { deviceId: string; date: string }) {
+  const balance = usePoll<DayBalanceData>(`/devices/${deviceId}/mortar/day-balance?date=${date}`, 300000);
+  const data = balance.data;
+  if (!data || (!data.totals.batches && !data.totals.bags)) return null;
+  const difference = data.totals.baggedKg - data.totals.mixedKg;
+  return (
+    <section className="mortar-day-balance">
+      <header>
+        <span>Misturado × ensacado no dia</span>
+        <div>
+          <span>
+            <b>{tons(data.totals.mixedKg)} t</b> misturadas · {integer(data.totals.batches)} bateladas
+          </span>
+          <span>
+            <b>{tons(data.totals.baggedKg)} t</b> ensacadas · {integer(data.totals.bags)} sacos
+          </span>
+        </div>
+      </header>
+      <table className="stops-table mortar-table">
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th className="n">Bateladas</th>
+            <th className="n">Misturado</th>
+            <th className="n">Sacos</th>
+            <th className="n">Ensacado</th>
+            <th className="n">Diferença</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.products.map((row) => (
+            <tr key={row.product}>
+              <td>
+                {row.product}
+                {!row.linked && row.bags > 0 && <small className="muted"> · receita sem produto</small>}
+              </td>
+              <td className="n">{row.batches ? integer(row.batches) : '—'}</td>
+              <td className="n">{row.mixedKg ? `${tons(row.mixedKg)} t` : '—'}</td>
+              <td className="n">{row.bags ? integer(row.bags) : '—'}</td>
+              <td className="n">{row.baggedKg ? `${tons(row.baggedKg)} t` : '—'}</td>
+              <td className="n muted">
+                {row.baggedKg == null ? '—' : signedTons(row.baggedKg - row.mixedKg)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mortar-day-balance-note">
+        {difference >= 0 ? 'Ensacou ' : 'Ficaram '}
+        <b>{tons(Math.abs(difference))} t</b>
+        {difference >= 0 ? ' a mais do que misturou no dia' : ' misturadas sem ensacar no dia'}. O
+        silo pulmão leva massa de um dia para o outro: o que é misturado no fim do dia sai em
+        sacos na manhã seguinte, por isso a diferença fecha somando os dias.
+        {data.totals.unlinkedBags > 0 &&
+          ` ${integer(data.totals.unlinkedBags)} sacos são de receitas sem produto e ficam fora das toneladas.`}
+      </p>
+    </section>
+  );
+}
+
 /** One day opened from the calendar or the history: the shift board of each line. */
 function DayBoardModal({
   lines,
@@ -1976,6 +2055,7 @@ function DayBoardModal({
             Fechar
           </button>
         </header>
+        {line && <DayBalance key={`balance-${line}`} deviceId={line} date={date} />}
         {line && <MortarShiftBoard key={line} deviceId={line} date={date} />}
       </div>
     </div>

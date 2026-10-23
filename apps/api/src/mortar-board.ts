@@ -16,6 +16,7 @@ import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
 import { loadShifts } from './shift-production.js';
 import { chartSpanOf, effectiveShifts, type EffectiveOccurrence } from './effective-shifts.js';
+import { allocateBags } from './mortar-lots.js';
 import {
   mortarUtilizationError,
   mortarUtilizationFrom,
@@ -852,8 +853,8 @@ export function registerMortarBoardRoutes(
   });
 
   /**
-   * Production lots: each lot is a run of batches of one recipe, and the bags filled from its
-   * first batch until the next lot started belong to it.
+   * Production lots: each lot is a run of batches of one recipe (the HMI's lot number), and its
+   * bags are the ones that went through the silo from it, product by product (mortar-lots.ts).
    */
   app.get('/api/devices/:id/mortar/lots', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
@@ -875,6 +876,9 @@ export function registerMortarBoardRoutes(
     const from = query.from && query.from <= to ? query.from : to;
     const start = plantInstant(from, '00:00');
     const end = plantInstant(addDays(to, 1), '00:00');
+    // Two days before: the lots still in the silo when the period opens take their bags first.
+    const lookback = plantInstant(addDays(from, -2), '00:00');
+    const now = new Date();
     const lots = await db.query<{
       lot_number: string;
       recipe: string;
@@ -889,54 +893,126 @@ export function registerMortarBoardRoutes(
        FROM mix_batches WHERE tenant_id=$1 AND device_id=$2 AND lot_number IS NOT NULL
          AND finished_at>=$3 AND finished_at<$4
        GROUP BY lot_number ORDER BY min(finished_at)`,
-      [tenantId, id, start, end],
+      [tenantId, id, lookback, end],
     );
-    // The lot that started after the last one of the period closes it.
-    const after = await db.query<{ started_at: Date }>(
-      `SELECT min(finished_at) started_at FROM mix_batches
-       WHERE tenant_id=$1 AND device_id=$2 AND finished_at>=$3 AND lot_number IS NOT NULL`,
-      [tenantId, id, end],
+    const bagged = await db.query<{ bucket: Date; recipe: string; bags: number }>(
+      `SELECT bucket,recipe,sum(bags)::float bags FROM bagging_buckets
+       WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4 AND bags>0
+       GROUP BY bucket,recipe ORDER BY bucket`,
+      [tenantId, id, lookback, now],
     );
     const product = await loadLinks(db, tenantId);
-    const result = [];
-    for (const [index, lot] of lots.rows.entries()) {
-      const lotStart = new Date(lot.started_at);
-      const lotEnd = lots.rows[index + 1]
-        ? new Date(lots.rows[index + 1].started_at)
-        : after.rows[0]?.started_at
-          ? new Date(after.rows[0].started_at)
-          : new Date();
-      const bagged = await db.query<{ recipe: string; bags: number }>(
+    const mixedOf = (lot: (typeof lots.rows)[number]) =>
+      lot.scale_kg ? Number(lot.scale_kg) : Number(lot.kg);
+    const { lots: allocated } = allocateBags(
+      lots.rows.map((lot) => {
+        const link = product.get(lot.recipe);
+        return {
+          lot: lot.lot_number,
+          product: link?.name ?? null,
+          nominalKg: link ? Number(link.nominal_kg) : null,
+          mixedKg: mixedOf(lot),
+          startedAt: new Date(lot.started_at).getTime(),
+        };
+      }),
+      bagged.rows.map((row) => ({
+        at: new Date(row.bucket).getTime(),
+        product: product.get(row.recipe)?.name ?? null,
+        bags: Number(row.bags),
+      })),
+    );
+    const result = lots.rows
+      .filter((lot) => new Date(lot.started_at) >= start)
+      .map((lot) => {
+        const link = product.get(lot.recipe);
+        const share = allocated.get(lot.lot_number)!;
+        const baggedKg = link ? share.bags * Number(link.nominal_kg) : 0;
+        return {
+          lot: lot.lot_number,
+          recipe: lot.recipe,
+          product: link?.name ?? null,
+          batches: Number(lot.batches),
+          mixedKg: mixedOf(lot),
+          startedAt: new Date(lot.started_at).toISOString(),
+          lastBatchAt: new Date(lot.last_at).toISOString(),
+          baggedFrom: share.firstBagAt ? new Date(share.firstBagAt).toISOString() : null,
+          baggedUntil: new Date(Math.min(share.lastBagAt ?? now.getTime(), now.getTime())).toISOString(),
+          bags: share.bags,
+          expectedBags: share.expectedBags,
+          baggedKg,
+          products: link && share.bags > 0 ? [{ name: link.name, bags: share.bags, kg: baggedKg }] : [],
+        };
+      });
+    return { from, to, lots: result.reverse() };
+  });
+
+  /**
+   * The day mixed against the day bagged, product by product: the batches and their mass, the
+   * bags and theirs (bags x the product's bag weight). A day rarely closes to zero: the buffer
+   * silo carries mass across midnight, so a product mixed late is bagged the next morning.
+   */
+  app.get('/api/devices/:id/mortar/day-balance', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const { date } = z.object({ date: z.iso.date() }).parse(req.query);
+    const tenantId = access.principal(req).tenantId;
+    const start = plantInstant(date, '00:00');
+    const end = plantInstant(addDays(date, 1), '00:00');
+    const [mixed, bagged, product] = await Promise.all([
+      db.query<{ recipe: string; batches: number; kg: number }>(
+        `SELECT recipe,sum(batches)::int batches,sum(coalesce(scale_kg,total_kg))::float kg
+         FROM mix_batches WHERE tenant_id=$1 AND device_id=$2 AND finished_at>=$3 AND finished_at<$4
+         GROUP BY recipe`,
+        [tenantId, id, start, end],
+      ),
+      db.query<{ recipe: string; bags: number }>(
         `SELECT recipe,sum(bags)::float bags FROM bagging_buckets
          WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4 AND bags>0
-         GROUP BY recipe ORDER BY sum(bags) DESC`,
-        [tenantId, id, new Date(Math.floor(lotStart.getTime() / STEP_MS) * STEP_MS), lotEnd],
-      );
-      const products = new Map<string, { name: string; bags: number; kg: number | null }>();
-      for (const row of bagged.rows) {
-        const link = product.get(row.recipe);
-        const key = link?.name ?? row.recipe;
-        const entry = products.get(key) ?? { name: key, bags: 0, kg: link ? 0 : null };
-        entry.bags += Number(row.bags);
-        if (link && entry.kg != null) entry.kg += Number(row.bags) * Number(link.nominal_kg);
-        products.set(key, entry);
-      }
-      const baggedKg = [...products.values()].reduce((total, item) => total + (item.kg ?? 0), 0);
-      const mixed = lot.scale_kg ? Number(lot.scale_kg) : Number(lot.kg);
-      result.push({
-        lot: lot.lot_number,
-        recipe: lot.recipe,
-        batches: Number(lot.batches),
-        mixedKg: mixed,
-        startedAt: lotStart.toISOString(),
-        lastBatchAt: new Date(lot.last_at).toISOString(),
-        baggedUntil: lotEnd.toISOString(),
-        bags: [...products.values()].reduce((total, item) => total + item.bags, 0),
-        baggedKg,
-        products: [...products.values()],
-      });
+         GROUP BY recipe`,
+        [tenantId, id, start, end],
+      ),
+      loadLinks(db, tenantId),
+    ]);
+    const rows = new Map<
+      string,
+      { product: string; linked: boolean; batches: number; mixedKg: number; bags: number; baggedKg: number | null }
+    >();
+    const rowOf = (recipe: string) => {
+      const link = product.get(recipe);
+      const key = link?.name ?? recipe;
+      const row = rows.get(key) ?? {
+        product: key,
+        linked: Boolean(link),
+        batches: 0,
+        mixedKg: 0,
+        bags: 0,
+        baggedKg: link ? 0 : null,
+      };
+      rows.set(key, row);
+      return { row, link };
+    };
+    for (const item of mixed.rows) {
+      const { row } = rowOf(item.recipe);
+      row.batches += Number(item.batches);
+      row.mixedKg += Number(item.kg);
     }
-    return { from, to, lots: result.reverse() };
+    for (const item of bagged.rows) {
+      const { row, link } = rowOf(item.recipe);
+      row.bags += Number(item.bags);
+      if (link && row.baggedKg != null) row.baggedKg += Number(item.bags) * Number(link.nominal_kg);
+    }
+    const list = [...rows.values()].sort((a, b) => b.mixedKg + (b.baggedKg ?? 0) - (a.mixedKg + (a.baggedKg ?? 0)));
+    return {
+      date,
+      products: list,
+      totals: {
+        batches: list.reduce((total, row) => total + row.batches, 0),
+        mixedKg: list.reduce((total, row) => total + row.mixedKg, 0),
+        bags: list.reduce((total, row) => total + row.bags, 0),
+        baggedKg: list.reduce((total, row) => total + (row.baggedKg ?? 0), 0),
+        unlinkedBags: list.filter((row) => !row.linked).reduce((total, row) => total + row.bags, 0),
+      },
+    };
   });
 
   // What each raw material costs per ton (masters edit; everyone with the device reads).

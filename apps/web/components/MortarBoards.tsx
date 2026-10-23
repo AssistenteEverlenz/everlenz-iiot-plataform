@@ -456,7 +456,21 @@ function SpoutCard({
   onOpen: () => void;
 }) {
   const state = STATES[spout.state];
-  const names = spout.products.filter((item) => item.bags > 0);
+  // What the spout filled in the window, product by product (recipes of one product together).
+  const made = new Map<string, { bags: number; kg: number | null }>();
+  for (const item of spout.products) {
+    if (item.bags <= 0) continue;
+    const key = item.product ?? item.recipe;
+    const entry = made.get(key) ?? { bags: 0, kg: item.kg == null ? null : 0 };
+    entry.bags += item.bags;
+    if (entry.kg != null && item.kg != null) entry.kg += item.kg;
+    made.set(key, entry);
+  }
+  const names = [...made.entries()].sort((a, b) => b[1].bags - a[1].bags);
+  // Live, the large number is what is on the spout now; the spout's total sits beside it.
+  const nowKey = live ? (spout.product ?? spout.recipe) : null;
+  const now = nowKey ? made.get(nowKey) : undefined;
+  const several = names.length > 1;
   const enabled = spout.runningS + spout.idleS;
   const efficiency =
     spout.performance != null && enabled > 0
@@ -492,11 +506,22 @@ function SpoutCard({
         </div>
       )}
       <div className="mortar-spout-main">
-        <div className="mortar-spout-hero">
-          <b>{integer(spout.bags)}</b>
-          <small>sacos</small>
-          <em>{tons(spout.kg)} t</em>
-        </div>
+        {nowKey && several ? (
+          <div className="mortar-spout-hero" title={`Sacos de ${nowKey} no período`}>
+            <b>{integer(now?.bags ?? 0)}</b>
+            <small>sacos</small>
+            {now?.kg != null && <em>{tons(now.kg)} t</em>}
+            <span className="mortar-spout-total">
+              de <b>{integer(spout.bags)}</b> no bico · {tons(spout.kg)} t
+            </span>
+          </div>
+        ) : (
+          <div className="mortar-spout-hero">
+            <b>{integer(spout.bags)}</b>
+            <small>sacos</small>
+            <em>{tons(spout.kg)} t</em>
+          </div>
+        )}
         {efficiency != null && (
           <div className="mortar-spout-eff" title="Disponível × desempenho">
             <b>{percent(efficiency, 0)}</b>
@@ -525,10 +550,15 @@ function SpoutCard({
         </div>
       </div>
       <TimeSplit running={spout.runningS} idle={spout.idleS} off={spout.offS} compact />
-      <div className="mortar-spout-products">
+      <div className="mortar-spout-products mortar-spout-made">
         {names.length === 0
           ? 'Nada ensacado no período'
-          : names.map((item) => item.product ?? item.recipe).join(' · ')}
+          : names.map(([name, item], index) => (
+              <span key={name} className={name === nowKey ? 'now' : undefined}>
+                {index > 0 && ' · '}
+                {name} <b>{integer(item.bags)}</b>
+              </span>
+            ))}
       </div>
     </button>
   );

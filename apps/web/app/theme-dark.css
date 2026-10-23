@@ -4415,4 +4415,40 @@
   :root[data-theme='dark'] .bs-facts small {
     color: #798e95;
   }
+  :root[data-theme='dark'] .mortar-lot-diff.over {
+    color: #e38f77;
+  }
+  :root[data-theme='dark'] .mortar-lot-diff.under {
+    color: #ebbf7a;
+  }
+  :root[data-theme='dark'] .mortar-spout-total {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .mortar-spout-hero .mortar-spout-total b {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .mortar-spout-made b {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .mortar-spout-made .now b {
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .mortar-day-balance {
+    border-bottom: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .mortar-day-balance > header > span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .mortar-day-balance > header > div {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .mortar-day-balance > header b {
+    color: #e0e6e8;
+  }
+  :root[data-theme='dark'] .mortar-day-balance-note {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .mortar-day-balance-note b {
+    color: #ced8db;
+  }
 }
