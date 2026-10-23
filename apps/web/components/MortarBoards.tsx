@@ -1934,24 +1934,29 @@ export function Yield({
           hint={
             result.lossRatio == null
               ? 'sem mistura no período'
-              : `${percent(result.lossRatio)} do misturado`
+              : bridge
+                ? `${percent(1 - result.lossRatio)} do misturado virou saco`
+                : `${percent(result.lossRatio)} do misturado`
           }
         />
       </div>
-      <div className="mortar-yield">
-        <div>
-          <span>Misturado</span>
-          <i style={{ width: `${(result.mixedKg / peak) * 100}%`, background: '#c9a36a' }} />
-          <b>{tons(result.mixedKg)} t</b>
+      {/* With the causes below, the two bars would only say again what the figures say. */}
+      {!bridge && (
+        <div className="mortar-yield">
+          <div>
+            <span>Misturado</span>
+            <i style={{ width: `${(result.mixedKg / peak) * 100}%`, background: '#c9a36a' }} />
+            <b>{tons(result.mixedKg)} t</b>
+          </div>
+          <div>
+            <span>Ensacado</span>
+            <i style={{ width: `${(result.baggedKg / peak) * 100}%`, background: palette.accent }} />
+            <b>{tons(result.baggedKg)} t</b>
+          </div>
         </div>
-        <div>
-          <span>Ensacado</span>
-          <i style={{ width: `${(result.baggedKg / peak) * 100}%`, background: palette.accent }} />
-          <b>{tons(result.baggedKg)} t</b>
-        </div>
-      </div>
+      )}
       {bridge ? (
-        <PeriodBridge data={bridge} />
+        <PeriodBridge data={bridge} head={false} />
       ) : (
         <Explain>
           A diferença soma a perda do processo e o que ainda está no silo pulmão: num período curto

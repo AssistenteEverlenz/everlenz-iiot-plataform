@@ -174,7 +174,7 @@ export function LotsTable({ lots, product }: { lots: Lot[]; product?: string }) 
               </div>
               <p className="mortar-explain">
                 {open.baggedFrom
-                  ? `Os sacos deste lote saíram de ${between(open.baggedFrom, open.baggedUntil)}, na ordem do silo pulmão: cada saco vem do lote mais antigo do mesmo produto que ainda tinha massa.`
+                  ? `Ensacado de ${between(open.baggedFrom, open.baggedUntil)}, na ordem em que saiu do silo.`
                   : open.product
                     ? 'Nenhum saco deste lote saiu ainda: a massa está no silo.'
                     : `A receita ${open.recipe} não está ligada a um produto, então não dá para saber quais sacos saíram dela: ligue-a em Produtos e receitas.`}

@@ -1,17 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { usePoll } from './data';
 import { integer, tons } from './mortarShared';
 
 /**
- * From mixed to bagged, step by step (API mortar/reconcile, apps/api/src/mortar-reconcile.ts).
+ * Why mixed and bagged differ, read at a glance (API mortar/reconcile, mortar-reconcile.ts).
  *
- * The platform follows every bag back to the batches it came from and says why each kilo of
- * difference exists. Drawn as a horizontal waterfall on one scale: the mixed mass, one step per
- * cause, the bagged mass. A step opens to what makes it, with its dates. The colours tell who
- * acts on it: the silo is only time; the HMI and the catalog are data to fix; the process is the
- * plant (the bag's cut weight, the losses).
+ * The plant's people are not analysts: the difference is drawn, not written. Its causes are
+ * sorted by who acts on them -- normal (mass on its way through the silo), data to fix (the HMI,
+ * the catalog) and the plant to check (the bag's cut weight, the losses) -- each a column with
+ * its colour, icon and total. A cause is one line: an icon, two or three words, its weight, a bar
+ * that grows right when it added bags and left when it took them, and the days of the period it
+ * happened on. Words come only when a line is opened, as short lines of date, product and weight;
+ * the bag's weight is drawn as a ruler (real against nominal).
  */
 
 export type BridgeKind =
@@ -29,6 +31,8 @@ export type BridgeKind =
   | 'unlinked';
 export type BridgeSource = { campaign?: string; label: string | null; at: string; kg: number; note?: string };
 export type ReconcileData = {
+  from: string;
+  to: string;
   mixedKg: number;
   baggedKg: number;
   bridge: Array<{ kind: BridgeKind; kg: number; sources: BridgeSource[] }>;
@@ -42,272 +46,258 @@ export type ReconcileData = {
   }>;
 };
 
-type Family = 'silo' | 'data' | 'process';
-export const FAMILIES: Record<Family, { label: string; color: string }> = {
-  silo: { label: 'Silo (só tempo)', color: '#7f9bb8' },
-  data: { label: 'IHM e cadastro', color: '#d9a441' },
-  process: { label: 'Processo', color: '#e07a5f' },
+type Group = 'normal' | 'data' | 'plant';
+const GROUPS: Record<Group, { title: string; hint: string; color: string; icon: ReactNode }> = {
+  normal: {
+    title: 'Normal',
+    hint: 'massa a caminho no silo',
+    color: '#6f8fb3',
+    icon: <Icon d="M5 12l4 4 10-10" />,
+  },
+  data: {
+    title: 'Corrigir dados',
+    hint: 'IHM e cadastro',
+    color: '#d39a2f',
+    icon: <Icon d="M12 8v5M12 16.5v.5M10.3 3.9L2.5 17.5a2 2 0 001.7 3h15.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />,
+  },
+  plant: {
+    title: 'Conferir na fábrica',
+    hint: 'processo e ensacadeira',
+    color: '#d8664a',
+    icon: <Icon d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.5 2.5-2.5-.5-.5-2.5 2.5-2.5z" />,
+  },
 };
 
-/** How each step is named inside a sentence ("o que mais pesa são os sacos sem batelada"). */
-const PHRASES: Record<BridgeKind, string> = {
-  carryIn: 'é o silo do começo do período',
-  carryOut: 'é o silo do fim do período',
-  silo: 'é o que ainda está no silo',
-  offline: 'é a IHM offline',
-  unassigned: 'são os sacos sem batelada',
-  unlinked: 'são as receitas sem produto',
-  noProduct: 'é o misturador sem produto',
-  notBagged: 'é a mistura que saiu sem saco',
-  changeover: 'é a troca de produto',
-  wrongName: 'é o nome errado no bico',
-  bagWeight: 'é o peso real do saco',
-  loss: 'é a perda',
-};
-
-export const KINDS: Record<BridgeKind, { title: string; family: Family; why: string }> = {
-  carryIn: {
-    title: 'Silo no começo',
-    family: 'silo',
-    why: 'Ensacado no período, mas misturado antes dele.',
-  },
-  carryOut: {
-    title: 'Silo no fim',
-    family: 'silo',
-    why: 'Misturado no período, mas ensacado depois dele.',
-  },
-  silo: {
-    title: 'Ainda no silo',
-    family: 'silo',
-    why: 'A campanha atual ainda está saindo em sacos.',
-  },
+const KINDS: Record<BridgeKind, { label: string; group: Group; why: string; icon: ReactNode }> = {
+  carryIn: { label: 'Veio do silo', group: 'normal', why: 'Misturado antes do período, ensacado nele.', icon: <SiloIcon /> },
+  carryOut: { label: 'Ficou no silo', group: 'normal', why: 'Misturado no período, ensacado depois.', icon: <SiloIcon /> },
+  silo: { label: 'Ainda no silo', group: 'normal', why: 'Ainda está saindo em sacos.', icon: <SiloIcon /> },
   offline: {
-    title: 'IHM offline',
-    family: 'data',
-    why: 'A IHM ficou sem enviar e mandou tudo de uma vez quando voltou: bateladas e sacos chegaram com o horário errado, então nesse trecho não dá para casar um com o outro.',
+    label: 'IHM sem sinal',
+    group: 'data',
+    why: 'A IHM ficou sem sinal e mandou tudo junto depois, com o horário errado.',
+    icon: <Icon d="M2 8.5a15 15 0 0120 0M5 12a10 10 0 0114 0M8.5 15.5a5 5 0 017 0M12 19h.01M3 3l18 18" />,
   },
   unassigned: {
-    title: 'Sacos sem batelada',
-    family: 'data',
-    why: 'Sacos com o nome de um produto que o misturador não estava fazendo: nome errado no bico, ou batelada que o contador não registrou.',
+    label: 'Saco sem mistura',
+    group: 'data',
+    why: 'Saco com o nome de um produto que não estava sendo misturado.',
+    icon: <TagIcon />,
   },
   unlinked: {
-    title: 'Receitas sem produto',
-    family: 'data',
-    why: 'Sacos de receitas que não estão ligadas a um produto: contados, mas fora das toneladas.',
+    label: 'Sem produto',
+    group: 'data',
+    why: 'Receita do bico sem produto: o saco fica fora das toneladas.',
+    icon: <TagIcon />,
   },
   noProduct: {
-    title: 'Misturador sem produto',
-    family: 'data',
-    why: 'Bateladas de uma receita do misturador que não está ligada a um produto: a massa não tem como ser seguida até os sacos.',
+    label: 'Mistura sem produto',
+    group: 'data',
+    why: 'Receita do misturador sem produto.',
+    icon: <TagIcon />,
   },
   notBagged: {
-    title: 'Mistura sem saco',
-    family: 'data',
-    why: 'O misturador fez o produto, mas nenhum saco saiu com esse nome: os bicos estavam com a receita de outro produto.',
-  },
-  changeover: {
-    title: 'Troca de produto',
-    family: 'process',
-    why: 'Na troca, o silo ainda soltava o produto anterior enquanto os bicos já tinham o nome do novo (ou o contrário): os sacos foram contados no produto errado. Os dois lados se compensam.',
+    label: 'Mistura sem saco',
+    group: 'data',
+    why: 'Misturado, mas nenhum saco saiu com esse nome.',
+    icon: <TagIcon />,
   },
   wrongName: {
-    title: 'Nome errado no bico',
-    family: 'data',
-    why: 'Saíram muito mais sacos do que a massa dá: esses sacos não eram desta mistura.',
+    label: 'Nome errado no bico',
+    group: 'data',
+    why: 'Saco demais para a massa: não era deste produto.',
+    icon: <TagIcon />,
+  },
+  changeover: {
+    label: 'Troca de produto',
+    group: 'plant',
+    why: 'Na troca, sacos contados no produto vizinho.',
+    icon: <Icon d="M7 4L3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7" />,
   },
   bagWeight: {
-    title: 'Peso real do saco',
-    family: 'process',
-    why: 'Massa da balança ÷ sacos. Abaixo do peso nominal, os sacos estão saindo leves: confira o peso de corte da ensacadeira. Um pouco acima é o enchimento normal.',
+    label: 'Peso do saco',
+    group: 'plant',
+    why: 'Saco saindo mais leve ou mais pesado que o nominal.',
+    icon: <Icon d="M6 8h12l1.5 12h-15zM9 8a3 3 0 016 0" />,
   },
   loss: {
-    title: 'Perda',
-    family: 'process',
-    why: 'Massa que não virou saco além do enchimento normal: limpeza, purga, descarte ou sobra no silo.',
+    label: 'Perda',
+    group: 'plant',
+    why: 'Massa que não virou saco: limpeza, purga, descarte.',
+    icon: <Icon d="M12 3c3 4 6 7.5 6 11a6 6 0 01-12 0c0-3.5 3-7 6-11z" />,
   },
 };
-const ORDER: BridgeKind[] = [
-  'carryIn',
-  'carryOut',
-  'silo',
-  'offline',
-  'unassigned',
-  'unlinked',
-  'noProduct',
-  'notBagged',
-  'changeover',
-  'wrongName',
-  'bagWeight',
-  'loss',
-];
 
-const day = (iso: string) => {
+function Icon({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+function SiloIcon() {
+  return <Icon d="M6 5a6 2 0 0112 0v11l-3 4H9l-3-4zM6 5a6 2 0 0012 0M10 20v1.5M14 20v1.5" />;
+}
+function TagIcon() {
+  return <Icon d="M3 12V4h8l9 9-8 8zM7.5 7.5h.01" />;
+}
+
+const brDay = (iso: string) => {
   const local = new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString();
   return `${local.slice(8, 10)}/${local.slice(5, 7)}`;
 };
-/** Tons from one ton up, kilos under it: "+598 kg" reads better than "+0,598 t". */
-const signed = (kg: number) =>
-  `${kg > 0 ? '+' : kg < 0 ? '−' : ''}${Math.abs(kg) >= 1000 ? `${tons(Math.abs(kg))} t` : `${integer(Math.abs(kg))} kg`}`;
-
-/** One line of where a step comes from, in words. */
-function sourceText(kind: BridgeKind, source: BridgeSource) {
-  const name = source.label ?? 'sem produto';
-  const when = source.note && /^\d{4}-\d{2}-\d{2}$/.test(source.note) ? day(`${source.note}T15:00:00Z`) : day(source.at);
-  switch (kind) {
-    case 'carryIn':
-      return source.note === 'before'
-        ? `${name}: sacos de antes da primeira batelada registrada (silo anterior ao monitoramento)`
-        : `${name}: misturado em ${when}, ensacado no período`;
-    case 'carryOut':
-      return `${name}: misturado em ${when}, ensacado depois do período`;
-    case 'silo':
-      return `${name}: campanha de ${when} ainda saindo em sacos`;
-    case 'offline':
-      return source.campaign
-        ? `${name} · ${when}: bateladas chegaram juntas quando a IHM voltou`
-        : `${name} · ${when}: sacos chegaram com o horário do reenvio`;
-    case 'unassigned':
-      return `${name} · ${when}: sacos com esse nome sem batelada desse produto no misturador`;
-    case 'unlinked':
-      return `Receita “${name}” sem produto`;
-    case 'noProduct':
-      return `${name} · ${when}: receita do misturador sem produto`;
-    case 'notBagged':
-      return `${name} · ${when}: nenhum saco saiu com esse nome`;
-    case 'changeover':
-      return `${name} · ${when}: troca com ${source.note ?? 'o produto vizinho'}`;
-    case 'wrongName':
-      return `${name} · ${when}: sacos demais para a massa misturada`;
-    case 'bagWeight': {
-      const [real, nominal] = (source.note ?? '').split('|');
-      return real
-        ? `${name} · ${when}: sacos de ${real.replace('.', ',')} kg em média (nominal ${nominal} kg)`
-        : `${name} · ${when}`;
-    }
-    case 'loss':
-      return `${name} · ${when}: massa que não virou saco`;
-  }
+const plantDay = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+/** Tons from one ton up, kilos under it. */
+const weight = (kg: number) =>
+  Math.abs(kg) >= 1000 ? `${tons(Math.abs(kg))} t` : `${integer(Math.abs(kg))} kg`;
+const signed = (kg: number) => `${kg > 0.5 ? '+' : kg < -0.5 ? '−' : ''}${weight(kg)}`;
+function daysOf(from: string, to: string) {
+  const days: string[] = [];
+  for (let at = Date.parse(`${from}T12:00:00Z`); at <= Date.parse(`${to}T12:00:00Z`) && days.length < 62; at += 86_400_000)
+    days.push(new Date(at).toISOString().slice(0, 10));
+  return days;
 }
 
-export type BridgeRow = {
-  key: string;
-  kind: BridgeKind;
-  kg: number;
-  /** Shown under the row when opened. */
-  lines: Array<{ text: string; kg: number }>;
-};
-
-/** The waterfall itself: any start, steps and end on one scale. */
-export function Bridge({
-  start,
-  end,
-  rows,
-}: {
-  start: { label: string; kg: number };
-  end: { label: string; kg: number };
-  rows: BridgeRow[];
-}) {
-  const [open, setOpen] = useState<string | null>(null);
-  // Running totals: each step floats from where the last one ended.
-  let running = start.kg;
-  const steps = rows.map((row) => {
-    const from = running;
-    running += row.kg;
-    return { row, from, to: running };
-  });
-  const values = [start.kg, end.kg, ...steps.flatMap((step) => [step.from, step.to])];
-  const high = Math.max(...values);
-  const low = Math.min(...values);
-  // The axis starts below the lowest total (marked as broken) so small steps stay readable.
-  const pad = Math.max((high - low) * 0.35, high * 0.01);
-  const floor = Math.max(0, low - pad);
-  const top = high + pad * 0.15;
-  const at = (kg: number) => `${((kg - floor) / (top - floor)) * 100}%`;
-  const width = (a: number, b: number) => `${(Math.abs(b - a) / (top - floor)) * 100}%`;
-  const broken = floor > 0;
-  const scaleNote = broken ? `escala a partir de ${tons(floor)} t` : undefined;
+/** The bag's real weight against its nominal one, as a ruler. */
+function BagRuler({ real, nominal }: { real: number; nominal: number }) {
+  const low = nominal * 0.8;
+  const high = nominal * 1.1;
+  const at = (kg: number) => `${((Math.min(high, Math.max(low, kg)) - low) / (high - low)) * 100}%`;
+  const off = (real - nominal) / nominal;
+  const tone = Math.abs(off) <= 0.03 ? 'ok' : off < 0 ? 'light' : 'heavy';
   return (
-    <div className="mb-chart" role="table" aria-label="Do misturado ao ensacado">
-      <div className="mb-row total" role="row">
-        <span className="mb-label">{start.label}</span>
-        <span className="mb-track">
-          <i className="mb-bar mixed" style={{ left: 0, width: at(start.kg) }} title={scaleNote} />
-        </span>
-        <b className="mb-value">{tons(start.kg)} t</b>
-      </div>
-      {steps.map(({ row, from, to }) => {
-        const info = KINDS[row.kind];
-        const color = FAMILIES[info.family].color;
-        const opened = open === row.key;
-        return (
-          <div key={row.key} className={`mb-step${opened ? ' open' : ''}`}>
-            <button
-              type="button"
-              className="mb-row"
-              role="row"
-              aria-expanded={opened}
-              onClick={() => setOpen(opened ? null : row.key)}
-            >
-              <span className="mb-label">
-                <u style={{ background: color }} />
-                {info.title}
-                <em aria-hidden="true">›</em>
-              </span>
-              <span className="mb-track">
-                <i className="mb-guide" style={{ left: at(Math.min(from, to)) }} />
-                <i
-                  className="mb-bar"
-                  style={{
-                    left: at(Math.min(from, to)),
-                    width: width(from, to),
-                    background: color,
-                    opacity: row.kg < 0 ? 0.55 : 1,
-                  }}
-                />
-              </span>
-              <b className={`mb-value ${row.kg < 0 ? 'minus' : row.kg > 0 ? 'plus' : ''}`}>
-                {Math.abs(row.kg) < 50 && row.kind === 'changeover' ? 'se compensam' : signed(row.kg)}
-              </b>
-            </button>
-            {opened && (
-              <div className="mb-detail">
-                <p>{info.why}</p>
-                {row.lines.length > 0 && (
-                  <ul>
-                    {row.lines.slice(0, 8).map((line, index) => (
-                      <li key={index}>
-                        <span>{line.text}</span>
-                        <b>{signed(line.kg)}</b>
-                      </li>
-                    ))}
-                    {row.lines.length > 8 && <li className="more">e mais {row.lines.length - 8}</li>}
-                  </ul>
-                )}
+    <span className={`bag-ruler ${tone}`} title={`${real.toFixed(1)} kg por saco, nominal ${nominal} kg`}>
+      <span className="bag-ruler-track">
+        <i className="nominal" style={{ left: at(nominal) }} />
+        <i className="fill" style={{ left: at(Math.min(real, nominal)), width: `calc(${at(Math.max(real, nominal))} - ${at(Math.min(real, nominal))})` }} />
+        <u style={{ left: at(real) }} />
+      </span>
+      <b>{real.toFixed(1).replace('.', ',')} kg</b>
+      <small>de {nominal} kg</small>
+    </span>
+  );
+}
+
+/** A line's detail: date, product and weight -- or the ruler, for the bag weight. */
+function SourceLine({ kind, source }: { kind: BridgeKind; source: BridgeSource }) {
+  const when = source.note && /^\d{4}-\d{2}-\d{2}$/.test(source.note) ? brDay(`${source.note}T15:00:00Z`) : brDay(source.at);
+  const [real, nominal] = kind === 'bagWeight' ? (source.note ?? '').split('|').map(Number) : [];
+  return (
+    <li>
+      <em>{source.note === 'before' ? 'antes' : when}</em>
+      <span>
+        {source.label ?? 'sem produto'}
+        {kind === 'changeover' && source.note && <small> ⇄ {source.note}</small>}
+      </span>
+      {real && nominal ? <BagRuler real={real} nominal={nominal} /> : <i />}
+      <b className={source.kg < 0 ? 'minus' : 'plus'}>{signed(source.kg)}</b>
+    </li>
+  );
+}
+
+/** The period's causes, by who acts on them. */
+export function PeriodBridge({
+  data,
+  head = true,
+}: {
+  data: ReconcileData;
+  /** The card above already shows mixed, bagged and the difference: only the causes. */
+  head?: boolean;
+}) {
+  const [open, setOpen] = useState<BridgeKind | null>(null);
+  const difference = data.baggedKg - data.mixedKg;
+  const share = data.mixedKg ? data.baggedKg / data.mixedKg : null;
+  const days = daysOf(data.from, data.to);
+  const peak = Math.max(1, ...data.bridge.map((item) => Math.abs(item.kg)));
+  const groups = (Object.keys(GROUPS) as Group[])
+    .map((group) => ({
+      group,
+      items: data.bridge
+        .filter((item) => KINDS[item.kind].group === group)
+        .sort((a, b) => Math.abs(b.kg) - Math.abs(a.kg)),
+    }))
+    .filter((entry) => entry.items.length);
+  return (
+    <section className="why">
+      {head && (
+      <header className="why-head">
+        <div className={`why-close ${share != null && Math.abs(1 - share) <= 0.02 ? 'ok' : 'off'}`}>
+          <b>{share == null ? '—' : `${(share * 100).toFixed(1).replace('.', ',')}%`}</b>
+          <span>do misturado virou saco</span>
+        </div>
+        <p>
+          {Math.abs(difference) < 1 ? (
+            'Cada quilo misturado saiu em sacos.'
+          ) : (
+            <>
+              <b>{weight(difference)}</b> {difference < 0 ? 'a menos' : 'a mais'} em sacos. Veja o que explica:
+            </>
+          )}
+        </p>
+      </header>
+      )}
+      <div className="why-groups">
+        {groups.map(({ group, items }) => {
+          const info = GROUPS[group];
+          const total = items.reduce((sum, item) => sum + item.kg, 0);
+          return (
+            <div key={group} className="why-group" style={{ '--why': info.color } as React.CSSProperties}>
+              <div className="why-group-head">
+                <span className="why-group-icon">{info.icon}</span>
+                <div>
+                  <b>{info.title}</b>
+                  <small>{info.hint}</small>
+                </div>
+                <strong>{signed(total)}</strong>
               </div>
-            )}
-          </div>
-        );
-      })}
-      <div className="mb-row total" role="row">
-        <span className="mb-label">{end.label}</span>
-        <span className="mb-track">
-          <i className="mb-bar bagged" style={{ left: 0, width: at(end.kg) }} title={scaleNote} />
-        </span>
-        <b className="mb-value">{tons(end.kg)} t</b>
+              <ul>
+                {items.map((item) => {
+                  const kind = KINDS[item.kind];
+                  const marked = new Set(item.sources.map((source) => (source.note && /^\d{4}/.test(source.note) ? source.note : plantDay(source.at))));
+                  const opened = open === item.kind;
+                  const evened = item.kind === 'changeover' && Math.abs(item.kg) < 50;
+                  return (
+                    <li key={item.kind} className={opened ? 'open' : ''}>
+                      <button type="button" onClick={() => setOpen(opened ? null : item.kind)} aria-expanded={opened}>
+                        <span className="why-icon">{kind.icon}</span>
+                        <span className="why-label">{kind.label}</span>
+                        <span className="why-bar" aria-hidden="true">
+                          <i
+                            className={item.kg < 0 ? 'minus' : 'plus'}
+                            style={{ width: `${Math.max(4, (Math.abs(item.kg) / peak) * 50)}%` }}
+                          />
+                        </span>
+                        <b className={evened ? 'even' : item.kg < 0 ? 'minus' : 'plus'}>
+                          {evened ? '⇄ zero' : signed(item.kg)}
+                        </b>
+                        {days.length > 1 && (
+                          <span className="why-days" aria-label="Dias em que aconteceu">
+                            {days.map((day) => (
+                              <i key={day} className={marked.has(day) ? 'on' : ''} title={brDay(`${day}T15:00:00Z`)} />
+                            ))}
+                          </span>
+                        )}
+                      </button>
+                      {opened && (
+                        <div className="why-detail">
+                          <p>{kind.why}</p>
+                          <ul>
+                            {item.sources.slice(0, 10).map((source, index) => (
+                              <SourceLine key={index} kind={item.kind} source={source} />
+                            ))}
+                          </ul>
+                          {item.sources.length > 10 && <small>e mais {item.sources.length - 10}</small>}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
       </div>
-      <div className="mb-legend">
-        {(Object.keys(FAMILIES) as Family[])
-          .filter((family) => rows.some((row) => KINDS[row.kind].family === family))
-          .map((family) => (
-            <span key={family}>
-              <u style={{ background: FAMILIES[family].color }} />
-              {FAMILIES[family].label}
-            </span>
-          ))}
-        {scaleNote && <span className="mb-scale">{scaleNote}</span>}
-      </div>
-    </div>
+    </section>
   );
 }
 
@@ -318,52 +308,7 @@ export function useReconcile(deviceId: string | null | undefined, from: string, 
   );
 }
 
-/** The period's bridge, for the yield card: a sentence, then the steps. */
-export function PeriodBridge({ data }: { data: ReconcileData }) {
-  const difference = data.baggedKg - data.mixedKg;
-  const rows: BridgeRow[] = ORDER.flatMap((kind) => {
-    const item = data.bridge.find((entry) => entry.kind === kind);
-    if (!item) return [];
-    return [
-      {
-        key: kind,
-        kind,
-        kg: item.kg,
-        lines: item.sources.map((source) => ({ text: sourceText(kind, source), kg: source.kg })),
-      },
-    ];
-  });
-  const biggest = [...rows].sort((a, b) => Math.abs(b.kg) - Math.abs(a.kg))[0];
-  return (
-    <section className="mb">
-      <header className="mb-head">
-        <span>De onde vem a diferença</span>
-        <p>
-          Das <b>{tons(data.mixedKg)} t</b> misturadas saíram <b>{tons(data.baggedKg)} t</b> em sacos
-          {Math.abs(difference) >= 1 ? (
-            <>
-              : <b>{tons(Math.abs(difference))} t</b> {difference < 0 ? 'a menos' : 'a mais'}.
-            </>
-          ) : (
-            '.'
-          )}{' '}
-          {rows.length
-            ? `A plataforma seguiu cada saco até a batelada de onde veio${biggest ? `; o que mais pesa ${PHRASES[biggest.kind]}` : ''}. Toque numa linha para ver quando e onde.`
-            : 'Cada saco fechou com a sua batelada.'}
-        </p>
-      </header>
-      {rows.length > 0 && (
-        <Bridge
-          start={{ label: 'Misturado', kg: data.mixedKg }}
-          end={{ label: 'Ensacado', kg: data.baggedKg }}
-          rows={rows}
-        />
-      )}
-    </section>
-  );
-}
-
-/** A campaign's own steps, for the lot window. */
+/** A campaign of lots: what the scale weighed, what left in bags, and why they differ. */
 export type CampaignData = {
   id: string;
   mix: string | null;
@@ -384,62 +329,68 @@ export type CampaignData = {
   causes: Array<{ kind: BridgeKind; kg: number; partner?: string; realBagKg?: number; nominalKg?: number }>;
 };
 
-export function causeText(cause: CampaignData['causes'][number], campaign: CampaignData) {
-  switch (cause.kind) {
-    case 'bagWeight':
-      return cause.realBagKg
-        ? `Os sacos saíram com ${cause.realBagKg.toFixed(1).replace('.', ',')} kg em média, para um saco de ${cause.nominalKg} kg.`
-        : KINDS.bagWeight.why;
-    case 'changeover':
-      return `Na troca com ${cause.partner ?? 'o produto vizinho'}, ${cause.kg > 0 ? 'sacos do outro produto saíram com o nome deste' : 'sacos deste produto saíram com o nome do outro'}.`;
-    case 'silo':
-      return `A campanha ainda está saindo em sacos: ${tons(-cause.kg)} t seguem no silo.`;
-    case 'offline':
-      return 'A IHM ficou offline e mandou bateladas e sacos de uma vez: o horário se perdeu e não dá para fechar esta campanha.';
-    case 'notBagged':
-      return `Nenhum saco saiu com o nome de ${campaign.mix ?? 'este produto'}: os bicos estavam com outra receita.`;
-    case 'loss':
-      return 'Massa que não virou saco além do enchimento normal: limpeza, purga, descarte ou sobra no silo.';
-    default:
-      return KINDS[cause.kind].why;
-  }
-}
-
 export function CampaignBridge({ campaign }: { campaign: CampaignData }) {
-  const rows: BridgeRow[] = campaign.causes.map((cause, index) => ({
-    key: `${cause.kind}-${index}`,
-    kind: cause.kind,
-    kg: cause.kg,
-    lines: [{ text: causeText(cause, campaign), kg: cause.kg }],
-  }));
+  const difference = campaign.baggedKg - campaign.mixedKg;
   const dosed = campaign.mixedKg - campaign.recipeKg;
+  const peak = Math.max(1, ...campaign.causes.map((cause) => Math.abs(cause.kg)));
   return (
-    <section className="mb">
-      <header className="mb-head">
-        <span>Por que a diferença</span>
-        <p>
-          Os lotes de um mesmo produto em sequência dividem o silo: a conta fecha na campanha de{' '}
-          <b>{campaign.mix ?? 'sem produto'}</b> ({campaign.lots.length}{' '}
-          {campaign.lots.length === 1 ? 'lote' : 'lotes'}, {day(campaign.startedAt)}).{' '}
-          A balança pesou <b>{tons(campaign.mixedKg)} t</b>
-          {Math.abs(dosed) >= 1 && (
-            <>
-              {' '}
-              ({dosed > 0 ? '+' : '−'}
-              {integer(Math.abs(dosed))} kg sobre a receita)
-            </>
-          )}{' '}
-          e saíram <b>{integer(campaign.bags)} sacos</b>, {tons(campaign.baggedKg)} t.
-        </p>
-      </header>
-      {rows.length > 0 ? (
-        <Bridge
-          start={{ label: 'Na balança', kg: campaign.mixedKg }}
-          end={{ label: 'Em sacos', kg: campaign.baggedKg }}
-          rows={rows}
-        />
-      ) : (
-        <p className="mb-closed">A campanha fechou: cada quilo misturado saiu em sacos.</p>
+    <section className="why campaign">
+      <div className="why-equation">
+        <div>
+          <span className="why-icon">
+            <Icon d="M4 20h16M7 20V10h10v10M12 10V4M8 6h8" />
+          </span>
+          <small>Na balança</small>
+          <b>{weight(campaign.mixedKg)}</b>
+          <em>
+            {campaign.batches} {campaign.batches === 1 ? 'batelada' : 'bateladas'}
+            {Math.abs(dosed) >= 1 && ` · ${dosed > 0 ? '+' : '−'}${integer(Math.abs(dosed))} kg da receita`}
+          </em>
+        </div>
+        <span className="why-arrow" aria-hidden="true">→</span>
+        <div>
+          <span className="why-icon">
+            <Icon d="M6 8h12l1.5 12h-15zM9 8a3 3 0 016 0" />
+          </span>
+          <small>Em sacos</small>
+          <b>{weight(campaign.baggedKg)}</b>
+          <em>{integer(campaign.bags)} sacos</em>
+        </div>
+        <span className="why-arrow" aria-hidden="true">=</span>
+        <div className={Math.abs(difference) <= campaign.mixedKg * 0.02 ? 'ok' : difference < 0 ? 'minus' : 'plus'}>
+          <small>{Math.abs(difference) <= campaign.mixedKg * 0.02 ? 'Fechou' : difference < 0 ? 'Faltou' : 'Sobrou'}</small>
+          <b>{signed(difference)}</b>
+          <em>
+            {campaign.lots.length} {campaign.lots.length === 1 ? 'lote' : 'lotes'} de {campaign.mix ?? 'sem produto'}
+          </em>
+        </div>
+      </div>
+      {campaign.causes.length > 0 && (
+        <ul className="why-causes">
+          {campaign.causes.map((cause, index) => {
+            const kind = KINDS[cause.kind];
+            const group = GROUPS[kind.group];
+            return (
+              <li key={index} style={{ '--why': group.color } as React.CSSProperties}>
+                <span className="why-icon">{kind.icon}</span>
+                <span className="why-label">
+                  {kind.label}
+                  <small>{group.title}</small>
+                </span>
+                {cause.kind === 'bagWeight' && cause.realBagKg && cause.nominalKg ? (
+                  <BagRuler real={cause.realBagKg} nominal={cause.nominalKg} />
+                ) : cause.kind === 'changeover' && cause.partner ? (
+                  <span className="why-partner">⇄ {cause.partner}</span>
+                ) : (
+                  <span className="why-bar" aria-hidden="true">
+                    <i className={cause.kg < 0 ? 'minus' : 'plus'} style={{ width: `${Math.max(4, (Math.abs(cause.kg) / peak) * 50)}%` }} />
+                  </span>
+                )}
+                <b className={cause.kg < 0 ? 'minus' : 'plus'}>{signed(cause.kg)}</b>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </section>
   );

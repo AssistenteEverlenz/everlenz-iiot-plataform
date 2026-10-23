@@ -14247,214 +14247,6 @@ button.mortar-spout:hover .mortar-spout-open {
   color: #20353d;
 }
 
-/* From mixed to bagged, step by step (MortarBridge.tsx): a horizontal waterfall on one scale.
-   Label, track and value in three columns; a step opens to where it comes from. */
-.mb {
-  display: grid;
-  gap: 12px;
-  container-type: inline-size;
-}
-.mb-head {
-  display: grid;
-  gap: 4px;
-}
-.mb-head > span {
-  color: #71868d;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.mb-head p {
-  margin: 0;
-  color: #4d6770;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.mb-head b {
-  color: #0b2028;
-  font-weight: 600;
-}
-.mb-chart {
-  display: grid;
-  gap: 2px;
-}
-.mb-row {
-  display: grid;
-  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr) 96px;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 32px;
-  padding: 4px 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: none;
-  color: #20353d;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-}
-button.mb-row {
-  cursor: pointer;
-}
-button.mb-row:hover {
-  border-color: var(--brand-accent, #12b8a6);
-}
-.mb-step.open > .mb-row {
-  border-color: #e3eaec;
-  background: #f6f9f9;
-}
-.mb-row.total {
-  font-weight: 600;
-}
-.mb-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.mb-label u {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-}
-.mb-label em {
-  margin-left: auto;
-  color: #a7b6bb;
-  font-style: normal;
-  transition: transform 0.15s ease;
-}
-.mb-step.open .mb-label em {
-  transform: rotate(90deg);
-}
-.mb-track {
-  position: relative;
-  height: 16px;
-}
-.mb-bar {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  min-width: 2px;
-  border-radius: 3px;
-}
-.mb-row.total .mb-track {
-  height: 20px;
-}
-.mb-bar.mixed {
-  background: #c9a36a;
-}
-.mb-bar.bagged {
-  background: var(--brand-accent, #12b8a6);
-}
-.mb-legend .mb-scale {
-  margin-left: auto;
-  color: #a2b2b7;
-}
-.mb-guide {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 1px;
-  background: #d5dfe2;
-}
-.mb-value {
-  color: #0b2028;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.mb-value.minus {
-  color: #b5482a;
-}
-.mb-value.plus {
-  color: #2f6f62;
-}
-.mb-detail {
-  display: grid;
-  gap: 8px;
-  margin: 2px 0 8px;
-  padding: 10px 14px 12px calc(min(210px, 32%) + 20px);
-  color: #4d6770;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-.mb-detail p {
-  margin: 0;
-}
-.mb-detail ul {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.mb-detail li {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 3px 0;
-  border-bottom: 1px dashed #e3eaec;
-}
-.mb-detail li b {
-  flex: none;
-  color: #20353d;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.mb-detail li.more {
-  color: #8a9ca2;
-  border-bottom: 0;
-}
-.mb-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  margin-top: 6px;
-  padding-left: 8px;
-  color: #71868d;
-  font-size: 11.5px;
-}
-.mb-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.mb-legend u {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-}
-.mb-closed {
-  margin: 0;
-  color: #2f6f62;
-  font-size: 13px;
-}
-@container (max-width: 560px) {
-  .mb-row {
-    grid-template-columns: minmax(0, 1fr) 82px;
-    grid-template-areas: 'label value' 'track track';
-    gap: 4px 10px;
-  }
-  .mb-label {
-    grid-area: label;
-  }
-  .mb-track {
-    grid-area: track;
-  }
-  .mb-value {
-    grid-area: value;
-  }
-  .mb-detail {
-    padding-left: 14px;
-  }
-}
-
 /* The produced figure and, beside it, what it was made of: the products with a thin bar, and
    the spouts that add up to it (MortarShift.tsx, HeroMade). */
 .mortar-hero-row {
@@ -14638,6 +14430,434 @@ button.mb-row:hover {
     grid-template-columns: minmax(0, 1fr) 44px 52px;
   }
   .mortar-hero-made li > i {
+    display: none;
+  }
+}
+
+/* Why mixed and bagged differ, at a glance (MortarBridge.tsx): the causes in three columns by
+   who acts -- normal, data to fix, the plant to check -- each line an icon, a short name, a bar
+   that grows right (bags added) or left (taken), the weight, and the days it happened. */
+.why {
+  display: grid;
+  gap: 14px;
+  container-type: inline-size;
+}
+.why-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+.why-close {
+  display: grid;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: #f1f5f6;
+}
+.why-close b {
+  color: #0b2028;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.why-close.ok b {
+  color: #1d8a5f;
+}
+.why-close span {
+  color: #71868d;
+  font-size: 11.5px;
+}
+.why-head p {
+  flex: 1;
+  min-width: 180px;
+  margin: 0;
+  color: #4d6770;
+  font-size: 13.5px;
+}
+.why-head p b {
+  color: #0b2028;
+}
+.why-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+.why-group {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 10px 10px 8px;
+  border: 1px solid #e3ebed;
+  border-top: 3px solid var(--why);
+  border-radius: 12px;
+}
+.why-group-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.why-group-icon,
+.why-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--why, #8a9ca2) 14%, #fff);
+  color: var(--why, #4d6770);
+}
+.why-group-head b {
+  display: block;
+  color: #0b2028;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.why-group-head small {
+  display: none;
+}
+.why-group-head strong {
+  color: #0b2028;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.why-group > ul,
+.why-causes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.why-group > ul > li > button {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 56px auto;
+  grid-template-areas: 'icon label bar value' '. days days days';
+  align-items: center;
+  gap: 3px 10px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: #20353d;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.why-group > ul > li > button:hover,
+.why-group > ul > li.open > button {
+  border-color: var(--brand-accent, #12b8a6);
+}
+.why-group button .why-icon {
+  grid-area: icon;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+.why-group button .why-label {
+  grid-area: label;
+}
+.why-group button .why-bar {
+  grid-area: bar;
+}
+.why-group button > b {
+  grid-area: value;
+}
+.why-label {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.why-label small {
+  display: block;
+  color: #8a9ca2;
+  font-size: 11px;
+}
+/* A bar from the middle: right when bags were added, left when taken. */
+.why-bar {
+  position: relative;
+  height: 10px;
+}
+.why-bar::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 1px;
+  background: #cfdadd;
+}
+.why-bar i {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 3px;
+  background: var(--why, #8a9ca2);
+}
+.why-bar i.plus {
+  left: 50%;
+}
+.why-bar i.minus {
+  right: 50%;
+  opacity: 0.6;
+}
+.why-group b.plus,
+.why-group b.minus,
+.why-group b.even,
+.why-causes b {
+  min-width: 70px;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.why b.plus {
+  color: #2f6f62;
+}
+.why b.minus {
+  color: #b5482a;
+}
+.why b.even {
+  color: #8a9ca2;
+}
+.why-days {
+  display: flex;
+  grid-area: days;
+  gap: 2px;
+}
+.why-days i {
+  flex: 1;
+  max-width: 9px;
+  height: 5px;
+  border-radius: 2px;
+  background: #edf2f3;
+}
+.why-days i.on {
+  background: var(--why);
+}
+.why-detail {
+  display: grid;
+  gap: 6px;
+  padding: 6px 8px 10px 44px;
+}
+.why-detail p {
+  margin: 0;
+  color: #71868d;
+  font-size: 12px;
+}
+.why-detail ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.why-detail li {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px dashed #e6edef;
+  font-size: 12.5px;
+}
+.why-detail li em {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #f1f5f6;
+  color: #4d6770;
+  font-size: 11px;
+  font-style: normal;
+  text-align: center;
+}
+.why-detail li span {
+  overflow: hidden;
+  color: #20353d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.why-detail li span small {
+  color: #8a9ca2;
+}
+.why-detail li b {
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.why-detail > small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+}
+/* The bag's real weight on a ruler from 80 % to 110 % of the nominal one. */
+.bag-ruler {
+  display: inline-grid;
+  grid-template-columns: 84px auto auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.bag-ruler-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: #eef3f4;
+}
+.bag-ruler-track .nominal {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: #4d6770;
+}
+.bag-ruler-track .fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 4px;
+}
+.bag-ruler-track u {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(11, 32, 40, 0.15);
+}
+.bag-ruler.ok .fill,
+.bag-ruler.ok u {
+  background: #1d8a5f;
+}
+.bag-ruler.light .fill,
+.bag-ruler.light u {
+  background: #d8664a;
+}
+.bag-ruler.heavy .fill,
+.bag-ruler.heavy u {
+  background: #d39a2f;
+}
+.bag-ruler b {
+  color: #0b2028;
+  font-weight: 600;
+}
+.bag-ruler small {
+  color: #8a9ca2;
+}
+/* A lot's campaign as an equation: the scale, the bags, what closed. */
+.why-equation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+}
+.why-equation > div {
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'icon label' 'icon value' 'icon note';
+  align-items: center;
+  column-gap: 10px;
+  min-width: 150px;
+  padding: 10px 12px;
+  border: 1px solid #e3ebed;
+  border-radius: 12px;
+}
+.why-equation > div:last-child {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'label' 'value' 'note';
+  background: #f6f9f9;
+}
+.why-equation > div.ok {
+  border-color: #bfe3d2;
+  background: #f0faf5;
+}
+.why-equation > div.minus {
+  border-color: #f0cdc3;
+  background: #fdf4f1;
+}
+.why-equation > div.plus {
+  border-color: #f2dcb3;
+  background: #fdf8ee;
+}
+.why-equation .why-icon {
+  grid-area: icon;
+  --why: #6f8fb3;
+}
+.why-equation small {
+  grid-area: label;
+  color: #71868d;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.why-equation b {
+  grid-area: value;
+  color: #0b2028;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.why-equation .ok b {
+  color: #1d8a5f;
+}
+.why-equation .minus b {
+  color: #b5482a;
+}
+.why-equation .plus b {
+  color: #a8721b;
+}
+.why-equation em {
+  grid-area: note;
+  color: #8a9ca2;
+  font-size: 11.5px;
+  font-style: normal;
+}
+.why-arrow {
+  align-self: center;
+  color: #a7b6bb;
+  font-size: 18px;
+}
+.why-causes > li {
+  display: grid;
+  grid-template-columns: 30px minmax(120px, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e3ebed;
+  border-left: 3px solid var(--why);
+  border-radius: 10px;
+}
+.why-causes .why-label {
+  font-weight: 600;
+}
+.why-causes .why-bar {
+  height: 10px;
+}
+.why-partner {
+  color: #4d6770;
+  font-size: 12.5px;
+}
+@container (max-width: 520px) {
+  .why-groups {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .why-causes > li {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+  }
+  .why-causes > li > .why-bar,
+  .why-causes > li > .bag-ruler,
+  .why-causes > li > .why-partner {
+    grid-column: 2 / -1;
+  }
+  .why-arrow {
     display: none;
   }
 }
