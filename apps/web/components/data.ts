@@ -233,7 +233,17 @@ export function firstLoadsPending() {
   return firstLoads.size;
 }
 
-export function usePoll<T>(path: string | null, intervalMs = 5000) {
+/**
+ * keepPrevious: when the path changes, the last answer stays on screen until the new one comes,
+ * instead of emptying it -- a board switching spout would otherwise collapse to "Carregando" for
+ * a moment and the page jump to the top.
+ */
+export function usePoll<T>(
+  path: string | null,
+  intervalMs = 5000,
+  options: { keepPrevious?: boolean } = {},
+) {
+  const keepPrevious = Boolean(options.keepPrevious);
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState<string | null>(null);
   const refresh = useCallback(
@@ -259,7 +269,7 @@ export function usePoll<T>(path: string | null, intervalMs = 5000) {
     [path],
   );
   useEffect(() => {
-    setData(null);
+    if (!keepPrevious || !path) setData(null);
     setError(null);
     if (!path) return;
     let disposed = false;
@@ -302,7 +312,7 @@ export function usePoll<T>(path: string | null, intervalMs = 5000) {
       controller?.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [refresh, intervalMs, path]);
+  }, [refresh, intervalMs, path, keepPrevious]);
   return { data, error, loading: path !== null && data === null, refresh };
 }
 export async function mutate<T>(

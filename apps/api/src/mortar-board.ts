@@ -16,7 +16,7 @@ import type { createAccessControl } from './auth.js';
 import { recordAudit } from './audit.js';
 import { loadShifts } from './shift-production.js';
 import { chartSpanOf, effectiveShifts, type EffectiveOccurrence } from './effective-shifts.js';
-import { allocateBags } from './mortar-lots.js';
+import { reconcile, type Campaign } from './mortar-reconcile.js';
 import {
   mortarUtilizationError,
   mortarUtilizationFrom,
@@ -853,97 +853,182 @@ export function registerMortarBoardRoutes(
   });
 
   /**
+   * Every batch and bag of a period followed through the silo (mortar-reconcile.ts): three days
+   * before it, so the silo carried in is known, and up to now, so what left after it is too.
+   */
+  async function loadReconcile(tenantId: string, deviceId: string, from: string, to: string) {
+    const start = plantInstant(from, '00:00');
+    const end = plantInstant(addDays(to, 1), '00:00');
+    const lookback = plantInstant(addDays(from, -3), '00:00');
+    const now = new Date();
+    const [batches, bagged, product] = await Promise.all([
+      db.query<{
+        lot_number: string;
+        finished_at: Date;
+        recipe: string;
+        batches: number;
+        total_kg: number;
+        kg: number;
+      }>(
+        `SELECT lot_number,finished_at,recipe,batches,total_kg::float total_kg,
+                coalesce(scale_kg,total_kg)::float kg
+         FROM mix_batches WHERE tenant_id=$1 AND device_id=$2 AND lot_number IS NOT NULL
+           AND finished_at>=$3 AND finished_at<$4
+         ORDER BY finished_at`,
+        [tenantId, deviceId, lookback, now],
+      ),
+      db.query<{ bucket: Date; recipe: string; bags: number }>(
+        `SELECT bucket,recipe,sum(bags)::float bags FROM bagging_buckets
+         WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4 AND bags>0
+         GROUP BY bucket,recipe ORDER BY bucket`,
+        [tenantId, deviceId, lookback, now],
+      ),
+      loadLinks(db, tenantId),
+    ]);
+    const result = reconcile({
+      batches: batches.rows.map((row) => {
+        const link = product.get(row.recipe);
+        return {
+          lot: row.lot_number,
+          at: new Date(row.finished_at).getTime(),
+          recipe: row.recipe,
+          product: link?.name ?? null,
+          nominalKg: link ? Number(link.nominal_kg) : null,
+          kg: Number(row.kg),
+          recipeKg: Number(row.total_kg),
+          batches: Number(row.batches),
+        };
+      }),
+      bags: bagged.rows.map((row) => {
+        const link = product.get(row.recipe);
+        return {
+          at: new Date(row.bucket).getTime(),
+          recipe: row.recipe,
+          product: link?.name ?? null,
+          nominalKg: link ? Number(link.nominal_kg) : null,
+          bags: Number(row.bags),
+        };
+      }),
+      period: { start: start.getTime(), end: end.getTime() },
+    });
+    return { result, start, end, now, recipeOf: new Map(batches.rows.map((row) => [row.lot_number, row.recipe])), product, batches: batches.rows };
+  }
+  const iso = (at: number | null) => (at == null ? null : new Date(at).toISOString());
+  const campaignJson = (item: Campaign) => ({
+    id: item.id,
+    mix: item.mix,
+    products: item.products,
+    nominalKg: item.nominalKg,
+    lots: item.lots,
+    batches: item.batches,
+    mixedKg: item.mixedKg,
+    recipeKg: item.recipeKg,
+    bags: item.bags,
+    baggedKg: item.baggedKg,
+    startedAt: iso(item.startedAt),
+    lastBatchAt: iso(item.lastBatchAt),
+    firstBagAt: iso(item.firstBagAt),
+    lastBagAt: iso(item.lastBagAt),
+    offline: item.offline,
+    open: item.open,
+    causes: item.causes,
+  });
+  const periodQuery = z.object({
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+    to: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
+  });
+
+  /**
+   * Why mixed and bagged differ in a period: the bridge from one to the other, each step with
+   * the campaigns that make it, and the recipes that reached the spouts without a product.
+   */
+  app.get('/api/devices/:id/mortar/reconcile', async (req, reply) => {
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    if (!(await access.requireDevice(req, reply, id))) return;
+    const query = periodQuery.parse(req.query);
+    const to = query.to ?? plantDate(new Date());
+    const from = query.from && query.from <= to ? query.from : to;
+    const { result, start, end } = await loadReconcile(access.principal(req).tenantId, id, from, to);
+    const touched = new Set(result.bridge.flatMap((item) => item.sources.map((source) => source.campaign)));
+    return {
+      from,
+      to,
+      mixedKg: result.mixedKg,
+      baggedKg: result.baggedKg,
+      bridge: result.bridge.map((item) => ({
+        ...item,
+        sources: item.sources.map((source) => ({ ...source, at: iso(source.at) })),
+      })),
+      campaigns: result.campaigns
+        .filter(
+          (item) =>
+            touched.has(item.id) ||
+            (item.startedAt < end.getTime() && (item.lastBagAt ?? item.lastBatchAt) >= start.getTime()),
+        )
+        .map(campaignJson),
+      unlinked: result.unlinked
+        .filter((item) => item.bagsInPeriod > 0)
+        .map((item) => ({ ...item, first: iso(item.first), last: iso(item.last) })),
+    };
+  });
+
+  /**
    * Production lots: each lot is a run of batches of one recipe (the HMI's lot number), and its
-   * bags are the ones that went through the silo from it, product by product (mortar-lots.ts).
+   * bags are the ones that went through the silo from it (mortar-lots.ts); each carries the
+   * campaign it belongs to and why that campaign's mixed and bagged differ (mortar-reconcile.ts).
    */
   app.get('/api/devices/:id/mortar/lots', async (req, reply) => {
     const { id } = z.object({ id: uuid }).parse(req.params);
     if (!(await access.requireDevice(req, reply, id))) return;
-    const query = z
-      .object({
-        from: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional(),
-        to: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional(),
-      })
-      .parse(req.query);
+    const query = periodQuery.parse(req.query);
     const tenantId = access.principal(req).tenantId;
     const to = query.to ?? plantDate(new Date());
     const from = query.from && query.from <= to ? query.from : to;
-    const start = plantInstant(from, '00:00');
-    const end = plantInstant(addDays(to, 1), '00:00');
-    // Two days before: the lots still in the silo when the period opens take their bags first.
-    const lookback = plantInstant(addDays(from, -2), '00:00');
-    const now = new Date();
-    const lots = await db.query<{
-      lot_number: string;
-      recipe: string;
-      batches: number;
-      kg: number;
-      scale_kg: number | null;
-      started_at: Date;
-      last_at: Date;
-    }>(
-      `SELECT lot_number,min(recipe) recipe,sum(batches)::int batches,sum(total_kg)::float kg,
-              sum(scale_kg)::float scale_kg,min(finished_at) started_at,max(finished_at) last_at
-       FROM mix_batches WHERE tenant_id=$1 AND device_id=$2 AND lot_number IS NOT NULL
-         AND finished_at>=$3 AND finished_at<$4
-       GROUP BY lot_number ORDER BY min(finished_at)`,
-      [tenantId, id, lookback, end],
-    );
-    const bagged = await db.query<{ bucket: Date; recipe: string; bags: number }>(
-      `SELECT bucket,recipe,sum(bags)::float bags FROM bagging_buckets
-       WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4 AND bags>0
-       GROUP BY bucket,recipe ORDER BY bucket`,
-      [tenantId, id, lookback, now],
-    );
-    const product = await loadLinks(db, tenantId);
-    const mixedOf = (lot: (typeof lots.rows)[number]) =>
-      lot.scale_kg ? Number(lot.scale_kg) : Number(lot.kg);
-    const { lots: allocated } = allocateBags(
-      lots.rows.map((lot) => {
-        const link = product.get(lot.recipe);
+    const { result, start, end, now, recipeOf, product, batches } = await loadReconcile(tenantId, id, from, to);
+    const campaigns = new Map(result.campaigns.map((item) => [item.id, item]));
+    const lots = new Map<string, { batches: number; kg: number; recipeKg: number; startedAt: number; lastAt: number }>();
+    for (const row of batches) {
+      const at = new Date(row.finished_at).getTime();
+      const lot = lots.get(row.lot_number) ?? { batches: 0, kg: 0, recipeKg: 0, startedAt: at, lastAt: at };
+      lot.batches += Number(row.batches);
+      lot.kg += Number(row.kg);
+      lot.recipeKg += Number(row.total_kg);
+      lot.lastAt = at;
+      lots.set(row.lot_number, lot);
+    }
+    const list = [...lots.entries()]
+      .filter(([, lot]) => lot.startedAt >= start.getTime() && lot.startedAt < end.getTime())
+      .map(([number, lot]) => {
+        const recipe = recipeOf.get(number) ?? '';
+        const link = product.get(recipe);
+        const share = result.allocated.get(number);
+        const owner = campaigns.get(result.lotCampaign.get(number) ?? '');
         return {
-          lot: lot.lot_number,
+          lot: number,
+          recipe,
           product: link?.name ?? null,
-          nominalKg: link ? Number(link.nominal_kg) : null,
-          mixedKg: mixedOf(lot),
-          startedAt: new Date(lot.started_at).getTime(),
+          batches: lot.batches,
+          mixedKg: lot.kg,
+          recipeKg: lot.recipeKg,
+          startedAt: iso(lot.startedAt)!,
+          lastBatchAt: iso(lot.lastAt)!,
+          baggedFrom: iso(share?.firstBagAt ?? null),
+          baggedUntil: iso(Math.min(share?.lastBagAt ?? now.getTime(), now.getTime()))!,
+          bags: share?.bags ?? 0,
+          expectedBags: share?.expectedBags ?? null,
+          baggedKg: share?.kg ?? 0,
+          products: link && share && share.bags > 0 ? [{ name: link.name, bags: share.bags, kg: share.kg }] : [],
+          campaign: owner ? campaignJson(owner) : null,
         };
-      }),
-      bagged.rows.map((row) => ({
-        at: new Date(row.bucket).getTime(),
-        product: product.get(row.recipe)?.name ?? null,
-        bags: Number(row.bags),
-      })),
-    );
-    const result = lots.rows
-      .filter((lot) => new Date(lot.started_at) >= start)
-      .map((lot) => {
-        const link = product.get(lot.recipe);
-        const share = allocated.get(lot.lot_number)!;
-        const baggedKg = link ? share.bags * Number(link.nominal_kg) : 0;
-        return {
-          lot: lot.lot_number,
-          recipe: lot.recipe,
-          product: link?.name ?? null,
-          batches: Number(lot.batches),
-          mixedKg: mixedOf(lot),
-          startedAt: new Date(lot.started_at).toISOString(),
-          lastBatchAt: new Date(lot.last_at).toISOString(),
-          baggedFrom: share.firstBagAt ? new Date(share.firstBagAt).toISOString() : null,
-          baggedUntil: new Date(Math.min(share.lastBagAt ?? now.getTime(), now.getTime())).toISOString(),
-          bags: share.bags,
-          expectedBags: share.expectedBags,
-          baggedKg,
-          products: link && share.bags > 0 ? [{ name: link.name, bags: share.bags, kg: baggedKg }] : [],
-        };
-      });
-    return { from, to, lots: result.reverse() };
+      })
+      .sort((x, y) => y.startedAt.localeCompare(x.startedAt));
+    return { from, to, lots: list };
   });
 
   /**

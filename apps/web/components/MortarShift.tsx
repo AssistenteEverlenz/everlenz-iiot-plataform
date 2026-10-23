@@ -1,6 +1,15 @@
 'use client';
 
-import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
 import {
   Bar,
   BarChart,
@@ -69,6 +78,125 @@ type SpoutRow = {
   }>;
 };
 export type { SpoutRow };
+
+/**
+ * What the spouts made, product by product: the recipes of one product together, with each
+ * spout's share, largest first. The hero and the "produced" window read it.
+ */
+export function madeOf(spouts: SpoutRow[]) {
+  const made = new Map<string, { name: string; bags: number; kg: number | null; bySpout: Record<string, number> }>();
+  for (const spout of spouts)
+    for (const item of spout.products) {
+      if (item.bags <= 0) continue;
+      const name = item.product ?? item.recipe;
+      const entry = made.get(name) ?? { name, bags: 0, kg: item.kg == null ? null : 0, bySpout: {} };
+      entry.bags += item.bags;
+      if (entry.kg != null && item.kg != null) entry.kg += item.kg;
+      entry.bySpout[spout.id] = (entry.bySpout[spout.id] ?? 0) + item.bags;
+      made.set(name, entry);
+    }
+  return [...made.values()].sort((a, b) => b.bags - a.bags);
+}
+
+/** Beside the produced figure: the products of the period and the spouts that add up to it. */
+function HeroMade({ spouts }: { spouts: SpoutRow[] }) {
+  const made = madeOf(spouts);
+  if (!made.length) return null;
+  const shown = made.slice(0, 4);
+  const peak = Math.max(1, ...shown.map((item) => item.bags));
+  const total = spouts.reduce((sum, spout) => sum + spout.bags, 0);
+  return (
+    <div className="mortar-hero-made" aria-label="O que foi produzido">
+      <ul>
+        {shown.map((item) => (
+          <li key={item.name}>
+            <span title={item.name}>{item.name}</span>
+            <i>
+              <u style={{ width: `${(item.bags / peak) * 100}%` }} />
+            </i>
+            <b>{integer(item.bags)}</b>
+            <small>{item.kg == null ? 'sem produto' : `${tons(item.kg)} t`}</small>
+          </li>
+        ))}
+        {made.length > shown.length && (
+          <li className="more">
+            e mais {made.length - shown.length} {made.length - shown.length === 1 ? 'produto' : 'produtos'}
+          </li>
+        )}
+      </ul>
+      {spouts.length > 1 && (
+        <p>
+          {spouts.map((spout, index) => (
+            <span key={spout.id}>
+              {index > 0 && ' + '}
+              {spout.name} <b>{integer(spout.bags)}</b>
+            </span>
+          ))}{' '}
+          = <b>{integer(total)}</b> sacos
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The "produced" window: every product of the period, spout by spout. */
+function MadeTable({ spouts }: { spouts: SpoutRow[] }) {
+  const made = madeOf(spouts);
+  if (!made.length) return null;
+  const total = spouts.reduce((sum, spout) => sum + spout.bags, 0);
+  const totalKg = made.reduce((sum, item) => sum + (item.kg ?? 0), 0);
+  return (
+    <div className="detail-section">
+      <strong>O que foi produzido</strong>
+      <table className="stops-table mortar-table mortar-made-table">
+        <thead>
+          <tr>
+            <th>Produto</th>
+            {spouts.map((spout) => (
+              <th key={spout.id} className="n">
+                {spout.name}
+              </th>
+            ))}
+            <th className="n">Sacos</th>
+            <th className="n">Toneladas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {made.map((item) => (
+            <tr key={item.name}>
+              <td>{item.name}</td>
+              {spouts.map((spout) => (
+                <td key={spout.id} className="n muted">
+                  {item.bySpout[spout.id] ? integer(item.bySpout[spout.id]) : '—'}
+                </td>
+              ))}
+              <td className="n">
+                <b>{integer(item.bags)}</b>
+              </td>
+              <td className="n">{item.kg == null ? 'sem produto' : `${tons(item.kg)} t`}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            {spouts.map((spout) => (
+              <td key={spout.id} className="n">
+                {integer(spout.bags)}
+              </td>
+            ))}
+            <td className="n">
+              <b>{integer(total)}</b>
+            </td>
+            <td className="n">
+              <b>{tons(totalKg)} t</b>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
 type Stop = {
   spoutId: string;
   state: string;
@@ -210,7 +338,29 @@ export function MortarShiftBoard({
   const [againstDay, setAgainstDay] = useState('');
   const [pickingDay, setPickingDay] = useState(false);
   // Which curve the board draws: the line, one spout, or the spouts side by side.
-  const [focusSpout, setFocusSpout] = useState<string>('line');
+  const [focusSpout, setFocusSpoutState] = useState<string>('line');
+  // Picking a spout reloads the board and changes the blocks above the curve; the button the
+  // reader pressed stays where it was on screen instead of the page jumping.
+  const anchor = useRef<{ element: HTMLElement; top: number; until: number } | null>(null);
+  const setFocusSpout = (value: string, event?: MouseEvent<HTMLElement>) => {
+    if (event)
+      anchor.current = {
+        element: event.currentTarget,
+        top: event.currentTarget.getBoundingClientRect().top,
+        until: Date.now() + 5000,
+      };
+    setFocusSpoutState(value);
+  };
+  useLayoutEffect(() => {
+    const held = anchor.current;
+    if (!held) return;
+    if (Date.now() > held.until || !held.element.isConnected) {
+      anchor.current = null;
+      return;
+    }
+    const moved = held.element.getBoundingClientRect().top - held.top;
+    if (Math.abs(moved) > 1) window.scrollBy(0, moved);
+  });
   const [detail, setDetail] = useState<Focus | null>(null);
   const [editing, setEditing] = useState(false);
   const [editingFormula, setEditingFormula] = useState(false);
@@ -230,6 +380,8 @@ export function MortarShiftBoard({
   const response = usePoll<MortarBoardResponse>(
     query(date) + (median ? `&compare=median&days=${median}` : ''),
     30000,
+    // Switching spout keeps the board on screen while the new one loads: the page stays put.
+    { keepPrevious: true },
   );
   const below = usePoll<MortarBoardResponse>(comparedDay ? query(comparedDay) : null, 60000);
   // A line that works one shift reads its day only (the ceramic board's rule, ShiftBoard.tsx).
@@ -466,6 +618,7 @@ export function MortarShiftBoard({
           and where it closes; beside it, the three figures that explain it. */}
       <div className="mortar-summary">
         <div className={`mortar-hero ${tone}`}>
+          <div className="mortar-hero-row">
           <div className="mortar-hero-top clickable" {...opens('produced')}>
             <span>Produzido</span>
             <b>
@@ -479,6 +632,8 @@ export function MortarShiftBoard({
                 </i>
               )}
             </em>
+          </div>
+          <HeroMade spouts={spout ? data.spouts.filter((item) => item.id === spout) : data.spouts} />
           </div>
           {target ? (
             <>
@@ -623,7 +778,7 @@ export function MortarShiftBoard({
               <button
                 type="button"
                 className={focusSpout === 'line' ? 'active' : ''}
-                onClick={() => setFocusSpout('line')}
+                onClick={(event) => setFocusSpout('line', event)}
               >
                 Linha toda
               </button>
@@ -632,7 +787,7 @@ export function MortarShiftBoard({
                   type="button"
                   key={item.id}
                   className={focusSpout === item.id ? 'active' : ''}
-                  onClick={() => setFocusSpout(item.id)}
+                  onClick={(event) => setFocusSpout(item.id, event)}
                 >
                   <i className="mortar-swatch" style={{ background: palette.spout(index) }} /> Bico{' '}
                   {item.name}
@@ -641,7 +796,7 @@ export function MortarShiftBoard({
               <button
                 type="button"
                 className={focusSpout === 'compare' ? 'active' : ''}
-                onClick={() => setFocusSpout('compare')}
+                onClick={(event) => setFocusSpout('compare', event)}
               >
                 Comparar bicos
               </button>
@@ -1406,6 +1561,9 @@ function MortarDetailModal({
           </div>
         )}
 
+        {focus === 'produced' && (
+          <MadeTable spouts={spout ? board.spouts.filter((item) => item.id === spout) : board.spouts} />
+        )}
         {data && (focus === 'produced' || focus === 'target' || focus === 'projection') && (
           <>
             <div className="detail-section">

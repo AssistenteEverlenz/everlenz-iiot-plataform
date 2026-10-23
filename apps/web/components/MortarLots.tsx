@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { usePoll } from './data';
 import { ModalPortal } from './ModalPortal';
+import { CampaignBridge, type CampaignData } from './MortarBridge';
 import { clock, integer, kilos, tons } from './mortarShared';
 
 /**
@@ -19,6 +20,8 @@ export type Lot = {
   product?: string | null;
   batches: number;
   mixedKg: number;
+  /** What the recipe asked for, against the scale's mixedKg. */
+  recipeKg?: number;
   startedAt: string;
   lastBatchAt: string;
   /** First and last bag of the lot; null while none came out yet. */
@@ -29,6 +32,8 @@ export type Lot = {
   expectedBags?: number | null;
   baggedKg: number;
   products: Array<{ name: string; bags: number; kg: number | null }>;
+  /** The run of lots of the mix this lot belongs to, and why its mixed and bagged differ. */
+  campaign?: CampaignData | null;
 };
 
 const day = (iso: string) => {
@@ -169,19 +174,12 @@ export function LotsTable({ lots, product }: { lots: Lot[]; product?: string }) 
               </div>
               <p className="mortar-explain">
                 {open.baggedFrom
-                  ? `Os sacos de ${open.product ?? open.recipe} saíram deste lote de ${between(open.baggedFrom, open.baggedUntil)}. `
+                  ? `Os sacos deste lote saíram de ${between(open.baggedFrom, open.baggedUntil)}, na ordem do silo pulmão: cada saco vem do lote mais antigo do mesmo produto que ainda tinha massa.`
                   : open.product
-                    ? 'Nenhum saco deste lote saiu ainda: a massa está no silo. '
-                    : `A receita ${open.recipe} não está ligada a um produto, então não dá para saber quais sacos saíram dela: ligue-a em Produtos e receitas. `}
-                Os sacos seguem a ordem do silo pulmão: cada saco vem do lote mais antigo do mesmo
-                produto que ainda tinha massa, então um lote só tem o seu produto e, no máximo, os
-                sacos que a sua massa dá. O que passar disso fica no último lote do produto, como
-                diferença.
-                {openDifference?.tone === 'over' &&
-                  ' Saíram mais sacos do que a massa misturada dá: vale conferir o peso de corte do saco e a balança.'}
-                {openDifference?.tone === 'under' &&
-                  ' Saíram menos sacos do que a massa dá: parte pode ainda estar no silo, ter ido para outro produto na troca ou ter sido perdida.'}
+                    ? 'Nenhum saco deste lote saiu ainda: a massa está no silo.'
+                    : `A receita ${open.recipe} não está ligada a um produto, então não dá para saber quais sacos saíram dela: ligue-a em Produtos e receitas.`}
               </p>
+              {open.campaign && <CampaignBridge campaign={open.campaign} />}
             </div>
           </div>
         </ModalPortal>

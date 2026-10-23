@@ -121,7 +121,7 @@ export function MortarPanel({
         ) : view === 'mortar_materials' ? (
           <Materials data={data} deviceId={deviceId} />
         ) : (
-          <Yield data={data} onLink={master ? () => setModal('products') : undefined} />
+          <Yield data={data} deviceId={deviceId} onLink={master ? () => setModal('products') : undefined} />
         )}
         {modal === 'products' && (
           <ModalPortal>

@@ -14246,3 +14246,398 @@ button.mortar-spout:hover .mortar-spout-open {
 .mortar-day-balance-note b {
   color: #20353d;
 }
+
+/* From mixed to bagged, step by step (MortarBridge.tsx): a horizontal waterfall on one scale.
+   Label, track and value in three columns; a step opens to where it comes from. */
+.mb {
+  display: grid;
+  gap: 12px;
+  container-type: inline-size;
+}
+.mb-head {
+  display: grid;
+  gap: 4px;
+}
+.mb-head > span {
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.mb-head p {
+  margin: 0;
+  color: #4d6770;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.mb-head b {
+  color: #0b2028;
+  font-weight: 600;
+}
+.mb-chart {
+  display: grid;
+  gap: 2px;
+}
+.mb-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: #20353d;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+button.mb-row {
+  cursor: pointer;
+}
+button.mb-row:hover {
+  border-color: var(--brand-accent, #12b8a6);
+}
+.mb-step.open > .mb-row {
+  border-color: #e3eaec;
+  background: #f6f9f9;
+}
+.mb-row.total {
+  font-weight: 600;
+}
+.mb-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mb-label u {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.mb-label em {
+  margin-left: auto;
+  color: #a7b6bb;
+  font-style: normal;
+  transition: transform 0.15s ease;
+}
+.mb-step.open .mb-label em {
+  transform: rotate(90deg);
+}
+.mb-track {
+  position: relative;
+  height: 16px;
+}
+.mb-bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  min-width: 2px;
+  border-radius: 3px;
+}
+.mb-row.total .mb-track {
+  height: 20px;
+}
+.mb-bar.mixed {
+  background: #c9a36a;
+}
+.mb-bar.bagged {
+  background: var(--brand-accent, #12b8a6);
+}
+.mb-legend .mb-scale {
+  margin-left: auto;
+  color: #a2b2b7;
+}
+.mb-guide {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: #d5dfe2;
+}
+.mb-value {
+  color: #0b2028;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mb-value.minus {
+  color: #b5482a;
+}
+.mb-value.plus {
+  color: #2f6f62;
+}
+.mb-detail {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 8px;
+  padding: 10px 14px 12px calc(min(210px, 32%) + 20px);
+  color: #4d6770;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.mb-detail p {
+  margin: 0;
+}
+.mb-detail ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mb-detail li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px dashed #e3eaec;
+}
+.mb-detail li b {
+  flex: none;
+  color: #20353d;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mb-detail li.more {
+  color: #8a9ca2;
+  border-bottom: 0;
+}
+.mb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+  padding-left: 8px;
+  color: #71868d;
+  font-size: 11.5px;
+}
+.mb-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mb-legend u {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.mb-closed {
+  margin: 0;
+  color: #2f6f62;
+  font-size: 13px;
+}
+@container (max-width: 560px) {
+  .mb-row {
+    grid-template-columns: minmax(0, 1fr) 82px;
+    grid-template-areas: 'label value' 'track track';
+    gap: 4px 10px;
+  }
+  .mb-label {
+    grid-area: label;
+  }
+  .mb-track {
+    grid-area: track;
+  }
+  .mb-value {
+    grid-area: value;
+  }
+  .mb-detail {
+    padding-left: 14px;
+  }
+}
+
+/* The produced figure and, beside it, what it was made of: the products with a thin bar, and
+   the spouts that add up to it (MortarShift.tsx, HeroMade). */
+.mortar-hero-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 28px;
+}
+.mortar-hero-made {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  container-type: inline-size;
+  padding-left: 22px;
+  border-left: 1px solid #e3ebed;
+}
+.mortar-hero-made ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mortar-hero-made li {
+  display: grid;
+  grid-template-columns: minmax(120px, 2.2fr) minmax(36px, 1fr) 44px 52px;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.mortar-hero-made li > span {
+  overflow: hidden;
+  color: #20353d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mortar-hero-made li > i {
+  align-self: center;
+  height: 6px;
+  border-radius: 3px;
+  background: #eef3f4;
+}
+.mortar-hero-made li > i > u {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--brand-accent, #12b8a6);
+  opacity: 0.75;
+}
+.mortar-hero-made li > b {
+  color: #0b2028;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-hero-made li > small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-hero-made li.more {
+  display: block;
+  color: #8a9ca2;
+  font-size: 11.5px;
+}
+.mortar-hero-made p {
+  margin: 0;
+  color: #71868d;
+  font-size: 12px;
+}
+.mortar-hero-made p b {
+  color: #20353d;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mortar-made-table tfoot td {
+  border-top: 1px solid #d5dfe2;
+  color: #20353d;
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .mortar-hero-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mortar-hero-made {
+    padding-left: 0;
+    padding-top: 8px;
+    border-left: 0;
+    border-top: 1px solid #e3ebed;
+  }
+}
+
+/* The recipes without a product, and what the mixer was making when their bags left. */
+.unlinked-modal {
+  width: min(680px, 100%);
+}
+.unlinked-lead {
+  margin: 4px 0 16px;
+  color: #4d6770;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.unlinked-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.unlinked-list > li {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #e3ebed;
+  border-radius: 12px;
+}
+.unlinked-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 14px;
+}
+.unlinked-name b {
+  color: #0b2028;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+.unlinked-name span {
+  color: #71868d;
+  font-size: 12.5px;
+}
+.unlinked-mixer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.unlinked-mixer > span {
+  margin-right: 2px;
+  color: #71868d;
+}
+.unlinked-mixer em {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f1f5f6;
+  color: #20353d;
+  font-style: normal;
+}
+.unlinked-mixer em b {
+  margin-left: 4px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.unlinked-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #d9a441;
+  border-radius: 0 8px 8px 0;
+  background: #fdf8ee;
+  color: #6b5a33;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.unlinked-action {
+  display: flex;
+  gap: 8px;
+}
+.unlinked-action select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Narrow, the bars give way: the product names are read whole. */
+@container (max-width: 440px) {
+  .mortar-hero-made li {
+    grid-template-columns: minmax(0, 1fr) 44px 52px;
+  }
+  .mortar-hero-made li > i {
+    display: none;
+  }
+}

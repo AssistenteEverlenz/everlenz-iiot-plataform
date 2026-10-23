@@ -21,6 +21,8 @@ import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
 import { MortarShiftBoard, type MortarBoardResponse } from './MortarShift';
 import { LotsTable, useLots } from './MortarLots';
+import { PeriodBridge, useReconcile } from './MortarBridge';
+import { UnlinkedNotice } from './MortarUnlinked';
 import {
   PRODUCT_COLORS,
   STATES,
@@ -259,7 +261,7 @@ export function Bagging({
   const opened = spouts.find((spout) => spout.id === spoutOpen);
   const spoutCards = (
     <>
-      <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
+      <Unlinked bags={totals.unlinkedBags} onLink={onLink} deviceId={deviceId} from={data.from} to={data.to} />
       <div className="mortar-divider" role="separator" />
       <div className="mortar-spouts">
         {spouts.map((spout, index) => (
@@ -412,7 +414,7 @@ function SpoutsInWindow({
   const data = summary.data;
   return (
     <>
-      <Unlinked bags={unlinkedBags} onLink={onLink} />
+      <Unlinked bags={unlinkedBags} onLink={onLink} deviceId={deviceId} from={boardDate} to={boardDate} />
       <div className="mortar-divider" role="separator" />
       <div className="mortar-spouts">
         {spouts.map((spout, index) => (
@@ -1066,8 +1068,23 @@ function BaggingCharts({ data }: { data: Summary }) {
   );
 }
 
-export function Unlinked({ bags, onLink }: { bags: number; onLink?: () => void }) {
+export function Unlinked({
+  bags,
+  onLink,
+  deviceId,
+  from,
+  to,
+}: {
+  bags: number;
+  onLink?: () => void;
+  /** Given, the notice opens the window of the recipes without a product of the period. */
+  deviceId?: string;
+  from?: string;
+  to?: string;
+}) {
   if (!bags) return null;
+  if (deviceId && from && to)
+    return <UnlinkedNotice bags={bags} deviceId={deviceId} from={from} to={to} canLink={Boolean(onLink)} />;
   return (
     <div className="mortar-warning">
       <span>
@@ -1156,7 +1173,7 @@ export function Output({
           hint={products[0] ? `mais produzido: ${products[0].name}` : 'nenhum produzido no período'}
         />
       </div>
-      <Unlinked bags={totals.unlinkedBags} onLink={onLink} />
+      <Unlinked bags={totals.unlinkedBags} onLink={onLink} deviceId={deviceId} from={data.from} to={data.to} />
       <div className="mortar-switches">
         <div className="widget-period" role="group" aria-label="Visualização">
           {DISPLAYS.map(([key, label]) => (
@@ -1891,9 +1908,19 @@ function MaterialsModal({
 // ---------------------------------------------------------------------------------------------
 // Rendimento
 
-export function Yield({ data, onLink }: { data: Summary; onLink?: () => void }) {
+export function Yield({
+  data,
+  onLink,
+  deviceId,
+}: {
+  data: Summary;
+  onLink?: () => void;
+  /** Given, the card says where the difference comes from (MortarBridge.tsx). */
+  deviceId?: string;
+}) {
   const palette = useContext(MortarColors);
   const { yield: result } = data;
+  const bridge = useReconcile(deviceId, data.from, data.to).data;
   const peak = Math.max(1, result.mixedKg, result.baggedKg);
   return (
     <>
@@ -1923,12 +1950,15 @@ export function Yield({ data, onLink }: { data: Summary; onLink?: () => void }) 
           <b>{tons(result.baggedKg)} t</b>
         </div>
       </div>
-      <Explain>
-        A diferença soma a perda do processo e o que ainda está no silo pulmão: num período curto o
-        silo pesa mais, num mês ela mostra a perda de verdade. Negativa quer dizer que se ensacou o
-        que já estava no silo antes do período.
-      </Explain>
-      <Unlinked bags={result.unlinkedBags} onLink={onLink} />
+      {bridge ? (
+        <PeriodBridge data={bridge} />
+      ) : (
+        <Explain>
+          A diferença soma a perda do processo e o que ainda está no silo pulmão: num período curto
+          o silo pesa mais, num mês ela mostra a perda de verdade.
+        </Explain>
+      )}
+      <Unlinked bags={result.unlinkedBags} onLink={onLink} deviceId={deviceId} from={data.from} to={data.to} />
     </>
   );
 }
