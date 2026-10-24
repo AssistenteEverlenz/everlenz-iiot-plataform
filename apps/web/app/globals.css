@@ -16079,3 +16079,233 @@ button.mortar-spout:hover .mortar-spout-open {
     font-size: 11px;
   }
 }
+
+/* The bagging board, second pass: the produced figure first, carrying the period and the line's
+   state; the spouts' figures each with its own label; the products without a sideways scroll. */
+.mortar-board-filters {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 8px;
+}
+.mortar-board-filters .mortar-board-switches {
+  margin-left: auto;
+}
+.mortar-hero-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 2px;
+}
+.mortar-hero-period {
+  color: #4d6770;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.mortar-hero-period small {
+  color: #8a9ca2;
+  font-weight: 400;
+}
+.mortar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--state) 35%, #fff);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--state) 9%, #fff);
+  color: color-mix(in srgb, var(--state) 72%, #0b2028);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mortar-chip i {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--state);
+}
+.mortar-chip.pulse i::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--state);
+  border-radius: 50%;
+  opacity: 0;
+  animation: mortar-pulse 2s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mortar-chip.pulse i::after {
+    animation: none;
+  }
+}
+/* Narrow, the product names wrap instead of being cut. */
+@container (max-width: 440px) {
+  .mortar-hero-made li {
+    grid-template-columns: minmax(0, 1fr) 44px 52px;
+    align-items: start;
+  }
+  .mortar-hero-made li > span {
+    display: flex;
+    align-items: flex-start;
+    overflow: visible;
+    white-space: normal;
+    line-height: 1.3;
+  }
+  .mortar-hero-made li > span .tone-dot {
+    margin-top: 4px;
+  }
+}
+
+/* A spout's figures: on the wide board the column heads name them; narrow, each says its own. */
+.sr-label {
+  display: none;
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sr-now {
+  color: #20353d;
+  font-weight: 600;
+}
+.sr-pace b small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.sr-time {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 10px;
+}
+.sr-time .sr-label {
+  grid-column: 1 / -1;
+}
+.sr-time-share {
+  color: #0b2028;
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@container (max-width: 760px) {
+  .spout-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) 16px;
+    grid-template-areas:
+      'id id id open'
+      'bags bags bags bags'
+      'pace time stops stops';
+  }
+  .sr-label {
+    display: block;
+  }
+  .sr-pace,
+  .sr-time,
+  .sr-stops {
+    align-content: start;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #f6f9f9;
+  }
+  .sr-time {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+  .sr-pace b,
+  .sr-stops b,
+  .sr-time-share {
+    font-size: 17px;
+  }
+  .sr-pace small,
+  .sr-stops small {
+    white-space: normal;
+  }
+}
+
+/* The products of the period: narrow, each one a block -- name, bags and tons, its share. */
+@media (max-width: 640px) {
+  .mortar-panel .stops-table.mortar-products thead {
+    display: none;
+  }
+  .mortar-panel .stops-table.mortar-products,
+  .mortar-panel .stops-table.mortar-products tbody {
+    display: block;
+    width: 100%;
+  }
+  .mortar-panel .stops-table.mortar-products tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: baseline;
+    gap: 2px 12px;
+    padding: 10px 4px;
+    border-bottom: 1px solid #e6edef;
+  }
+  .mortar-panel .stops-table.mortar-products td {
+    padding: 0;
+    border: 0;
+  }
+  .mortar-panel .stops-table.mortar-products td:first-child {
+    min-width: 0;
+  }
+  .mortar-panel .stops-table.mortar-products td:first-child b {
+    white-space: normal;
+  }
+  .mortar-panel .stops-table.mortar-products td:nth-child(3)::after {
+    content: ' t';
+    color: #8a9ca2;
+  }
+  .mortar-panel .stops-table.mortar-products td:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Each cell of a product in its own place: name, bags and tons on one line, the share under. */
+@media (max-width: 640px) {
+  .mortar-panel .stops-table.mortar-products td:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .mortar-panel .stops-table.mortar-products td:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+    color: #0b2028;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: right;
+  }
+  .mortar-panel .stops-table.mortar-products td:nth-child(3) {
+    grid-column: 3;
+    grid-row: 1;
+    color: #4d6770;
+    font-size: 12.5px;
+    text-align: right;
+  }
+  .mortar-panel .stops-table.mortar-products td:nth-child(4) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 4px;
+  }
+}
+
+/* The spout's total under what is on it now; its three figures as tiles of one height; the
+   longest stop small whatever the tile's own sizes. */
+.sr-total {
+  flex-basis: 100%;
+}
+.mortar-tiles .shift-kpi .kpi-longest,
+.mortar-tiles .shift-kpi .kpi-longest b {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+@container (max-width: 760px) {
+  .spout-row > .sr-pace,
+  .spout-row > .sr-time,
+  .spout-row > .sr-stops {
+    align-self: stretch;
+  }
+}

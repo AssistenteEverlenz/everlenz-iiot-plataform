@@ -517,7 +517,9 @@ export function MortarShiftBoard({
       ? remaining > 0
         ? `termina em ${duration(remaining)}`
         : // Past its end and still bagging (the shift follows the line).
-          'em hora extra'
+          data.state === 'producing'
+          ? 'em hora extra'
+          : 'turno encerrado'
       : data.status === 'finished'
         ? data.mode === 'day'
           ? 'dia encerrado'
@@ -534,6 +536,22 @@ export function MortarShiftBoard({
   );
   const sinceBag = lastBag ? Math.max(0, (new Date(data.now).getTime() - lastBag) / 1000) : null;
   const pace = paceSeries(board.curve);
+  const lastBagClock = lastBag ? clock(new Date(lastBag).toISOString()) : null;
+  const chip: { text: string; color: string; pulse?: boolean } =
+    data.status === 'upcoming'
+      ? { text: `Começa às ${clock(board.span.start)}`, color: '#98a6ab' }
+      : !live || (remaining <= 0 && data.state !== 'producing')
+        ? {
+            // Past the shift and quiet: the day is over, not the line lost.
+            text: lastBagClock ? `Encerrado · último saco às ${lastBagClock}` : 'Encerrado',
+            color: '#98a6ab',
+          }
+        : data.state === 'producing'
+          ? { text: `Ensacando agora · ${statusText}`, color: stateInfo.producing.color, pulse: true }
+          : {
+              text: `${label(data.state)}${sinceBag != null && sinceBag >= 60 ? ` há ${duration(sinceBag)}` : ''}`,
+              color: stateInfo[data.state]?.color ?? '#98a6ab',
+            };
   const opens = (focus: Focus) => ({
     role: 'button' as const,
     tabIndex: 0,
@@ -570,7 +588,10 @@ export function MortarShiftBoard({
         ? `Fechou em ${percent(ratio, 0)} da meta`
         : target.health === 'on_track'
           ? `No ritmo, fecha em ${percent(projectedRatio, 0)} da meta`
-          : `Precisa de ${fmt(target.requiredPerHour ?? 0)} ${unit}/h para bater a meta`;
+          : (target.requiredPerHour ?? 0) > 0
+            ? `Precisa de ${fmt(target.requiredPerHour ?? 0)} ${unit}/h para bater a meta`
+            : // No time left: what is missing, not a pace of zero.
+              `Faltaram ${fmt(Math.max(0, target.value - target.actual))} ${unit} para a meta`;
 
   const dayField = onDate && (
     <div className="shift-field">
@@ -652,43 +673,10 @@ export function MortarShiftBoard({
 
   return (
     <div className={`shift-board mortar-board${other ? ' comparing' : ''}`}>
-      <div className="mortar-board-head mortar-status">
-        {/* What the line is doing now, before anything else: its state in colour, how long since
-            the last bag, and the product on the spouts. */}
-        <div
-          className={`mortar-live${live ? ' on' : ''}`}
-          style={{ '--state': live ? stateInfo[data.state]?.color : '#98a6ab' } as React.CSSProperties}
-        >
-          <span className="mortar-live-dot" aria-hidden="true" />
-          <div>
-            <b>{live ? label(data.state) : data.status === 'upcoming' ? 'Ainda não começou' : statusText.charAt(0).toUpperCase() + statusText.slice(1)}</b>
-            <small>
-              {live
-                ? sinceBag == null
-                  ? 'nenhum saco ainda'
-                  : sinceBag < 60
-                    ? 'último saco agora'
-                    : `último saco há ${duration(sinceBag)}`
-                : `${integer(board.totals.bags)} sacos no período`}
-            </small>
-          </div>
-        </div>
-        {live && data.product && (
-          <div className="mortar-now" style={{ '--tone': tones.get(data.product) ?? '#5f7d95' } as React.CSSProperties}>
-            <small>No bico</small>
-            <b>
-              <em className="tone-dot" />
-              {data.product}
-            </b>
-          </div>
-        )}
-        <div className="mortar-board-title">
-          <strong>{title}</strong>
-          <span>
-            {statusText}
-            {data.defaultShifts ? ' · turno padrão (cadastre os turnos em Produção)' : ''}
-          </span>
-        </div>
+      {/* The controls in one row: the day, the comparison, shift or day. */}
+      <div className="mortar-board-filters">
+        {dayField}
+        {compareField}
         <div className="mortar-board-switches">
           {mode === 'shift' && data.available.length > 1 && (
             <div className="shift-mode shift-pick" role="group" aria-label="Turno">
@@ -715,15 +703,24 @@ export function MortarShiftBoard({
           )}
         </div>
       </div>
-      <div className="mortar-board-filters">
-        {dayField}
-        {compareField}
-      </div>
 
       {/* The period in one block: what was made against the target, where it should be by now
           and where it closes; beside it, the three figures that explain it. */}
       <div className="mortar-summary">
         <div className={`mortar-hero ${tone}`}>
+          <div className="mortar-hero-head">
+            <span className="mortar-hero-period" title={data.defaultShifts ? 'Turno padrão: cadastre os turnos em Produção' : undefined}>
+              {title}
+              {data.defaultShifts && <small> · turno padrão</small>}
+            </span>
+            <span
+              className={`mortar-chip${chip.pulse ? ' pulse' : ''}`}
+              style={{ '--state': chip.color } as React.CSSProperties}
+            >
+              <i aria-hidden="true" />
+              {chip.text}
+            </span>
+          </div>
           <div className="mortar-hero-row">
           <div className="mortar-hero-top clickable" {...opens('produced')}>
             <span>Produzido</span>

@@ -483,6 +483,9 @@ function SpoutRows({
           made.set(name, (made.get(name) ?? 0) + item.bags);
         }
         const nowName = spout.product ?? spout.recipe;
+        // Live, the large figure is what the spout is on now; its total sits beside, small.
+        const nowBags = live && nowName ? made.get(nowName) : undefined;
+        const several = made.size > 1;
         return (
           <button
             type="button"
@@ -513,7 +516,18 @@ function SpoutRows({
             </span>
             <span className="sr-bags">
               <span className="sr-figure">
-                <b>{integer(spout.bags)}</b> sacos <small>{tons(spout.kg)} t</small>
+                {nowBags != null && several ? (
+                  <>
+                    <b>{integer(nowBags)}</b> sacos de <span className="sr-now">{nowName}</span>
+                    <small className="sr-total">
+                      {integer(spout.bags)} no bico · {tons(spout.kg)} t
+                    </small>
+                  </>
+                ) : (
+                  <>
+                    <b>{integer(spout.bags)}</b> sacos <small>{tons(spout.kg)} t</small>
+                  </>
+                )}
                 {behind && <em className="sr-behind">abaixo dos outros</em>}
               </span>
               <span className="sr-bar" aria-hidden="true">
@@ -529,10 +543,16 @@ function SpoutRows({
               </span>
             </span>
             <span className="sr-pace">
-              <b>{spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}</b>
-              <small>sacos/h · {perBag(spout.secondsPerBag)}</small>
+              <em className="sr-label">Ritmo</em>
+              <b>
+                {spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}
+                <small> sacos/h</small>
+              </b>
+              <small>{perBag(spout.secondsPerBag)} por saco</small>
             </span>
             <span className="sr-time">
+              <em className="sr-label">Ensacando</em>
+              <b className="sr-time-share">{enabled ? percent(spout.runningS / enabled, 0) : '—'}</b>
               <span className="sr-timebar" aria-hidden="true">
                 {(
                   [
@@ -546,11 +566,11 @@ function SpoutRows({
                     <i key={key} style={{ width: `${(seconds / Math.max(1, enabled)) * 100}%`, background: STATES[key].color }} />
                   ))}
               </span>
-              <small>{enabled ? `${percent(spout.runningS / enabled, 0)} ensacando` : 'sem tempo'}</small>
             </span>
             <span className="sr-stops">
+              <em className="sr-label">Paradas</em>
               <b>{integer(spout.stops)}</b>
-              <small>{spout.stops > 0 ? duration(spout.stopSeconds) : 'nenhuma'}</small>
+              <small>{spout.stops > 0 ? `${duration(spout.stopSeconds)} paradas` : 'nenhuma'}</small>
             </span>
             <span className="sr-open" aria-hidden="true">
               ›
