@@ -16309,3 +16309,139 @@ button.mortar-spout:hover .mortar-spout-open {
     align-self: stretch;
   }
 }
+
+/* The spouts as cards, everything inside (third pass): the spout, its state and product on top;
+   its bags and the bar by product (one scale for all spouts); a strip of three figures, each
+   with its label, apart by hairlines. Side by side on a wide board, stacked on a phone. */
+.spout-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+.spout-rows .spout-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: none;
+  align-content: start;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border: 1px solid #e3ebed;
+  border-top: 3px solid var(--spout);
+  border-left-width: 1px;
+  border-radius: 14px;
+}
+.spout-rows .spout-row:hover {
+  border-color: var(--brand-accent, #12b8a6);
+  border-top-color: var(--spout);
+}
+.spout-rows .sr-id {
+  grid-area: auto;
+  gap: 4px;
+}
+.spout-rows .sr-id b {
+  font-size: 15px;
+}
+.spout-rows .sr-id .sr-open {
+  margin-left: auto;
+  color: #a7b6bb;
+  font-size: 18px;
+  font-weight: 400;
+}
+.spout-rows .sr-bags {
+  grid-area: auto;
+}
+.spout-rows .sr-figure b {
+  font-size: 26px;
+}
+.spout-rows .sr-bar {
+  height: 12px;
+  border-radius: 6px;
+}
+.spout-rows .sr-bar > span {
+  border-radius: 6px;
+}
+/* The strip: three equal parts, a hairline between them, labels always shown. */
+.sr-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 -16px -12px;
+  padding: 10px 0;
+  border-top: 1px solid #edf2f3;
+  background: #fafcfc;
+  border-radius: 0 0 13px 13px;
+}
+.spout-rows .sr-stats > span {
+  grid-area: auto;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 14px;
+  border-radius: 0;
+  background: none;
+}
+.spout-rows .sr-stats > span + span {
+  border-left: 1px solid #e6edef;
+}
+.spout-rows .sr-label {
+  display: block;
+  margin-bottom: 2px;
+}
+.spout-rows .sr-pace b,
+.spout-rows .sr-stops b,
+.spout-rows .sr-time-share {
+  font-size: 17px;
+}
+.spout-rows .sr-time {
+  grid-template-columns: minmax(0, 1fr);
+}
+.spout-rows .sr-timebar {
+  margin-top: 4px;
+}
+.spout-rows .sr-pace small,
+.spout-rows .sr-stops small {
+  white-space: normal;
+}
+@container (max-width: 760px) {
+  .spout-rows .spout-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: none;
+  }
+  .spout-rows .sr-stats > span {
+    padding: 0 10px;
+  }
+}
+
+/* The produced card, whole, opens what was produced; narrow, its products go under the figure. */
+.mortar-hero-row.clickable {
+  cursor: pointer;
+}
+.mortar-hero {
+  container-type: inline-size;
+}
+@container (max-width: 560px) {
+  .mortar-hero-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mortar-hero-made {
+    padding-left: 0;
+    padding-top: 8px;
+    border-left: 0;
+    border-top: 1px solid #e3ebed;
+  }
+}
+.mortar-default-shift {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f1f5f6;
+  color: #71868d;
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: 1px;
+}
+
+.spout-rows .sr-pace b {
+  white-space: nowrap;
+}

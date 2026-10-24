@@ -5155,4 +5155,35 @@
       color: #a5b6bc;
     }
   }
+  :root[data-theme='dark'] .spout-rows .spout-row {
+    border: 1px solid #202d32;
+    border-top: 3px solid var(--spout);
+  }
+  :root[data-theme='dark'] .spout-rows .spout-row:hover {
+    border-color: var(--brand-accent, #12b8a6);
+    border-top-color: var(--spout);
+  }
+  :root[data-theme='dark'] .spout-rows .sr-id .sr-open {
+    color: #a7b6bb;
+  }
+  :root[data-theme='dark'] .sr-stats {
+    border-top: 1px solid #1b262a;
+    background: #141d20;
+  }
+  :root[data-theme='dark'] .spout-rows .sr-stats > span {
+    background: none;
+  }
+  :root[data-theme='dark'] .spout-rows .sr-stats > span + span {
+    border-left: 1px solid #1e2b30;
+  }
+  @container (max-width: 560px) {
+    :root[data-theme='dark'] .mortar-hero-made {
+      border-left: 0;
+      border-top: 1px solid #202d32;
+    }
+  }
+  :root[data-theme='dark'] .mortar-default-shift {
+    background: #192327;
+    color: #8d9ea3;
+  }
 }

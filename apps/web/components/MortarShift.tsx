@@ -711,7 +711,7 @@ export function MortarShiftBoard({
           <div className="mortar-hero-head">
             <span className="mortar-hero-period" title={data.defaultShifts ? 'Turno padrão: cadastre os turnos em Produção' : undefined}>
               {title}
-              {data.defaultShifts && <small> · turno padrão</small>}
+              {data.defaultShifts && <small className="mortar-default-shift">turno padrão</small>}
             </span>
             <span
               className={`mortar-chip${chip.pulse ? ' pulse' : ''}`}
@@ -721,8 +721,9 @@ export function MortarShiftBoard({
               {chip.text}
             </span>
           </div>
-          <div className="mortar-hero-row">
-          <div className="mortar-hero-top clickable" {...opens('produced')}>
+          {/* The whole block opens what was produced, not only the figure. */}
+          <div className="mortar-hero-row clickable" {...opens('produced')}>
+          <div className="mortar-hero-top">
             <span>Produzido</span>
             <b>
               {fmt(board.totals.actual)} <small>{unit}</small>

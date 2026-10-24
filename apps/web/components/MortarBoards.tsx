@@ -464,14 +464,7 @@ function SpoutRows({
 }) {
   const peak = Math.max(1, ...spouts.map((spout) => spout.bags));
   return (
-    <div className="spout-rows" role="table" aria-label="Bicos">
-      <div className="spout-rows-head" role="row">
-        <span>Bico</span>
-        <span>Sacos, por produto</span>
-        <span>Ritmo</span>
-        <span>Tempo</span>
-        <span>Paradas</span>
-      </div>
+    <div className="spout-rows" aria-label="Bicos">
       {spouts.map((spout, index) => {
         const state = STATES[spout.state];
         const enabled = spout.runningS + spout.idleS + spout.offS;
@@ -491,7 +484,6 @@ function SpoutRows({
             type="button"
             key={spout.id}
             className="spout-row"
-            role="row"
             style={{ '--spout': colorOf(index) } as React.CSSProperties}
             onClick={() => onOpen(spout.id)}
             title={`Abrir o bico ${spout.name}`}
@@ -500,6 +492,9 @@ function SpoutRows({
               <b>
                 <i aria-hidden="true" />
                 Bico {spout.name}
+                <span className="sr-open" aria-hidden="true">
+                  ›
+                </span>
               </b>
               {live && (
                 <em style={{ '--state': state.color } as React.CSSProperties}>
@@ -507,7 +502,8 @@ function SpoutRows({
                   {state.label}
                 </em>
               )}
-              {live && nowName && (
+              {/* The product on the spout, unless the bags figure below already names it. */}
+              {live && nowName && !(nowBags != null && several) && (
                 <small style={{ '--tone': tones.get(nowName) ?? '#5f7d95' } as React.CSSProperties}>
                   <u className="tone-dot" aria-hidden="true" />
                   {nowName}
@@ -535,45 +531,58 @@ function SpoutRows({
                   {[...made.entries()].map(([name, bags]) => (
                     <i
                       key={name}
-                      style={{ width: `${(bags / Math.max(1, spout.bags)) * 100}%`, background: tones.get(name) ?? '#9aa9ad' }}
+                      style={{
+                        width: `${(bags / Math.max(1, spout.bags)) * 100}%`,
+                        background: tones.get(name) ?? '#9aa9ad',
+                      }}
                       title={`${name}: ${integer(bags)} sacos`}
                     />
                   ))}
                 </span>
               </span>
             </span>
-            <span className="sr-pace">
-              <em className="sr-label">Ritmo</em>
-              <b>
-                {spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}
-                <small> sacos/h</small>
-              </b>
-              <small>{perBag(spout.secondsPerBag)} por saco</small>
-            </span>
-            <span className="sr-time">
-              <em className="sr-label">Ensacando</em>
-              <b className="sr-time-share">{enabled ? percent(spout.runningS / enabled, 0) : '—'}</b>
-              <span className="sr-timebar" aria-hidden="true">
-                {(
-                  [
-                    ['running', spout.runningS],
-                    ['idle', spout.idleS],
-                    ['off', spout.offS],
-                  ] as const
-                )
-                  .filter(([, seconds]) => seconds > 0)
-                  .map(([key, seconds]) => (
-                    <i key={key} style={{ width: `${(seconds / Math.max(1, enabled)) * 100}%`, background: STATES[key].color }} />
-                  ))}
+            {/* The spout's three figures in one strip, each with its own label, apart by a hairline. */}
+            <span className="sr-stats">
+              <span className="sr-pace">
+                <em className="sr-label">Ritmo</em>
+                <b>
+                  {spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}
+                  <small> sacos/h</small>
+                </b>
+                <small>{perBag(spout.secondsPerBag)} por saco</small>
               </span>
-            </span>
-            <span className="sr-stops">
-              <em className="sr-label">Paradas</em>
-              <b>{integer(spout.stops)}</b>
-              <small>{spout.stops > 0 ? `${duration(spout.stopSeconds)} paradas` : 'nenhuma'}</small>
-            </span>
-            <span className="sr-open" aria-hidden="true">
-              ›
+              <span className="sr-time">
+                <em className="sr-label">Ensacando</em>
+                <b className="sr-time-share">
+                  {enabled ? percent(spout.runningS / enabled, 0) : '—'}
+                </b>
+                <span className="sr-timebar" aria-hidden="true">
+                  {(
+                    [
+                      ['running', spout.runningS],
+                      ['idle', spout.idleS],
+                      ['off', spout.offS],
+                    ] as const
+                  )
+                    .filter(([, seconds]) => seconds > 0)
+                    .map(([key, seconds]) => (
+                      <i
+                        key={key}
+                        style={{
+                          width: `${(seconds / Math.max(1, enabled)) * 100}%`,
+                          background: STATES[key].color,
+                        }}
+                      />
+                    ))}
+                </span>
+              </span>
+              <span className="sr-stops">
+                <em className="sr-label">Paradas</em>
+                <b>{integer(spout.stops)}</b>
+                <small>
+                  {spout.stops > 0 ? `${duration(spout.stopSeconds)} paradas` : 'nenhuma'}
+                </small>
+              </span>
             </span>
           </button>
         );
