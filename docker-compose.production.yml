@@ -9,9 +9,12 @@ services:
     build: { context: ., dockerfile: infrastructure/mosquitto/Dockerfile }
     environment:
       MQTT_USERNAME: ${MQTT_USERNAME:-ingestor}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD}
+      # The broker's internal users read their passwords from Coolify variables named apart from
+      # the containers' own (2026-10-24): a Coolify update builds the compose with build-time
+      # variables only, and the old locked ones could neither be marked for the build nor deleted.
+      MQTT_PASSWORD: ${MQTT_INGESTOR_PASSWORD:?Set MQTT_INGESTOR_PASSWORD}
       MQTT_SIMULATOR_USERNAME: ${MQTT_SIMULATOR_USERNAME:-simulator}
-      MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_PASSWORD:?Set MQTT_SIMULATOR_PASSWORD}
+      MQTT_SIMULATOR_PASSWORD: ${MQTT_SIMULATOR_SECRET:?Set MQTT_SIMULATOR_SECRET}
       MQTT_DEVICE_A7_USERNAME: ${MQTT_DEVICE_A7_USERNAME:-a7-001}
       MQTT_DEVICE_A7_PASSWORD: ${MQTT_DEVICE_A7_PASSWORD:?Set MQTT_DEVICE_A7_PASSWORD}
       # Broker user the API sends equipment commands with. Empty = platform stays read-only.
@@ -58,7 +61,7 @@ services:
       MQTT_PORT: 1883
       MQTT_PROTOCOL: mqtt
       MQTT_USERNAME: ${MQTT_USERNAME:-ingestor}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD}
+      MQTT_PASSWORD: ${MQTT_INGESTOR_PASSWORD:?Set MQTT_INGESTOR_PASSWORD}
       MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-everlenz-ingestor}
       MQTT_DISCOVERY_MODE: ${MQTT_DISCOVERY_MODE:-false}
       MQTT_TOPIC_FILTER: ${MQTT_TOPIC_FILTER:-iiot/+/+/+/telemetry,data/POC/group1/A7-001}

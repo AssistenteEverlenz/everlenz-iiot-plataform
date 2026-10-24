@@ -32,8 +32,8 @@ O Coolify conecta o proxy aos serviços com domínio; `expose` indica a porta in
 | DATABASE_URL                                      | api, ingestor, operação de banco | Sim, Direct ou Session; senha URL-encoded                      |
 | DATABASE_SSL_CA_PEM                               | mesmos                           | Só se cadeia exigir CA adicional                               |
 | DATABASE_POOL_MAX                                 | api/ingestor                     | Padrão 5 por processo                                          |
-| MQTT_USERNAME / MQTT_PASSWORD                     | broker/ingestor                  | Nome `ingestor`, senha própria forte                           |
-| MQTT_SIMULATOR_USERNAME / MQTT_SIMULATOR_PASSWORD | broker                           | Nome `simulator`, senha separada; nenhum simulador inicia      |
+| MQTT_USERNAME / MQTT_INGESTOR_PASSWORD            | broker/ingestor                  | Nome `ingestor`, senha própria forte; marcar também para o build |
+| MQTT_SIMULATOR_USERNAME / MQTT_SIMULATOR_SECRET   | broker                           | Nome `simulator`, senha separada; marcar também para o build  |
 | Certificados MQTT                                 | broker                           | Caminho fixo `/data/coolify/certificates/mqtt.everlenz.com.br` |
 | DEV_TENANT_ID                                     | api                              | UUID de tenant cadastrado; não é autenticação                  |
 | MQTT_DISCOVERY_MODE                               | ingestor                         | false, exceto janela controlada de captura                     |

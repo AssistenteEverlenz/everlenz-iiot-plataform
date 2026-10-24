@@ -22,8 +22,8 @@
   },
   "runtimeSecretsRequired": [
     "DATABASE_URL",
-    "MQTT_PASSWORD",
-    "MQTT_SIMULATOR_PASSWORD",
+    "MQTT_INGESTOR_PASSWORD",
+    "MQTT_SIMULATOR_SECRET",
     "MQTT_DEVICE_A7_PASSWORD"
   ],
   "conditionalSecrets": ["DATABASE_SSL_CA_PEM"],
