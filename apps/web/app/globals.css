@@ -16475,69 +16475,6 @@ button.mortar-spout:hover .mortar-spout-open {
   opacity: 0.6;
   font-size: 11px;
 }
-.rc-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
-}
-.rc-card {
-  display: grid;
-  align-content: start;
-  gap: 14px;
-  min-width: 0;
-  padding: 15px 16px 14px;
-  border: 1px solid #e3ebed;
-  border-radius: 14px;
-  background: #fff;
-  color: #20353d;
-}
-.rc-card:hover {
-  border-color: var(--brand-accent, #12b8a6);
-}
-.rc-card > header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.rc-card > header > div {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.rc-card > header b {
-  overflow: hidden;
-  font-size: 15px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rc-card > header small {
-  color: #8a9ca2;
-  font-size: 12px;
-}
-.rc-card > header small span {
-  color: #24505a;
-  font-weight: 600;
-}
-.rc-card > header small.warn {
-  color: #b5762a;
-}
-.rc-card > header em {
-  flex: none;
-  color: #20353d;
-  font-size: 18px;
-  font-style: normal;
-  font-weight: 700;
-  text-align: right;
-  line-height: 1.1;
-}
-.rc-card > header em small {
-  display: block;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 .rc-comp {
   display: grid;
   gap: 8px;
@@ -16599,81 +16536,9 @@ button.mortar-spout:hover .mortar-spout-open {
   font-size: 10px;
   font-weight: 600;
 }
-.rc-figures {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid #edf2f3;
-  border-bottom: 1px solid #edf2f3;
-}
-.rc-figures > div {
-  display: grid;
-  align-content: start;
-  gap: 2px;
-  min-width: 0;
-  padding: 10px 10px 10px 0;
-}
-.rc-figures > div + div {
-  padding-left: 12px;
-  border-left: 1px solid #edf2f3;
-}
-.rc-figures span {
-  color: #8a9ca2;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.rc-figures b {
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.rc-figures small {
-  color: #8a9ca2;
-  font-size: 11.5px;
-  line-height: 1.35;
-}
-.rc-additives {
-  display: grid;
-  text-align: left;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 11px;
-  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 7%, #fff);
-}
-.rc-additives.empty {
-  padding: 8px 10px;
-  border: 1px dashed #cbdadd;
-  background: transparent;
-}
-.rc-hand {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: #fff;
-  font-size: 15px;
-}
-.rc-additives > div {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.rc-additives b {
-  font-size: 13px;
-}
-.rc-additives b small,
-.rc-additives > div > small {
-  color: #6c8188;
-  font-size: 11.5px;
-  font-weight: 400;
-}
-.rc-additives button,
 .rc-add button,
-.rc-additive footer button {
+.rc-additive footer button,
+.rt-edit {
   padding: 6px 12px;
   border: 1px solid #cbdadd;
   border-radius: 8px;
@@ -16684,23 +16549,302 @@ button.mortar-spout:hover .mortar-spout-open {
   font-weight: 600;
   cursor: pointer;
 }
-.rc-additives button:hover,
 .rc-add button:hover,
-.rc-additive footer button:hover {
+.rc-additive footer button:hover,
+.rt-edit:hover {
   border-color: var(--brand-accent, #12b8a6);
 }
-@container (max-width: 420px) {
-  .rc-grid {
+
+/* The recipes table: one row per recipe, sortable, a row opens to the batch drawn */
+.rt {
+  display: grid;
+  border: 1px solid #e3ebed;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.rt-row {
+  display: grid;
+  grid-template-columns:
+    minmax(160px, 1.5fr) minmax(80px, 0.9fr) 78px 104px 104px 88px 92px
+    minmax(170px, 1.5fr);
+  align-items: center;
+  gap: 14px;
+  padding: 11px 16px;
+  color: #20353d;
+}
+.rt-item {
+  border-top: 1px solid #edf2f3;
+}
+.rt-item > .rt-row {
+  cursor: pointer;
+}
+.rt-item > .rt-row:hover,
+.rt-item.open > .rt-row {
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 5%, #fff);
+}
+.rt-item > .rt-row:focus-visible {
+  outline: 2px solid var(--brand-accent, #12b8a6);
+  outline-offset: -2px;
+}
+.rt-item.idle .rt-name b,
+.rt-item.idle .rt-num b {
+  color: #8a9ca2;
+}
+.rt-headrow {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  background: #f6f9f9;
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.rt-headrow button {
+  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.rt-headrow button:hover,
+.rt-headrow button.sorted {
+  color: #20353d;
+}
+.rt-headrow button i {
+  display: inline-block;
+  width: 10px;
+  font-style: normal;
+}
+.rt-num {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 0;
+  text-align: right;
+}
+.rt-num b {
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rt-num small {
+  color: #8a9ca2;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.rt-meter {
+  display: block;
+  width: 64px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #edf2f3;
+}
+.rt-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--brand-accent, #12b8a6);
+}
+.rt-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.rt-name b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rt-name b i {
+  flex: none;
+  color: #8a9ca2;
+  font-style: normal;
+  transition: transform 0.15s;
+}
+.rt-item.open .rt-name b i {
+  transform: rotate(90deg);
+}
+.rt-name small {
+  overflow: hidden;
+  padding-left: 14px;
+  color: #8a9ca2;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rt-name small.warn {
+  color: #b5762a;
+}
+.rt-comp .rc-comp-bar {
+  height: 10px;
+  border-radius: 5px;
+}
+.rt-hand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.rt-hand em {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kind) 12%, #fff);
+  color: #20353d;
+  font-size: 11.5px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.rt-hand em u {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--kind),
+    var(--kind) 2px,
+    color-mix(in srgb, var(--kind) 45%, #fff) 2px,
+    color-mix(in srgb, var(--kind) 45%, #fff) 4px
+  );
+}
+.rt-hand > small {
+  color: #b4c2c6;
+}
+.rt-edit {
+  padding: 3px 9px;
+  font-size: 11.5px;
+}
+.rt-edit.add {
+  border-style: dashed;
+  color: #6c8188;
+}
+.rt-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px;
+  padding: 4px 16px 16px 30px;
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 5%, #fff);
+}
+.rt-detail dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.rt-detail dt {
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.rt-detail dd {
+  display: grid;
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.rt-detail dd small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+.rt-total {
+  border-top: 1px solid #dfe8ea;
+  background: #f6f9f9;
+}
+.rt-total .rt-name small {
+  padding-left: 0;
+}
+
+/* Narrow card: each recipe a compact block, the figures in a labelled strip */
+@container (max-width: 900px) {
+  .rt-headrow {
+    display: none;
+  }
+  .rt-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      'name name batches'
+      'comp comp comp'
+      'kg batch ton'
+      'bag hand hand';
+    gap: 10px 12px;
+    padding: 13px 14px;
+  }
+  .rt-name {
+    grid-area: name;
+  }
+  .rt-comp {
+    grid-area: comp;
+  }
+  .rt-batches {
+    grid-area: batches;
+  }
+  .rt-batchKg {
+    grid-area: kg;
+  }
+  .rt-costPerBatch {
+    grid-area: batch;
+  }
+  .rt-costPerTon {
+    grid-area: ton;
+  }
+  .rt-costPerBag {
+    grid-area: bag;
+  }
+  .rt-hand {
+    grid-area: hand;
+    justify-content: flex-end;
+  }
+  .rt-num {
+    justify-items: start;
+    text-align: left;
+  }
+  .rt-num[data-label]::before {
+    content: attr(data-label);
+    color: #8a9ca2;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .rt-batches {
+    justify-items: end;
+    text-align: right;
+  }
+  .rt-total {
+    grid-template-areas:
+      'name name name'
+      'batches kg batch'
+      'ton bag hand';
+  }
+  .rt-total .rt-batches {
+    justify-items: start;
+    text-align: left;
+  }
+  .rt-total .rt-comp {
+    display: none;
+  }
+  .rt-detail {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .rc-figures b {
-    font-size: 15px;
-  }
-  .rc-additives {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-  .rc-additives button {
-    grid-column: 1 / -1;
+    padding: 4px 14px 14px;
   }
 }
 
@@ -16921,17 +17065,4 @@ button.mortar-spout:hover .mortar-spout-open {
 .rc-form-hint {
   color: #8a9ca2;
   font-size: 12px;
-}
-.rc-additives.empty .rc-hand {
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
-  background: #f3f7f8;
-}
-.rc-additives.empty b {
-  color: #5d7279;
-  font-weight: 600;
-}
-.rc-additives.empty button {
-  padding: 4px 10px;
 }

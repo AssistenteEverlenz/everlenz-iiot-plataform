@@ -5192,26 +5192,6 @@
   :root[data-theme='dark'] .rc-head p b {
     color: #ced8db;
   }
-  :root[data-theme='dark'] .rc-card {
-    border: 1px solid #202d32;
-    background: #12191c;
-    color: #ced8db;
-  }
-  :root[data-theme='dark'] .rc-card:hover {
-    border-color: var(--brand-accent, #12b8a6);
-  }
-  :root[data-theme='dark'] .rc-card > header small {
-    color: #798e95;
-  }
-  :root[data-theme='dark'] .rc-card > header small span {
-    color: #97c4ce;
-  }
-  :root[data-theme='dark'] .rc-card > header small.warn {
-    color: #dbb68a;
-  }
-  :root[data-theme='dark'] .rc-card > header em {
-    color: #ced8db;
-  }
   :root[data-theme='dark'] .rc-comp-bar {
     background: #1a2629;
   }
@@ -5237,44 +5217,106 @@
     background: color-mix(in srgb, var(--kind) 14%, #12191c);
     color: color-mix(in srgb, var(--kind) 80%, #f2f2f2);
   }
-  :root[data-theme='dark'] .rc-figures {
-    border-top: 1px solid #1b262a;
-    border-bottom: 1px solid #1b262a;
-  }
-  :root[data-theme='dark'] .rc-figures > div + div {
-    border-left: 1px solid #1b262a;
-  }
-  :root[data-theme='dark'] .rc-figures span {
-    color: #798e95;
-  }
-  :root[data-theme='dark'] .rc-figures small {
-    color: #798e95;
-  }
-  :root[data-theme='dark'] .rc-additives {
-    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 7%, #12191c);
-  }
-  :root[data-theme='dark'] .rc-additives.empty {
-    border: 1px dashed #2c3f45;
-    background: transparent;
-  }
-  :root[data-theme='dark'] .rc-hand {
-    background: #12191c;
-  }
-  :root[data-theme='dark'] .rc-additives b small,
-  :root[data-theme='dark'] .rc-additives > div > small {
-    color: #90a2a7;
-  }
-  :root[data-theme='dark'] .rc-additives button,
   :root[data-theme='dark'] .rc-add button,
-  :root[data-theme='dark'] .rc-additive footer button {
+  :root[data-theme='dark'] .rc-additive footer button,
+  :root[data-theme='dark'] .rt-edit {
     border: 1px solid #2c3f45;
     background: #12191c;
     color: #97c4ce;
   }
-  :root[data-theme='dark'] .rc-additives button:hover,
   :root[data-theme='dark'] .rc-add button:hover,
-  :root[data-theme='dark'] .rc-additive footer button:hover {
+  :root[data-theme='dark'] .rc-additive footer button:hover,
+  :root[data-theme='dark'] .rt-edit:hover {
     border-color: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .rt {
+    border: 1px solid #202d32;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .rt-row {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .rt-item {
+    border-top: 1px solid #1b262a;
+  }
+  :root[data-theme='dark'] .rt-item > .rt-row:hover,
+  :root[data-theme='dark'] .rt-item.open > .rt-row {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 5%, #12191c);
+  }
+  :root[data-theme='dark'] .rt-item > .rt-row:focus-visible {
+    outline: 2px solid var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .rt-item.idle .rt-name b,
+  :root[data-theme='dark'] .rt-item.idle .rt-num b {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .rt-headrow {
+    background: #162023;
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .rt-headrow button {
+    border: 0;
+    background: none;
+    color: inherit;
+  }
+  :root[data-theme='dark'] .rt-headrow button:hover,
+  :root[data-theme='dark'] .rt-headrow button.sorted {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .rt-num small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .rt-meter {
+    background: #1b262a;
+  }
+  :root[data-theme='dark'] .rt-meter i {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .rt-name b i {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .rt-name small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .rt-name small.warn {
+    color: #dbb68a;
+  }
+  :root[data-theme='dark'] .rt-hand em {
+    background: color-mix(in srgb, var(--kind) 12%, #12191c);
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .rt-hand em u {
+    background: repeating-linear-gradient(
+    -45deg,
+    var(--kind),
+    var(--kind) 2px,
+    color-mix(in srgb, var(--kind) 45%, #12191c) 2px,
+    color-mix(in srgb, var(--kind) 45%, #12191c) 4px
+  );
+  }
+  :root[data-theme='dark'] .rt-hand > small {
+    color: #b4c2c6;
+  }
+  :root[data-theme='dark'] .rt-edit.add {
+    color: #90a2a7;
+  }
+  :root[data-theme='dark'] .rt-detail {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 5%, #12191c);
+  }
+  :root[data-theme='dark'] .rt-detail dt {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .rt-detail dd small {
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .rt-total {
+    border-top: 1px solid #223035;
+    background: #162023;
+  }
+  @container (max-width: 900px) {
+    :root[data-theme='dark'] .rt-num[data-label]::before {
+      color: #798e95;
+    }
   }
   :root[data-theme='dark'] .rc-modal-lead {
     color: #9cadb3;
@@ -5337,11 +5379,5 @@
   }
   :root[data-theme='dark'] .rc-form-hint {
     color: #798e95;
-  }
-  :root[data-theme='dark'] .rc-additives.empty .rc-hand {
-    background: #182225;
-  }
-  :root[data-theme='dark'] .rc-additives.empty b {
-    color: #9cadb3;
   }
 }

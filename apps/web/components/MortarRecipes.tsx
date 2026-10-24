@@ -44,9 +44,21 @@ type Board = { from: string; to: string; additivesAvailable: boolean; recipes: R
 
 /** The kinds of additive a dry-mortar plant pours, with what each one is for. */
 export const ADDITIVE_KINDS: Record<string, { label: string; hint: string; color: string }> = {
-  celulose: { label: 'Éter de celulose', hint: 'retém a água e dá trabalhabilidade (MHEC, HPMC)', color: '#2f8f83' },
-  polimero: { label: 'Polímero redispersível', hint: 'aderência e flexibilidade (EVA, VAE) — AC2 e AC3', color: '#5b6fc4' },
-  incorporador: { label: 'Incorporador de ar', hint: 'microbolhas: leveza e trabalhabilidade', color: '#7a9cc0' },
+  celulose: {
+    label: 'Éter de celulose',
+    hint: 'retém a água e dá trabalhabilidade (MHEC, HPMC)',
+    color: '#2f8f83',
+  },
+  polimero: {
+    label: 'Polímero redispersível',
+    hint: 'aderência e flexibilidade (EVA, VAE) — AC2 e AC3',
+    color: '#5b6fc4',
+  },
+  incorporador: {
+    label: 'Incorporador de ar',
+    hint: 'microbolhas: leveza e trabalhabilidade',
+    color: '#7a9cc0',
+  },
   retardador: { label: 'Retardador', hint: 'aumenta o tempo em aberto', color: '#b88a3a' },
   hidrofugante: { label: 'Hidrofugante', hint: 'repele a água', color: '#3f87a8' },
   pigmento: { label: 'Pigmento', hint: 'cor (ex.: branca)', color: '#b36a8a' },
@@ -63,15 +75,21 @@ const day = (iso: string) => {
 };
 
 /** One batch, drawn: the weighed materials in their colours, the additives striped. */
-function Composition({ recipe }: { recipe: Recipe }) {
-  const total = Math.max(1, recipe.materials.reduce((sum, item) => sum + item.kg, 0) + recipe.additivesKg);
+function Composition({ recipe, legend }: { recipe: Recipe; legend: boolean }) {
+  const total = Math.max(
+    1,
+    recipe.materials.reduce((sum, item) => sum + item.kg, 0) + recipe.additivesKg,
+  );
   return (
     <div className="rc-comp">
       <div className="rc-comp-bar" role="img" aria-label="Composição de uma batelada">
         {recipe.materials.map((item, index) => (
           <i
             key={item.label}
-            style={{ width: `${(item.kg / total) * 100}%`, background: MATERIAL_COLORS[index % MATERIAL_COLORS.length] }}
+            style={{
+              width: `${(item.kg / total) * 100}%`,
+              background: MATERIAL_COLORS[index % MATERIAL_COLORS.length],
+            }}
             title={`${item.label}: ${kilos(item.kg)}`}
           />
         ))}
@@ -79,119 +97,276 @@ function Composition({ recipe }: { recipe: Recipe }) {
           <i
             key={item.id}
             className="manual"
-            style={{ width: `${Math.max(1.2, (item.kgPerBatch / total) * 100)}%`, '--kind': kindOf(item.kind).color } as React.CSSProperties}
+            style={
+              {
+                width: `${Math.max(1.2, (item.kgPerBatch / total) * 100)}%`,
+                '--kind': kindOf(item.kind).color,
+              } as React.CSSProperties
+            }
             title={`${item.name}: ${fineKg(item.kgPerBatch)} (à mão)`}
           />
         ))}
       </div>
-      <ul className="rc-comp-legend">
-        {recipe.materials.map((item, index) => (
-          <li key={item.label}>
-            <u style={{ background: MATERIAL_COLORS[index % MATERIAL_COLORS.length] }} />
-            {item.label} <b>{kilos(item.kg)}</b>
-          </li>
-        ))}
-        {recipe.additives.map((item) => (
-          <li key={item.id} className="manual" style={{ '--kind': kindOf(item.kind).color } as React.CSSProperties}>
-            <u />
-            {item.name} <b>{fineKg(item.kgPerBatch)}</b>
-            <small>à mão</small>
-          </li>
-        ))}
-      </ul>
+      {legend && (
+        <ul className="rc-comp-legend">
+          {recipe.materials.map((item, index) => (
+            <li key={item.label}>
+              <u style={{ background: MATERIAL_COLORS[index % MATERIAL_COLORS.length] }} />
+              {item.label} <b>{kilos(item.kg)}</b>
+            </li>
+          ))}
+          {recipe.additives.map((item) => (
+            <li
+              key={item.id}
+              className="manual"
+              style={{ '--kind': kindOf(item.kind).color } as React.CSSProperties}
+            >
+              <u />
+              {item.name} <b>{fineKg(item.kgPerBatch)}</b>
+              <small>à mão</small>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-function RecipeCard({
-  recipe,
+type SortKey = 'batches' | 'batchKg' | 'costPerBatch' | 'costPerTon' | 'costPerBag';
+const COLUMNS: Array<[SortKey, string]> = [
+  ['batches', 'Bateladas'],
+  ['batchKg', 'Batelada'],
+  ['costPerBatch', 'R$/batelada'],
+  ['costPerTon', 'R$/t'],
+  ['costPerBag', 'R$/saco'],
+];
+
+/**
+ * Every recipe in one table, so they compare at a glance: what one batch weighs and costs, by the
+ * ton and by the bag, and what goes in by hand. A row opens to the batch drawn material by material.
+ */
+function RecipeTable({
+  recipes,
   canEdit,
   onEdit,
 }: {
-  recipe: Recipe;
+  recipes: Recipe[];
   canEdit: boolean;
-  onEdit: () => void;
+  onEdit: (recipe: Recipe) => void;
 }) {
-  const share = recipe.batchKg ? recipe.additivesKg / recipe.batchKg : 0;
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'batches', desc: true });
+  const [open, setOpen] = useState<string | null>(null);
+  const rows = [...recipes].sort((a, b) => {
+    const left = a[sort.key];
+    const right = b[sort.key];
+    // A recipe without a price goes last whichever way the column runs.
+    if (left == null || right == null) return left == null ? (right == null ? 0 : 1) : -1;
+    return sort.desc ? right - left : left - right;
+  });
+  const ran = recipes.filter((item) => item.batches > 0);
+  const massKg = ran.reduce((sum, item) => sum + item.batchKg * item.batches, 0);
+  const priced = ran.every((item) => item.costPerBatch != null);
+  const costTotal = ran.reduce((sum, item) => sum + (item.costPerBatch ?? 0) * item.batches, 0);
+  const maxPerTon = Math.max(1, ...recipes.map((item) => item.costPerTon ?? 0));
+  const figure = (recipe: Recipe, key: SortKey) => {
+    switch (key) {
+      case 'batches':
+        return <b>{integer(recipe.batches)}</b>;
+      case 'batchKg':
+        return (
+          <>
+            <b>{kilos(recipe.batchKg)}</b>
+            {recipe.additivesKg > 0 && <small>+{fineKg(recipe.additivesKg)} à mão</small>}
+          </>
+        );
+      case 'costPerBatch':
+        return <b>{money(recipe.costPerBatch)}</b>;
+      case 'costPerTon':
+        return (
+          <>
+            <b>{money(recipe.costPerTon)}</b>
+            {recipe.costPerTon != null && (
+              <u className="rt-meter" aria-hidden="true">
+                <i style={{ width: `${(recipe.costPerTon / maxPerTon) * 100}%` }} />
+              </u>
+            )}
+          </>
+        );
+      case 'costPerBag':
+        return (
+          <>
+            <b>{money(recipe.costPerBag, 2)}</b>
+            {recipe.bagsPerBatch != null && (
+              <small>{integer(recipe.bagsPerBatch)} sacos/bat.</small>
+            )}
+          </>
+        );
+    }
+  };
   return (
-    <article className="rc-card">
-      <header>
-        <div>
-          <b>{recipe.recipe}</b>
-          {recipe.product ? (
-            <small>
-              enche <span>{recipe.product.name}</span>
-            </small>
-          ) : (
-            <small className="warn">receita sem produto ligado</small>
-          )}
-        </div>
-        <em title={`Última batelada em ${day(recipe.lastAt)}`}>
-          {integer(recipe.batches)} <small>{recipe.batches === 1 ? 'batelada' : 'bateladas'}</small>
-        </em>
-      </header>
-      <Composition recipe={recipe} />
-      <div className="rc-figures">
-        <div>
-          <span>Batelada</span>
-          <b>{kilos(recipe.batchKg)}</b>
-          <small>
-            {recipe.scaleKg != null ? 'balança' : 'receita'} {kilos(recipe.scaleKg ?? recipe.recipeKg)}
-            {recipe.additivesKg > 0 && ` + ${fineKg(recipe.additivesKg)} à mão`}
-          </small>
-        </div>
-        <div>
-          <span>Custo da batelada</span>
-          <b>{recipe.costPerBatch == null ? '—' : money(recipe.costPerBatch)}</b>
-          <small>
-            {recipe.costPerTon == null ? 'falta preço de material' : `${money(recipe.costPerTon)}/t`}
-          </small>
-        </div>
-        <div>
-          <span>Por saco</span>
-          <b>{recipe.costPerBag == null ? '—' : money(recipe.costPerBag, 2)}</b>
-          <small>
-            {recipe.bagsPerBatch == null ? 'sem produto' : `${integer(recipe.bagsPerBatch)} sacos/batelada`}
-          </small>
-        </div>
+    <div className="rt" role="table" aria-label="Receitas do misturador">
+      <div className="rt-row rt-headrow" role="row">
+        <span role="columnheader">Receita</span>
+        <span role="columnheader">Composição</span>
+        {COLUMNS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="columnheader"
+            className={`rt-num ${sort.key === key ? 'sorted' : ''}`}
+            aria-sort={sort.key === key ? (sort.desc ? 'descending' : 'ascending') : 'none'}
+            onClick={() => setSort((was) => ({ key, desc: was.key === key ? !was.desc : true }))}
+          >
+            {label}
+            <i aria-hidden="true">{sort.key === key ? (sort.desc ? '↓' : '↑') : ''}</i>
+          </button>
+        ))}
+        <span role="columnheader">Aditivo à mão</span>
       </div>
-      {recipe.additives.length ? (
-        <div className="rc-additives">
-          <span className="rc-hand" aria-hidden="true">✋</span>
-          <div>
-            <b>
-              Aditivos à mão · {fineKg(recipe.additivesKg)} <small>({(share * 100).toFixed(1).replace('.', ',')}% da batelada)</small>
-            </b>
-            <small>
-              {recipe.additives
-                .map((item) =>
-                  item.packageKg
-                    ? `${item.name} ${fineKg(item.kgPerBatch)} (${(item.kgPerBatch / item.packageKg).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} emb.)`
-                    : `${item.name} ${fineKg(item.kgPerBatch)}`,
-                )
-                .join(' · ')}
-            </small>
+      {rows.map((recipe) => {
+        const expanded = open === recipe.recipe;
+        return (
+          <div
+            key={recipe.recipe}
+            className={`rt-item ${expanded ? 'open' : ''} ${recipe.batches ? '' : 'idle'}`}
+          >
+            <div
+              className="rt-row"
+              role="row"
+              tabIndex={0}
+              aria-expanded={expanded}
+              onClick={() => setOpen(expanded ? null : recipe.recipe)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setOpen(expanded ? null : recipe.recipe);
+                }
+              }}
+            >
+              <span className="rt-name" role="cell">
+                <b>
+                  <i aria-hidden="true">›</i>
+                  {recipe.recipe}
+                </b>
+                {recipe.product ? (
+                  <small>{recipe.product.name}</small>
+                ) : (
+                  <small className="warn">sem produto ligado</small>
+                )}
+              </span>
+              <span className="rt-comp" role="cell">
+                <Composition recipe={recipe} legend={false} />
+              </span>
+              {COLUMNS.map(([key, label]) => (
+                <span
+                  key={key}
+                  role="cell"
+                  className={`rt-num rt-${key}`}
+                  data-label={label}
+                  title={
+                    (key === 'costPerBatch' || key === 'costPerTon' || key === 'costPerBag') &&
+                    recipe.costPerBatch == null
+                      ? 'Falta o preço de algum material desta receita'
+                      : undefined
+                  }
+                >
+                  {figure(recipe, key)}
+                </span>
+              ))}
+              <span className="rt-hand" role="cell">
+                {recipe.additives.map((item) => (
+                  <em
+                    key={item.id}
+                    style={{ '--kind': kindOf(item.kind).color } as React.CSSProperties}
+                  >
+                    <u aria-hidden="true" />
+                    {item.name} <b>{fineKg(item.kgPerBatch)}</b>
+                  </em>
+                ))}
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className={recipe.additives.length ? 'rt-edit' : 'rt-edit add'}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(recipe);
+                    }}
+                  >
+                    {recipe.additives.length ? 'Configurar' : '+ Aditivo'}
+                  </button>
+                ) : (
+                  !recipe.additives.length && <small>—</small>
+                )}
+              </span>
+            </div>
+            {expanded && (
+              <div className="rt-detail">
+                <Composition recipe={recipe} legend />
+                <dl>
+                  <div>
+                    <dt>Pesado na balança</dt>
+                    <dd>
+                      {kilos(recipe.scaleKg ?? recipe.recipeKg)}
+                      <small>
+                        {recipe.scaleKg != null
+                          ? `receita ${kilos(recipe.recipeKg)}`
+                          : 'sem balança: peso da receita'}
+                      </small>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Materiais</dt>
+                    <dd>
+                      {money(recipe.materialsCost)}
+                      <small>por batelada</small>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Aditivos à mão</dt>
+                    <dd>
+                      {recipe.additives.length ? money(recipe.additivesCost) : '—'}
+                      <small>
+                        {recipe.additives.length
+                          ? `${fineKg(recipe.additivesKg)} · ${((recipe.additivesKg / recipe.batchKg) * 100).toFixed(1).replace('.', ',')}% da batelada`
+                          : 'nenhum cadastrado'}
+                      </small>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Última batelada</dt>
+                    <dd>
+                      {day(recipe.lastAt)}
+                      <small>{integer(recipe.batches)} no período</small>
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            )}
           </div>
-          {canEdit && (
-            <button type="button" onClick={onEdit}>
-              Configurar
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="rc-additives empty">
-          <span className="rc-hand" aria-hidden="true">✋</span>
-          <div>
-            <b>Sem aditivo à mão</b>
-          </div>
-          {canEdit && (
-            <button type="button" onClick={onEdit}>
-              Adicionar
-            </button>
-          )}
-        </div>
-      )}
-    </article>
+        );
+      })}
+      <div className="rt-row rt-total" role="row">
+        <span className="rt-name" role="cell">
+          <b>Total no período</b>
+          <small>{ran.length} receitas rodaram</small>
+        </span>
+        <span className="rt-comp" role="cell" />
+        <span className="rt-num rt-batches" role="cell" data-label="Bateladas">
+          <b>{integer(ran.reduce((sum, item) => sum + item.batches, 0))}</b>
+        </span>
+        <span className="rt-num rt-batchKg" role="cell" data-label="Misturado">
+          <b>{tons(massKg)} t</b>
+        </span>
+        <span className="rt-num rt-costPerBatch" role="cell" data-label="Custo">
+          <b>{priced ? money(costTotal) : '—'}</b>
+        </span>
+        <span className="rt-num rt-costPerTon" role="cell" data-label="R$/t médio">
+          <b>{priced && massKg ? money(costTotal / (massKg / 1000)) : '—'}</b>
+        </span>
+        <span className="rt-num rt-costPerBag" role="cell" />
+        <span className="rt-hand" role="cell" />
+      </div>
+    </div>
   );
 }
 
@@ -206,13 +381,19 @@ function RecipeAdditivesModal({
   onClose: (saved: boolean) => void;
 }) {
   const [rows, setRows] = useState(
-    recipe.additives.map((item) => ({ additiveId: item.id, kg: String(item.kgPerBatch).replace('.', ',') })),
+    recipe.additives.map((item) => ({
+      additiveId: item.id,
+      kg: String(item.kgPerBatch).replace('.', ','),
+    })),
   );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const weighed = recipe.scaleKg ?? recipe.recipeKg;
   const parsed = rows.map((row) => ({ ...row, value: number(row.kg) }));
-  const totalKg = parsed.reduce((sum, row) => sum + (Number.isFinite(row.value) ? row.value : 0), 0);
+  const totalKg = parsed.reduce(
+    (sum, row) => sum + (Number.isFinite(row.value) ? row.value : 0),
+    0,
+  );
   const invalid = parsed.some((row) => !row.additiveId || !(row.value > 0));
   async function save() {
     setSaving(true);
@@ -237,29 +418,46 @@ function RecipeAdditivesModal({
             <div className="eyebrow">ADITIVOS À MÃO</div>
             <h2>{recipe.recipe}</h2>
           </div>
-          <button type="button" className="icon-button" aria-label="Fechar" onClick={() => onClose(false)}>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Fechar"
+            onClick={() => onClose(false)}
+          >
             ×
           </button>
         </header>
         <p className="rc-modal-lead">
           O que o operador coloca direto no misturador, em <b>uma batelada</b>. A balança pesa{' '}
-          <b>{kilos(weighed)}</b>; somando os aditivos, a batelada fica com <b>{kilos(weighed + totalKg)}</b>.
+          <b>{kilos(weighed)}</b>; somando os aditivos, a batelada fica com{' '}
+          <b>{kilos(weighed + totalKg)}</b>.
         </p>
         {catalog.length === 0 ? (
-          <div className="stops-empty">Cadastre primeiro os aditivos na aba Aditivos deste card.</div>
+          <div className="stops-empty">
+            Cadastre primeiro os aditivos na aba Aditivos deste card.
+          </div>
         ) : (
           <ul className="rc-rows">
             {rows.map((row, index) => {
               const additive = catalog.find((item) => item.id === row.additiveId);
               const value = number(row.kg);
               return (
-                <li key={index} style={{ '--kind': kindOf(additive?.kind ?? 'outro').color } as React.CSSProperties}>
+                <li
+                  key={index}
+                  style={
+                    { '--kind': kindOf(additive?.kind ?? 'outro').color } as React.CSSProperties
+                  }
+                >
                   <u aria-hidden="true" />
                   <select
                     aria-label="Aditivo"
                     value={row.additiveId}
                     onChange={(event) =>
-                      setRows((was) => was.map((item, at) => (at === index ? { ...item, additiveId: event.target.value } : item)))
+                      setRows((was) =>
+                        was.map((item, at) =>
+                          at === index ? { ...item, additiveId: event.target.value } : item,
+                        ),
+                      )
                     }
                   >
                     <option value="">Escolha o aditivo</option>
@@ -275,7 +473,11 @@ function RecipeAdditivesModal({
                       aria-label="Quilos por batelada"
                       value={row.kg}
                       onChange={(event) =>
-                        setRows((was) => was.map((item, at) => (at === index ? { ...item, kg: event.target.value } : item)))
+                        setRows((was) =>
+                          was.map((item, at) =>
+                            at === index ? { ...item, kg: event.target.value } : item,
+                          ),
+                        )
                       }
                     />
                     kg
@@ -287,7 +489,9 @@ function RecipeAdditivesModal({
                     {value > 0 && additive?.packageKg
                       ? ` · ${(value / additive.packageKg).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} emb.`
                       : ''}
-                    {value > 0 && additive?.pricePerKg != null ? ` · ${money(value * additive.pricePerKg, 2)}` : ''}
+                    {value > 0 && additive?.pricePerKg != null
+                      ? ` · ${money(value * additive.pricePerKg, 2)}`
+                      : ''}
                   </small>
                   <button
                     type="button"
@@ -301,7 +505,10 @@ function RecipeAdditivesModal({
               );
             })}
             <li className="rc-add">
-              <button type="button" onClick={() => setRows((was) => [...was, { additiveId: '', kg: '' }])}>
+              <button
+                type="button"
+                onClick={() => setRows((was) => [...was, { additiveId: '', kg: '' }])}
+              >
                 + Aditivo
               </button>
             </li>
@@ -312,7 +519,12 @@ function RecipeAdditivesModal({
           <button type="button" disabled={saving} onClick={() => onClose(false)}>
             Cancelar
           </button>
-          <button type="button" className="primary-button" disabled={saving || invalid} onClick={() => void save()}>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={saving || invalid}
+            onClick={() => void save()}
+          >
             {saving ? 'Salvando…' : 'Salvar'}
           </button>
         </div>
@@ -371,7 +583,11 @@ function AdditivesCatalog({
         {catalog.map((item) => {
           const kind = kindOf(item.kind);
           return (
-            <article key={item.id} className="rc-additive" style={{ '--kind': kind.color } as React.CSSProperties}>
+            <article
+              key={item.id}
+              className="rc-additive"
+              style={{ '--kind': kind.color } as React.CSSProperties}
+            >
               <header>
                 <u aria-hidden="true" />
                 <div>
@@ -403,8 +619,10 @@ function AdditivesCatalog({
                         id: item.id,
                         name: item.name,
                         kind: item.kind,
-                        price: item.pricePerKg == null ? '' : String(item.pricePerKg).replace('.', ','),
-                        pack: item.packageKg == null ? '' : String(item.packageKg).replace('.', ','),
+                        price:
+                          item.pricePerKg == null ? '' : String(item.pricePerKg).replace('.', ','),
+                        pack:
+                          item.packageKg == null ? '' : String(item.packageKg).replace('.', ','),
                       })
                     }
                   >
@@ -431,11 +649,19 @@ function AdditivesCatalog({
           <div className="rc-form-grid">
             <label>
               Nome
-              <input value={form.name} maxLength={60} placeholder="ex.: Polímero VAE" onChange={(event) => setForm({ ...form, name: event.target.value })} />
+              <input
+                value={form.name}
+                maxLength={60}
+                placeholder="ex.: Polímero VAE"
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+              />
             </label>
             <label>
               Tipo
-              <select value={form.kind} onChange={(event) => setForm({ ...form, kind: event.target.value })}>
+              <select
+                value={form.kind}
+                onChange={(event) => setForm({ ...form, kind: event.target.value })}
+              >
                 {Object.entries(ADDITIVE_KINDS).map(([value, kind]) => (
                   <option key={value} value={value}>
                     {kind.label}
@@ -445,11 +671,21 @@ function AdditivesCatalog({
             </label>
             <label>
               Preço por kg (R$)
-              <input inputMode="decimal" value={form.price} placeholder="ex.: 18,50" onChange={(event) => setForm({ ...form, price: event.target.value })} />
+              <input
+                inputMode="decimal"
+                value={form.price}
+                placeholder="ex.: 18,50"
+                onChange={(event) => setForm({ ...form, price: event.target.value })}
+              />
             </label>
             <label>
               Embalagem (kg)
-              <input inputMode="decimal" value={form.pack} placeholder="ex.: 25" onChange={(event) => setForm({ ...form, pack: event.target.value })} />
+              <input
+                inputMode="decimal"
+                value={form.pack}
+                placeholder="ex.: 25"
+                onChange={(event) => setForm({ ...form, pack: event.target.value })}
+              />
             </label>
           </div>
           <small className="rc-form-hint">{kindOf(form.kind).hint}</small>
@@ -458,7 +694,12 @@ function AdditivesCatalog({
             <button type="button" onClick={() => setForm(null)}>
               Cancelar
             </button>
-            <button type="button" className="primary-button" disabled={!form.name.trim()} onClick={() => void save()}>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!form.name.trim()}
+              onClick={() => void save()}
+            >
               Salvar
             </button>
           </div>
@@ -481,8 +722,14 @@ export function RecipesBoard({
 }) {
   const [tab, setTab] = useState<'recipes' | 'additives'>('recipes');
   const [editing, setEditing] = useState<Recipe | null>(null);
-  const board = usePoll<Board>(`/devices/${deviceId}/mortar/recipes-board?from=${from}&to=${to}`, 300000);
-  const catalog = usePoll<{ available: boolean; additives: Additive[] }>('/mortar/additives', 600000);
+  const board = usePoll<Board>(
+    `/devices/${deviceId}/mortar/recipes-board?from=${from}&to=${to}`,
+    300000,
+  );
+  const catalog = usePoll<{ available: boolean; additives: Additive[] }>(
+    '/mortar/additives',
+    600000,
+  );
   const recipes = board.data?.recipes ?? [];
   const totals = useMemo(() => {
     const ran = recipes.filter((item) => item.batches > 0);
@@ -499,10 +746,18 @@ export function RecipesBoard({
     <section className="rc">
       <div className="rc-head">
         <div className="widget-period" role="group" aria-label="Ver">
-          <button type="button" className={tab === 'recipes' ? 'active' : ''} onClick={() => setTab('recipes')}>
+          <button
+            type="button"
+            className={tab === 'recipes' ? 'active' : ''}
+            onClick={() => setTab('recipes')}
+          >
             Receitas <small>{totals.recipes}</small>
           </button>
-          <button type="button" className={tab === 'additives' ? 'active' : ''} onClick={() => setTab('additives')}>
+          <button
+            type="button"
+            className={tab === 'additives' ? 'active' : ''}
+            onClick={() => setTab('additives')}
+          >
             Aditivos <small>{catalog.data?.additives.length ?? 0}</small>
           </button>
         </div>
@@ -511,7 +766,8 @@ export function RecipesBoard({
             {totals.ran} receitas rodaram no período ·{' '}
             {totals.withAdditive ? (
               <>
-                {totals.withAdditive} com aditivo à mão · <b>{tons(totals.additiveKg)} t</b> de aditivo nas bateladas
+                {totals.withAdditive} com aditivo à mão · <b>{tons(totals.additiveKg)} t</b> de
+                aditivo nas bateladas
               </>
             ) : (
               'nenhuma com aditivo à mão cadastrado'
@@ -526,16 +782,7 @@ export function RecipesBoard({
       )}
       {tab === 'recipes' ? (
         recipes.length ? (
-          <div className="rc-grid">
-            {recipes.map((recipe) => (
-              <RecipeCard
-                key={recipe.recipe}
-                recipe={recipe}
-                canEdit={canEdit && available}
-                onEdit={() => setEditing(recipe)}
-              />
-            ))}
-          </div>
+          <RecipeTable recipes={recipes} canEdit={canEdit && available} onEdit={setEditing} />
         ) : (
           <div className="stops-empty">O misturador ainda não registrou nenhuma batelada.</div>
         )
