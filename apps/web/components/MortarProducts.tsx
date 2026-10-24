@@ -282,6 +282,10 @@ export function ProductsBoard({
           />
         </label>
         <p>
+          Cada produto e os nomes que a IHM da ensacadeira usa para ele. Os sacos de um nome contam
+          no produto da linha onde ele está
+          {canEdit ? '; para trocar, arraste o nome para outra linha' : ''}.
+          <br />
           <b>{products.length}</b> produtos · <b>{linkedCount}</b> receitas da IHM ligadas
           {names.length - linkedCount > 0 && (
             <>
@@ -337,7 +341,21 @@ export function ProductsBoard({
           </button>
         </div>
       )}
-      <div className="rp-families">
+      <div className="pt" role="table" aria-label="Produtos e nomes da IHM">
+        <div className="pt-row pt-headrow" role="row">
+          <span role="columnheader">Produto</span>
+          <span role="columnheader">Nomes na IHM da ensacadeira</span>
+          <span role="columnheader" className="pt-num">
+            Sacos
+          </span>
+          <span role="columnheader" className="pt-num">
+            Último saco
+          </span>
+          <span role="columnheader" className="pt-num">
+            Ritmo padrão
+          </span>
+          <span role="columnheader" />
+        </div>
         {families.map(({ mix, items }) => {
           const shown = items.filter(
             (product) =>
@@ -347,96 +365,106 @@ export function ProductsBoard({
           );
           if (!shown.length) return null;
           return (
-            <section key={mix} className="rp-family">
-              <header>
+            <div key={mix} className="pt-family" role="rowgroup">
+              <div className="pt-group" role="row">
                 <b>{mix}</b>
                 <small>
                   {items.length} {items.length === 1 ? 'produto' : 'produtos'}
                 </small>
-              </header>
+              </div>
               {shown.map((product) => {
                 const own = names.filter((item) => item.productId === product.id);
                 const bags = own.reduce((sum, item) => sum + item.bags, 0);
+                const last = own.reduce<string | null>(
+                  (latest, item) =>
+                    item.lastAt && (!latest || item.lastAt > latest) ? item.lastAt : latest,
+                  null,
+                );
                 if (draft?.id === product.id)
                   return (
-                    <ProductForm
-                      key={product.id}
-                      draft={draft}
-                      onChange={setDraft}
-                      onSave={saveDraft}
-                      onCancel={() => setDraft(null)}
-                    />
+                    <div key={product.id} className="pt-edit" role="row">
+                      <ProductForm
+                        draft={draft}
+                        onChange={setDraft}
+                        onSave={saveDraft}
+                        onCancel={() => setDraft(null)}
+                      />
+                    </div>
                   );
                 return (
                   <div
                     key={product.id}
-                    className={`rp-product ${over === product.id ? 'over' : ''} ${picked ? 'target' : ''}`}
+                    role="row"
+                    className={`pt-row ${over === product.id ? 'over' : ''} ${picked ? 'target' : ''}`}
                     {...target(product.id, product.id)}
                   >
-                    <span className="rp-bag" aria-hidden="true">
-                      {product.nominal_kg.toLocaleString('pt-BR')}
-                      <small>kg</small>
+                    <span className="pt-name" role="cell">
+                      <span className="rp-bag" aria-hidden="true">
+                        {product.nominal_kg.toLocaleString('pt-BR')}
+                        <small>kg</small>
+                      </span>
+                      <b>{product.name}</b>
                     </span>
-                    <div className="rp-main">
-                      <div className="rp-name">
-                        <b>{product.name}</b>
-                        <small>
-                          {product.standard_rate
-                            ? `ritmo padrão ${integer(product.standard_rate)} sacos/h`
-                            : 'sem ritmo padrão'}
-                          {bags > 0 && ` · ${integer(bags)} sacos registrados`}
-                        </small>
-                      </div>
-                      <div className="rp-chips">
-                        {own.length ? (
-                          own.map(chip)
-                        ) : (
-                          <span className="rp-drop">
-                            {canEdit ? 'solte aqui a receita da IHM' : 'nenhuma receita da IHM'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {canEdit && (
-                      <div className="rp-actions">
-                        <button
-                          type="button"
-                          className="icon-button"
-                          aria-label={`Editar ${product.name}`}
-                          title="Editar"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDraft({
-                              id: product.id,
-                              name: product.name,
-                              kg: String(product.nominal_kg).replace('.', ','),
-                              rate:
-                                product.standard_rate == null
-                                  ? ''
-                                  : String(product.standard_rate).replace('.', ','),
-                            });
-                          }}
-                        >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-button danger"
-                          aria-label={`Excluir ${product.name}`}
-                          title="Excluir"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void remove(product, own.length);
-                          }}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    )}
+                    <span className="rp-chips" role="cell">
+                      {own.length ? (
+                        own.map(chip)
+                      ) : (
+                        <span className="rp-drop">
+                          {canEdit ? 'solte aqui um nome da IHM' : 'nenhum nome da IHM'}
+                        </span>
+                      )}
+                    </span>
+                    <span className="pt-num" role="cell" data-label="Sacos">
+                      <b>{bags ? integer(bags) : '—'}</b>
+                    </span>
+                    <span className="pt-num" role="cell" data-label="Último saco">
+                      {last ? day(last) : '—'}
+                    </span>
+                    <span className="pt-num" role="cell" data-label="Ritmo padrão">
+                      {product.standard_rate ? `${integer(product.standard_rate)} sacos/h` : '—'}
+                    </span>
+                    <span className="rp-actions" role="cell">
+                      {canEdit && (
+                        <>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Editar ${product.name}`}
+                            title="Editar"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setDraft({
+                                id: product.id,
+                                name: product.name,
+                                kg: String(product.nominal_kg).replace('.', ','),
+                                rate:
+                                  product.standard_rate == null
+                                    ? ''
+                                    : String(product.standard_rate).replace('.', ','),
+                              });
+                            }}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button danger"
+                            aria-label={`Excluir ${product.name}`}
+                            title="Excluir"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void remove(product, own.length);
+                            }}
+                          >
+                            ×
+                          </button>
+                        </>
+                      )}
+                    </span>
                   </div>
                 );
               })}
-            </section>
+            </div>
           );
         })}
       </div>

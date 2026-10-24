@@ -5187,14 +5187,12 @@
     color: #8d9ea3;
   }
   :root[data-theme='dark'] .rc-add button,
-  :root[data-theme='dark'] .rc-additive footer button,
   :root[data-theme='dark'] .rt-edit {
     border: 1px solid #2c3f45;
     background: #12191c;
     color: #97c4ce;
   }
   :root[data-theme='dark'] .rc-add button:hover,
-  :root[data-theme='dark'] .rc-additive footer button:hover,
   :root[data-theme='dark'] .rt-edit:hover {
     border-color: var(--brand-accent, #12b8a6);
   }
@@ -5295,40 +5293,6 @@
   }
   :root[data-theme='dark'] .rc-rows li.rc-add {
     border: 0;
-  }
-  :root[data-theme='dark'] .rc-additive {
-    border: 1px solid #202d32;
-    border-top: 3px solid var(--kind);
-    background: #12191c;
-    color: #ced8db;
-  }
-  :root[data-theme='dark'] .rc-additive header small {
-    color: color-mix(in srgb, var(--kind) 80%, #f2f2f2);
-  }
-  :root[data-theme='dark'] .rc-additive p {
-    color: #90a2a7;
-  }
-  :root[data-theme='dark'] .rc-additive dl {
-    border-top: 1px solid #1b262a;
-  }
-  :root[data-theme='dark'] .rc-additive dl div + div {
-    border-left: 1px solid #1b262a;
-  }
-  :root[data-theme='dark'] .rc-additive dt {
-    color: #798e95;
-  }
-  :root[data-theme='dark'] .rc-additive footer .danger-text {
-    border-color: transparent;
-    background: transparent;
-  }
-  :root[data-theme='dark'] .rc-new {
-    border: 1px dashed #2c3f45;
-    border-top: 1px dashed #2c3f45;
-    color: #9cadb3;
-  }
-  :root[data-theme='dark'] .rc-new:hover {
-    border-color: var(--brand-accent, #12b8a6);
-    color: var(--brand-accent, #7de8dc);
   }
   :root[data-theme='dark'] .rc-form {
     border: 1px solid var(--brand-accent, #12b8a6);
@@ -5565,38 +5529,12 @@
   :root[data-theme='dark'] .rp-chip.picked button {
     color: #fff;
   }
-  :root[data-theme='dark'] .rp-family {
-    border: 1px solid #202d32;
-    background: #12191c;
-  }
-  :root[data-theme='dark'] .rp-family > header {
-    border-bottom: 1px solid #1b262a;
-    background: #162023;
-  }
-  :root[data-theme='dark'] .rp-family > header small {
-    color: #798e95;
-  }
-  :root[data-theme='dark'] .rp-product {
-    border-top: 1px solid #1b262a;
-  }
-  :root[data-theme='dark'] .rp-family > header + .rp-product,
-  :root[data-theme='dark'] .rp-family > header + .rp-form {
-    border-top: 0;
-  }
-  :root[data-theme='dark'] .rp.moving .rp-product.target:hover,
-  :root[data-theme='dark'] .rp-product.over {
-    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 9%, #12191c);
-    box-shadow: inset 3px 0 0 var(--brand-accent, #12b8a6);
-  }
   :root[data-theme='dark'] .rp-bag {
     background: linear-gradient(#1d292d, #233136);
     color: #ced8db;
   }
   :root[data-theme='dark'] .rp-bag small {
     color: #90a2a7;
-  }
-  :root[data-theme='dark'] .rp-name small {
-    color: #798e95;
   }
   :root[data-theme='dark'] .rp-drop {
     border: 1px dashed #2c3f45;
@@ -5609,10 +5547,6 @@
   :root[data-theme='dark'] .rp-form {
     border: 1px solid var(--brand-accent, #12b8a6);
     background: #12191c;
-  }
-  :root[data-theme='dark'] .rp-family .rp-form {
-    border-top: 1px solid #1b262a;
-    box-shadow: inset 3px 0 0 var(--brand-accent, #12b8a6);
   }
   :root[data-theme='dark'] .rp-form label {
     color: #9cadb3;
@@ -5637,8 +5571,7 @@
   :root[data-theme='dark'] .ri-money {
     color: #798e95;
   }
-  :root[data-theme='dark'] .rc-rows li u,
-  :root[data-theme='dark'] .rc-additive header u {
+  :root[data-theme='dark'] .rc-rows li u {
     background: repeating-linear-gradient(
     -45deg,
     var(--kind),
@@ -5646,5 +5579,69 @@
     color-mix(in srgb, var(--kind) 45%, #12191c) 3px,
     color-mix(in srgb, var(--kind) 45%, #12191c) 6px
   );
+  }
+  :root[data-theme='dark'] .rc-body::-webkit-scrollbar-thumb {
+    background: #28393f;
+  }
+  :root[data-theme='dark'] .rc-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  :root[data-theme='dark'] .pt,
+  :root[data-theme='dark'] .at {
+    border: 1px solid #202d32;
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .pt-row,
+  :root[data-theme='dark'] .at-row {
+    border-top: 1px solid #1b262a;
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .pt-headrow,
+  :root[data-theme='dark'] .at-headrow {
+    border-top: 0;
+    background: #162023;
+    color: #798e95;
+  }
+  :root[data-theme='dark'] .pt-num small {
+    color: #a3b2b6;
+  }
+  :root[data-theme='dark'] .pt-group {
+    border-top: 1px solid #202d32;
+    background: #141d1f;
+  }
+  :root[data-theme='dark'] .pt-group b {
+    color: #9cadb3;
+  }
+  :root[data-theme='dark'] .pt-group small {
+    color: #a3b2b6;
+  }
+  :root[data-theme='dark'] .pt-row:hover,
+  :root[data-theme='dark'] .at-row:hover {
+    background: #141d20;
+  }
+  :root[data-theme='dark'] .rp.moving .pt-row.target:hover,
+  :root[data-theme='dark'] .pt-row.over {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 9%, #12191c);
+    box-shadow: inset 3px 0 0 var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .pt-edit {
+    border-top: 1px solid #1b262a;
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 5%, #12191c);
+  }
+  :root[data-theme='dark'] .at-kind {
+    background: color-mix(in srgb, var(--kind) 13%, #12191c);
+    color: color-mix(in srgb, var(--kind) 78%, #f2f2f2);
+  }
+  :root[data-theme='dark'] .at-hint {
+    color: #90a2a7;
+  }
+  :root[data-theme='dark'] .at-row.editing {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 6%, #12191c);
+  }
+  @media (max-width: 700px) {
+    :root[data-theme='dark'] .pt-row .pt-num[data-label]::before,
+    :root[data-theme='dark'] .at-row .pt-num[data-label]::before {
+      color: #798e95;
+    }
   }
 }

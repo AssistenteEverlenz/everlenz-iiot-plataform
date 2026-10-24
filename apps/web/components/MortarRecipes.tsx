@@ -702,70 +702,102 @@ function AdditivesCatalog({
   }
   return (
     <div className="rc-catalog">
-      <div className="rc-catalog-grid">
-        {catalog.map((item) => {
-          const kind = kindOf(item.kind);
-          return (
-            <article
-              key={item.id}
-              className="rc-additive"
-              style={{ '--kind': kind.color } as React.CSSProperties}
-            >
-              <header>
-                <u aria-hidden="true" />
-                <div>
+      {catalog.length > 0 && (
+        <div className="at" role="table" aria-label="Aditivos colocados à mão">
+          <div className="at-row at-headrow" role="row">
+            <span role="columnheader">Aditivo</span>
+            <span role="columnheader">Tipo</span>
+            <span role="columnheader">Para que serve</span>
+            <span role="columnheader" className="pt-num">
+              Preço
+            </span>
+            <span role="columnheader" className="pt-num">
+              Embalagem
+            </span>
+            <span role="columnheader" className="pt-num">
+              Receitas
+            </span>
+            <span role="columnheader" />
+          </div>
+          {catalog.map((item) => {
+            const kind = kindOf(item.kind);
+            return (
+              <div
+                key={item.id}
+                role="row"
+                className={`at-row ${form?.id === item.id ? 'editing' : ''}`}
+                style={{ '--kind': kind.color } as React.CSSProperties}
+              >
+                <span className="at-name" role="cell">
+                  <Swatch color={kind.color} manual />
                   <b>{item.name}</b>
-                  <small>{kind.label}</small>
-                </div>
-              </header>
-              <p>{kind.hint}</p>
-              <dl>
-                <div>
-                  <dt>Preço</dt>
-                  <dd>{item.pricePerKg == null ? '—' : `${money(item.pricePerKg, 2)}/kg`}</dd>
-                </div>
-                <div>
-                  <dt>Embalagem</dt>
-                  <dd>{item.packageKg == null ? '—' : kilos(item.packageKg)}</dd>
-                </div>
-                <div>
-                  <dt>Receitas</dt>
-                  <dd>{integer(item.recipes ?? 0)}</dd>
-                </div>
-              </dl>
-              {canEdit && (
-                <footer>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm({
-                        id: item.id,
-                        name: item.name,
-                        kind: item.kind,
-                        price:
-                          item.pricePerKg == null ? '' : String(item.pricePerKg).replace('.', ','),
-                        pack:
-                          item.packageKg == null ? '' : String(item.packageKg).replace('.', ','),
-                      })
-                    }
-                  >
-                    Editar
-                  </button>
-                  <button type="button" className="danger-text" onClick={() => void remove(item)}>
-                    Remover
-                  </button>
-                </footer>
-              )}
-            </article>
-          );
-        })}
-        {canEdit && !form && (
-          <button type="button" className="rc-additive rc-new" onClick={() => setForm(blank)}>
-            <span aria-hidden="true">+</span>
-            Novo aditivo
+                </span>
+                <span role="cell">
+                  <em className="at-kind">{kind.label}</em>
+                </span>
+                <span className="at-hint" role="cell">
+                  {kind.hint}
+                </span>
+                <span className="pt-num" role="cell" data-label="Preço">
+                  <b>{item.pricePerKg == null ? '—' : `${money(item.pricePerKg, 2)}/kg`}</b>
+                </span>
+                <span className="pt-num" role="cell" data-label="Embalagem">
+                  {item.packageKg == null ? '—' : kilos(item.packageKg)}
+                </span>
+                <span className="pt-num" role="cell" data-label="Receitas">
+                  {item.recipes ? integer(item.recipes) : <small>nenhuma</small>}
+                </span>
+                <span className="rp-actions" role="cell">
+                  {canEdit && (
+                    <>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Editar ${item.name}`}
+                        title="Editar"
+                        onClick={() =>
+                          setForm({
+                            id: item.id,
+                            name: item.name,
+                            kind: item.kind,
+                            price:
+                              item.pricePerKg == null
+                                ? ''
+                                : String(item.pricePerKg).replace('.', ','),
+                            pack:
+                              item.packageKg == null
+                                ? ''
+                                : String(item.packageKg).replace('.', ','),
+                          })
+                        }
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button danger"
+                        aria-label={`Remover ${item.name}`}
+                        title="Remover"
+                        onClick={() => void remove(item)}
+                      >
+                        ×
+                      </button>
+                    </>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {!catalog.length && !form && <div className="rb-empty">Nenhum aditivo cadastrado ainda.</div>}
+      {canEdit && !form && (
+        <div>
+          <button type="button" className="rt-edit add" onClick={() => setForm(blank)}>
+            + Novo aditivo
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {form && (
         <div className="rc-form">
           <b>{form.id ? 'Editar aditivo' : 'Novo aditivo'}</b>
@@ -1020,86 +1052,91 @@ export function RecipesBoard({
           </button>
         ))}
       </nav>
-      {tab === 'batches' && (
-        <>
-          <p className="rc-lead">
-            <b>{ran.length}</b> receitas rodaram no período ·{' '}
-            {withAdditive ? (
-              <>
-                <b>{withAdditive}</b> com aditivo à mão · <b>{tons(additiveKg)} t</b> de aditivo nas
-                bateladas
-              </>
-            ) : (
-              'nenhuma com aditivo à mão cadastrado'
-            )}
-            <span> · toque numa receita para abrir a batelada</span>
-          </p>
-          {!available && (
-            <div className="mortar-warning">
-              <span>Os aditivos ficam disponíveis depois da migração 051 aplicada no banco.</span>
-            </div>
-          )}
-          {recipes.length ? (
-            <RecipeTable
-              recipes={recipes}
-              canEdit={canEdit}
-              additivesReady={available}
-              onEdit={setEditing}
-              products={products.data?.products ?? []}
-              bagRecipes={bagNames}
-              bagged={bagged}
-              onLink={(recipe, productId) =>
-                void mutate('/mortar/recipes', 'PUT', { recipe, productId }).then(refreshAll)
-              }
-            />
-          ) : (
-            <div className="stops-empty">O misturador ainda não registrou nenhuma batelada.</div>
-          )}
-        </>
-      )}
-      {tab === 'bagging' &&
-        (products.data ? (
-          <ProductsBoard
-            products={products.data.products}
-            recipes={products.data.recipes}
-            canEdit={canEdit}
-            onChanged={refreshAll}
-          />
-        ) : (
-          <div className="stops-empty">{products.error ?? 'Carregando…'}</div>
-        ))}
-      {tab === 'inputs' && (
-        <div className="ri">
-          <MaterialPrices
-            labels={labels}
-            usedBy={(label) =>
-              recipes.filter(
-                (item) => item.batches > 0 && item.materials.some((m) => m.label === label),
-              ).length
-            }
-            canEdit={canEdit}
-          />
-          <section className="ri-section">
-            <header>
-              <b>Aditivos colocados à mão</b>
-              <small>
-                O que o operador põe direto no misturador e a balança não pesa. Cadastre aqui e diga
-                em cada receita (aba Bateladas) quantos kg vão por batelada.
-              </small>
-            </header>
+      {/* Only the tab scrolls, thin and quiet, when the card is shorter than its table. */}
+      <div className="rc-body">
+        {tab === 'batches' && (
+          <>
+            <p className="rc-lead">
+              <b>{ran.length}</b> receitas rodaram no período ·{' '}
+              {withAdditive ? (
+                <>
+                  <b>{withAdditive}</b> com aditivo à mão · <b>{tons(additiveKg)} t</b> de aditivo
+                  nas bateladas
+                </>
+              ) : (
+                'nenhuma com aditivo à mão cadastrado'
+              )}
+              <span> · toque numa receita para abrir a batelada</span>
+            </p>
             {!available && (
               <div className="mortar-warning">
                 <span>Os aditivos ficam disponíveis depois da migração 051 aplicada no banco.</span>
               </div>
             )}
-            <AdditivesCatalog
-              catalog={catalog.data?.additives ?? []}
-              canEdit={canEdit && available}
-              onChanged={() => void refreshAll()}
+            {recipes.length ? (
+              <RecipeTable
+                recipes={recipes}
+                canEdit={canEdit}
+                additivesReady={available}
+                onEdit={setEditing}
+                products={products.data?.products ?? []}
+                bagRecipes={bagNames}
+                bagged={bagged}
+                onLink={(recipe, productId) =>
+                  void mutate('/mortar/recipes', 'PUT', { recipe, productId }).then(refreshAll)
+                }
+              />
+            ) : (
+              <div className="stops-empty">O misturador ainda não registrou nenhuma batelada.</div>
+            )}
+          </>
+        )}
+        {tab === 'bagging' &&
+          (products.data ? (
+            <ProductsBoard
+              products={products.data.products}
+              recipes={products.data.recipes}
+              canEdit={canEdit}
+              onChanged={refreshAll}
             />
-          </section>
-        </div>
-      )}
+          ) : (
+            <div className="stops-empty">{products.error ?? 'Carregando…'}</div>
+          ))}
+        {tab === 'inputs' && (
+          <div className="ri">
+            <MaterialPrices
+              labels={labels}
+              usedBy={(label) =>
+                recipes.filter(
+                  (item) => item.batches > 0 && item.materials.some((m) => m.label === label),
+                ).length
+              }
+              canEdit={canEdit}
+            />
+            <section className="ri-section">
+              <header>
+                <b>Aditivos colocados à mão</b>
+                <small>
+                  O que o operador põe direto no misturador e a balança não pesa. Cadastre aqui e
+                  diga em cada receita (aba Bateladas) quantos kg vão por batelada.
+                </small>
+              </header>
+              {!available && (
+                <div className="mortar-warning">
+                  <span>
+                    Os aditivos ficam disponíveis depois da migração 051 aplicada no banco.
+                  </span>
+                </div>
+              )}
+              <AdditivesCatalog
+                catalog={catalog.data?.additives ?? []}
+                canEdit={canEdit && available}
+                onChanged={() => void refreshAll()}
+              />
+            </section>
+          </div>
+        )}
+      </div>
       {editing && (
         <ModalPortal>
           <RecipeAdditivesModal
