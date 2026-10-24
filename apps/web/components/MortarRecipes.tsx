@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { mutate, usePoll } from './data';
 import { confirmar } from './Dialogs';
 import { ModalPortal } from './ModalPortal';
-import { MATERIAL_COLORS, integer, kilos, money, tons } from './mortarShared';
+import { ProductsBoard, mixOf, type CatalogProduct, type CatalogRecipe } from './MortarProducts';
+import { MortarColors, integer, kilos, money, tons } from './mortarShared';
 
 /**
  * The recipes card (migration 051): what goes into one batch of each mixer recipe, drawn, and
@@ -40,7 +41,13 @@ type Recipe = {
   costPerBag: number | null;
   bagsPerBatch: number | null;
 };
-type Board = { from: string; to: string; additivesAvailable: boolean; recipes: Recipe[] };
+type Board = {
+  from: string;
+  to: string;
+  additivesAvailable: boolean;
+  recipes: Recipe[];
+  bagged: Array<{ recipe: string; bags: number }>;
+};
 
 /** The kinds of additive a dry-mortar plant pours, with what each one is for. */
 export const ADDITIVE_KINDS: Record<string, { label: string; hint: string; color: string }> = {
@@ -74,64 +81,6 @@ const day = (iso: string) => {
   return `${local.slice(8, 10)}/${local.slice(5, 7)}`;
 };
 
-/** One batch, drawn: the weighed materials in their colours, the additives striped. */
-function Composition({ recipe, legend }: { recipe: Recipe; legend: boolean }) {
-  const total = Math.max(
-    1,
-    recipe.materials.reduce((sum, item) => sum + item.kg, 0) + recipe.additivesKg,
-  );
-  return (
-    <div className="rc-comp">
-      <div className="rc-comp-bar" role="img" aria-label="Composição de uma batelada">
-        {recipe.materials.map((item, index) => (
-          <i
-            key={item.label}
-            style={{
-              width: `${(item.kg / total) * 100}%`,
-              background: MATERIAL_COLORS[index % MATERIAL_COLORS.length],
-            }}
-            title={`${item.label}: ${kilos(item.kg)}`}
-          />
-        ))}
-        {recipe.additives.map((item) => (
-          <i
-            key={item.id}
-            className="manual"
-            style={
-              {
-                width: `${Math.max(1.2, (item.kgPerBatch / total) * 100)}%`,
-                '--kind': kindOf(item.kind).color,
-              } as React.CSSProperties
-            }
-            title={`${item.name}: ${fineKg(item.kgPerBatch)} (à mão)`}
-          />
-        ))}
-      </div>
-      {legend && (
-        <ul className="rc-comp-legend">
-          {recipe.materials.map((item, index) => (
-            <li key={item.label}>
-              <u style={{ background: MATERIAL_COLORS[index % MATERIAL_COLORS.length] }} />
-              {item.label} <b>{kilos(item.kg)}</b>
-            </li>
-          ))}
-          {recipe.additives.map((item) => (
-            <li
-              key={item.id}
-              className="manual"
-              style={{ '--kind': kindOf(item.kind).color } as React.CSSProperties}
-            >
-              <u />
-              {item.name} <b>{fineKg(item.kgPerBatch)}</b>
-              <small>à mão</small>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 type SortKey = 'batches' | 'batchKg' | 'costPerBatch' | 'costPerTon' | 'costPerBag';
 const COLUMNS: Array<[SortKey, string]> = [
   ['batches', 'Bateladas'],
@@ -141,21 +90,195 @@ const COLUMNS: Array<[SortKey, string]> = [
   ['costPerBag', 'R$/saco'],
 ];
 
+const share = (part: number, whole: number) =>
+  whole ? `${((part / whole) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '';
+
+/** A swatch in the colour of a material, or striped in the colour of an additive's kind. */
+function Swatch({ color, manual }: { color: string; manual?: boolean }) {
+  return (
+    <u
+      className={manual ? 'rc-swatch manual' : 'rc-swatch'}
+      style={{ '--kind': color, background: manual ? undefined : color } as React.CSSProperties}
+      aria-hidden="true"
+    />
+  );
+}
+
+/** One batch as a sum: each material and additive a line, the batch the total. */
+function BatchLedger({ recipe, colorOf }: { recipe: Recipe; colorOf: (label: string) => string }) {
+  const weighed = recipe.materials.reduce((sum, item) => sum + item.kg, 0);
+  const total = weighed + recipe.additivesKg;
+  const scaleGap = recipe.scaleKg == null ? null : recipe.scaleKg - recipe.recipeKg;
+  return (
+    <div className="rl">
+      <div className="rl-title">Uma batelada</div>
+      <ul>
+        {recipe.materials.map((item) => (
+          <li key={item.label}>
+            <Swatch color={colorOf(item.label)} />
+            <span>{item.label}</span>
+            <b>{kilos(item.kg)}</b>
+            <small>{share(item.kg, total)}</small>
+            <em>{item.cost == null ? 'sem preço' : money(item.cost)}</em>
+          </li>
+        ))}
+        {recipe.additives.map((item) => (
+          <li key={item.id} className="manual">
+            <Swatch color={kindOf(item.kind).color} manual />
+            <span>
+              {item.name} <i>à mão</i>
+            </span>
+            <b>{fineKg(item.kgPerBatch)}</b>
+            <small>{share(item.kgPerBatch, total)}</small>
+            <em>
+              {item.pricePerKg == null ? 'sem preço' : money(item.kgPerBatch * item.pricePerKg)}
+            </em>
+          </li>
+        ))}
+        <li className="rl-total">
+          <span>= Batelada</span>
+          <b>{kilos(recipe.batchKg)}</b>
+          <small />
+          <em>{money(recipe.costPerBatch)}</em>
+        </li>
+      </ul>
+      {scaleGap != null && (
+        <p
+          className={
+            Math.abs(scaleGap) / Math.max(1, recipe.recipeKg) > 0.02 ? 'rl-note warn' : 'rl-note'
+          }
+        >
+          A balança pesou <b>{kilos(recipe.scaleKg)}</b> por batelada, contra{' '}
+          <b>{kilos(recipe.recipeKg)}</b> da receita ({scaleGap >= 0 ? '+' : ''}
+          {share(scaleGap, recipe.recipeKg)}). O peso da batelada usa a balança.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Where the batch goes: the product the mixer recipe makes, and every bag of that mix the HMI filled. */
+function BatchBagging({
+  recipe,
+  products,
+  bagRecipes,
+  bagged,
+  canEdit,
+  onLink,
+}: {
+  recipe: Recipe;
+  products: CatalogProduct[];
+  bagRecipes: CatalogRecipe[];
+  bagged: Map<string, number>;
+  canEdit: boolean;
+  onLink: (productId: string | null) => void;
+}) {
+  const mix = recipe.product ? mixOf(recipe.product.name) : null;
+  const family = mix ? products.filter((item) => mixOf(item.name) === mix) : [];
+  return (
+    <div className="rb">
+      <div className="rl-title">Vira no ensaque</div>
+      <label className="rb-product">
+        <span>Produto desta receita</span>
+        {canEdit ? (
+          <select
+            value={recipe.product?.id ?? ''}
+            onChange={(event) => onLink(event.target.value || null)}
+          >
+            <option value="">— sem produto —</option>
+            {products.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <b>{recipe.product?.name ?? 'sem produto'}</b>
+        )}
+      </label>
+      {family.length ? (
+        <ul>
+          {family.map((product) => {
+            const names = bagRecipes.filter(
+              (item) => item.productId === product.id && item.bagger !== false,
+            );
+            const bags = names.reduce((sum, item) => sum + (bagged.get(item.recipe) ?? 0), 0);
+            return (
+              <li key={product.id}>
+                <div>
+                  <b>{product.name}</b>
+                  <small>
+                    saco de {product.nominal_kg.toLocaleString('pt-BR')} kg ·{' '}
+                    {integer(recipe.batchKg / product.nominal_kg)} sacos por batelada
+                  </small>
+                </div>
+                <strong>
+                  {integer(bags)}{' '}
+                  <small>sacos no período · {tons(bags * product.nominal_kg)} t</small>
+                </strong>
+                <p>
+                  {names.length ? (
+                    names.map((item) => (
+                      <span
+                        key={item.recipe}
+                        className="rb-chip"
+                        title="Nome da receita na IHM da ensacadeira"
+                      >
+                        {item.recipe}
+                        {bagged.get(item.recipe) ? (
+                          <i>{integer(bagged.get(item.recipe)!)}</i>
+                        ) : null}
+                      </span>
+                    ))
+                  ) : (
+                    <small className="warn">
+                      nenhuma receita da ensacadeira ligada a este produto
+                    </small>
+                  )}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="rb-empty">Ligue a receita a um produto para ver o que ela vira no ensaque.</p>
+      )}
+    </div>
+  );
+}
+
 /**
- * Every recipe in one table, so they compare at a glance: what one batch weighs and costs, by the
- * ton and by the bag, and what goes in by hand. A row opens to the batch drawn material by material.
+ * Every mixer recipe in one table, so they compare at a glance: what goes in, what one batch weighs
+ * and costs, by the ton and by the bag, and what goes in by hand. A row opens to the batch as a sum
+ * and to what it becomes at the bagger.
  */
 function RecipeTable({
   recipes,
   canEdit,
+  additivesReady,
   onEdit,
+  products,
+  bagRecipes,
+  bagged,
+  onLink,
 }: {
   recipes: Recipe[];
   canEdit: boolean;
+  additivesReady: boolean;
   onEdit: (recipe: Recipe) => void;
+  products: CatalogProduct[];
+  bagRecipes: CatalogRecipe[];
+  bagged: Map<string, number>;
+  onLink: (recipe: string, productId: string | null) => void;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'batches', desc: true });
   const [open, setOpen] = useState<string | null>(null);
+  const palette = useContext(MortarColors);
+  // One colour per material across every recipe: the order the plant set, then by first sight.
+  const labels = [
+    ...new Set(recipes.flatMap((item) => item.materials.map((material) => material.label))),
+  ];
+  const colorOf = (label: string) => palette.material(label, Math.max(0, labels.indexOf(label)));
   const rows = [...recipes].sort((a, b) => {
     const left = a[sort.key];
     const right = b[sort.key];
@@ -207,7 +330,7 @@ function RecipeTable({
     <div className="rt" role="table" aria-label="Receitas do misturador">
       <div className="rt-row rt-headrow" role="row">
         <span role="columnheader">Receita</span>
-        <span role="columnheader">Composição</span>
+        <span role="columnheader">O que vai na batelada</span>
         {COLUMNS.map(([key, label]) => (
           <button
             key={key}
@@ -225,6 +348,7 @@ function RecipeTable({
       </div>
       {rows.map((recipe) => {
         const expanded = open === recipe.recipe;
+        const toggle = () => setOpen(expanded ? null : recipe.recipe);
         return (
           <div
             key={recipe.recipe}
@@ -235,11 +359,12 @@ function RecipeTable({
               role="row"
               tabIndex={0}
               aria-expanded={expanded}
-              onClick={() => setOpen(expanded ? null : recipe.recipe)}
+              onClick={toggle}
               onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return;
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
-                  setOpen(expanded ? null : recipe.recipe);
+                  toggle();
                 }
               }}
             >
@@ -254,8 +379,13 @@ function RecipeTable({
                   <small className="warn">sem produto ligado</small>
                 )}
               </span>
-              <span className="rt-comp" role="cell">
-                <Composition recipe={recipe} legend={false} />
+              <span className="rt-mats" role="cell">
+                {recipe.materials.map((item) => (
+                  <span key={item.label}>
+                    <Swatch color={colorOf(item.label)} />
+                    {item.label} <b>{kilos(item.kg)}</b>
+                  </span>
+                ))}
               </span>
               {COLUMNS.map(([key, label]) => (
                 <span
@@ -264,9 +394,8 @@ function RecipeTable({
                   className={`rt-num rt-${key}`}
                   data-label={label}
                   title={
-                    (key === 'costPerBatch' || key === 'costPerTon' || key === 'costPerBag') &&
-                    recipe.costPerBatch == null
-                      ? 'Falta o preço de algum material desta receita'
+                    key !== 'batches' && key !== 'batchKg' && recipe.costPerBatch == null
+                      ? 'Falta o preço de algum material desta receita (aba Insumos)'
                       : undefined
                   }
                 >
@@ -275,15 +404,12 @@ function RecipeTable({
               ))}
               <span className="rt-hand" role="cell">
                 {recipe.additives.map((item) => (
-                  <em
-                    key={item.id}
-                    style={{ '--kind': kindOf(item.kind).color } as React.CSSProperties}
-                  >
-                    <u aria-hidden="true" />
+                  <em key={item.id}>
+                    <Swatch color={kindOf(item.kind).color} manual />
                     {item.name} <b>{fineKg(item.kgPerBatch)}</b>
                   </em>
                 ))}
-                {canEdit ? (
+                {canEdit && additivesReady ? (
                   <button
                     type="button"
                     className={recipe.additives.length ? 'rt-edit' : 'rt-edit add'}
@@ -301,43 +427,40 @@ function RecipeTable({
             </div>
             {expanded && (
               <div className="rt-detail">
-                <Composition recipe={recipe} legend />
-                <dl>
+                <BatchLedger recipe={recipe} colorOf={colorOf} />
+                <BatchBagging
+                  recipe={recipe}
+                  products={products}
+                  bagRecipes={bagRecipes}
+                  bagged={bagged}
+                  canEdit={canEdit}
+                  onLink={(productId) => onLink(recipe.recipe, productId)}
+                />
+                <dl className="rt-facts">
                   <div>
-                    <dt>Pesado na balança</dt>
+                    <dt>No período</dt>
                     <dd>
-                      {kilos(recipe.scaleKg ?? recipe.recipeKg)}
-                      <small>
-                        {recipe.scaleKg != null
-                          ? `receita ${kilos(recipe.recipeKg)}`
-                          : 'sem balança: peso da receita'}
-                      </small>
+                      {integer(recipe.batches)}{' '}
+                      <small>{recipe.batches === 1 ? 'batelada' : 'bateladas'}</small>
                     </dd>
                   </div>
                   <div>
-                    <dt>Materiais</dt>
+                    <dt>Misturado</dt>
                     <dd>
-                      {money(recipe.materialsCost)}
-                      <small>por batelada</small>
+                      {tons(recipe.batchKg * recipe.batches)} <small>t</small>
                     </dd>
                   </div>
                   <div>
-                    <dt>Aditivos à mão</dt>
+                    <dt>Custo no período</dt>
                     <dd>
-                      {recipe.additives.length ? money(recipe.additivesCost) : '—'}
-                      <small>
-                        {recipe.additives.length
-                          ? `${fineKg(recipe.additivesKg)} · ${((recipe.additivesKg / recipe.batchKg) * 100).toFixed(1).replace('.', ',')}% da batelada`
-                          : 'nenhum cadastrado'}
-                      </small>
+                      {recipe.costPerBatch == null
+                        ? '—'
+                        : money(recipe.costPerBatch * recipe.batches)}
                     </dd>
                   </div>
                   <div>
                     <dt>Última batelada</dt>
-                    <dd>
-                      {day(recipe.lastAt)}
-                      <small>{integer(recipe.batches)} no período</small>
-                    </dd>
+                    <dd>{day(recipe.lastAt)}</dd>
                   </div>
                 </dl>
               </div>
@@ -350,7 +473,7 @@ function RecipeTable({
           <b>Total no período</b>
           <small>{ran.length} receitas rodaram</small>
         </span>
-        <span className="rt-comp" role="cell" />
+        <span className="rt-mats" role="cell" />
         <span className="rt-num rt-batches" role="cell" data-label="Bateladas">
           <b>{integer(ran.reduce((sum, item) => sum + item.batches, 0))}</b>
         </span>
@@ -709,6 +832,120 @@ function AdditivesCatalog({
   );
 }
 
+/** What a ton of each weighed material costs: one line per material the mixer doses. */
+function MaterialPrices({
+  labels,
+  usedBy,
+  canEdit,
+}: {
+  labels: string[];
+  usedBy: (label: string) => number;
+  canEdit: boolean;
+}) {
+  const saved = usePoll<{ prices: Array<{ label: string; pricePerTon: number }> }>(
+    '/mortar/prices',
+    600000,
+  );
+  const palette = useContext(MortarColors);
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const stored = Object.fromEntries(
+    (saved.data?.prices ?? []).map((item) => [
+      item.label,
+      String(item.pricePerTon).replace('.', ','),
+    ]),
+  );
+  const values = form ?? stored;
+  const all = [...new Set([...labels, ...Object.keys(stored)])];
+  async function save() {
+    if (!form) return;
+    setSaving(true);
+    setError('');
+    try {
+      await mutate('/mortar/prices', 'PUT', {
+        prices: Object.entries(form)
+          .filter(([, value]) => value.trim() !== '')
+          .map(([label, value]) => ({ label, pricePerTon: number(value) })),
+      });
+      setForm(null);
+      await saved.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <section className="ri-section">
+      <header>
+        <b>Materiais pesados na balança</b>
+        <small>
+          Preço por tonelada. Com ele cada receita mostra o custo da batelada, da tonelada e do
+          saco.
+        </small>
+      </header>
+      <ul className="ri-prices">
+        {all.map((label, index) => {
+          const missing = !(values[label] ?? '').trim();
+          return (
+            <li key={label} className={missing ? 'missing' : ''}>
+              <u
+                style={{
+                  background: palette.material(
+                    label,
+                    Math.max(0, labels.indexOf(label) >= 0 ? labels.indexOf(label) : index),
+                  ),
+                }}
+                aria-hidden="true"
+              />
+              <div>
+                <b>{label}</b>
+                <small>
+                  {usedBy(label)
+                    ? `em ${usedBy(label)} ${usedBy(label) === 1 ? 'receita' : 'receitas'}`
+                    : 'nenhuma receita no período'}
+                  {missing && ' · sem preço'}
+                </small>
+              </div>
+              <span className="ri-money">
+                R$
+                <input
+                  inputMode="decimal"
+                  aria-label={`Preço de ${label} por tonelada`}
+                  value={values[label] ?? ''}
+                  placeholder="—"
+                  disabled={!canEdit}
+                  onChange={(event) => setForm({ ...values, [label]: event.target.value })}
+                />
+                /t
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {error && <div className="form-error">{error}</div>}
+      {form && (
+        <div className="ri-save">
+          <button type="button" onClick={() => setForm(null)} disabled={saving}>
+            Descartar
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => void save()}
+            disabled={saving}
+          >
+            {saving ? 'Salvando…' : 'Salvar preços'}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type Tab = 'batches' | 'bagging' | 'inputs';
+
 export function RecipesBoard({
   deviceId,
   from,
@@ -720,81 +957,148 @@ export function RecipesBoard({
   to: string;
   canEdit: boolean;
 }) {
-  const [tab, setTab] = useState<'recipes' | 'additives'>('recipes');
+  const [tab, setTab] = useState<Tab>('batches');
   const [editing, setEditing] = useState<Recipe | null>(null);
   const board = usePoll<Board>(
     `/devices/${deviceId}/mortar/recipes-board?from=${from}&to=${to}`,
     300000,
+    { keepPrevious: true },
   );
   const catalog = usePoll<{ available: boolean; additives: Additive[] }>(
     '/mortar/additives',
     600000,
   );
-  const recipes = board.data?.recipes ?? [];
-  const totals = useMemo(() => {
-    const ran = recipes.filter((item) => item.batches > 0);
-    return {
-      recipes: recipes.length,
-      ran: ran.length,
-      withAdditive: recipes.filter((item) => item.additives.length).length,
-      additiveKg: ran.reduce((sum, item) => sum + item.additivesKg * item.batches, 0),
-    };
-  }, [recipes]);
+  const products = usePoll<{ products: CatalogProduct[]; recipes: CatalogRecipe[] }>(
+    '/mortar/products',
+    600000,
+  );
+  const recipes = useMemo(() => board.data?.recipes ?? [], [board.data]);
+  const bagged = useMemo(
+    () => new Map((board.data?.bagged ?? []).map((row) => [row.recipe, row.bags])),
+    [board.data],
+  );
+  const labels = useMemo(
+    () => [...new Set(recipes.flatMap((item) => item.materials.map((material) => material.label)))],
+    [recipes],
+  );
   if (!board.data) return <div className="stops-empty">{board.error ?? 'Carregando…'}</div>;
   const available = board.data.additivesAvailable;
+  const ran = recipes.filter((item) => item.batches > 0);
+  const withAdditive = recipes.filter((item) => item.additives.length).length;
+  const additiveKg = ran.reduce((sum, item) => sum + item.additivesKg * item.batches, 0);
+  const bagNames = (products.data?.recipes ?? []).filter((item) => item.bagger || !item.mixer);
+  const unlinked = bagNames.filter((item) => !item.productId).length;
+  const tabs: Array<[Tab, string, string, number | null]> = [
+    ['batches', 'Bateladas', 'receitas do misturador', recipes.length],
+    ['bagging', 'Ensaque', 'produtos e receitas da IHM', products.data?.products.length ?? null],
+    ['inputs', 'Insumos', 'preços e aditivos', null],
+  ];
+  const refreshAll = () => {
+    void board.refresh();
+    void catalog.refresh();
+    return products.refresh();
+  };
   return (
     <section className="rc">
-      <div className="rc-head">
-        <div className="widget-period" role="group" aria-label="Ver">
+      <nav className="rc-tabs" aria-label="Receitas">
+        {tabs.map(([key, label, hint, count]) => (
           <button
+            key={key}
             type="button"
-            className={tab === 'recipes' ? 'active' : ''}
-            onClick={() => setTab('recipes')}
+            className={tab === key ? 'active' : ''}
+            aria-pressed={tab === key}
+            onClick={() => setTab(key)}
           >
-            Receitas <small>{totals.recipes}</small>
+            <b>
+              {label}
+              {count != null && <i>{count}</i>}
+              {key === 'bagging' && unlinked > 0 && (
+                <em title={`${unlinked} receita(s) da IHM sem produto`}>{unlinked}</em>
+              )}
+            </b>
+            <small>{hint}</small>
           </button>
-          <button
-            type="button"
-            className={tab === 'additives' ? 'active' : ''}
-            onClick={() => setTab('additives')}
-          >
-            Aditivos <small>{catalog.data?.additives.length ?? 0}</small>
-          </button>
-        </div>
-        {tab === 'recipes' && (
-          <p>
-            {totals.ran} receitas rodaram no período ·{' '}
-            {totals.withAdditive ? (
+        ))}
+      </nav>
+      {tab === 'batches' && (
+        <>
+          <p className="rc-lead">
+            <b>{ran.length}</b> receitas rodaram no período ·{' '}
+            {withAdditive ? (
               <>
-                {totals.withAdditive} com aditivo à mão · <b>{tons(totals.additiveKg)} t</b> de
-                aditivo nas bateladas
+                <b>{withAdditive}</b> com aditivo à mão · <b>{tons(additiveKg)} t</b> de aditivo nas
+                bateladas
               </>
             ) : (
               'nenhuma com aditivo à mão cadastrado'
             )}
+            <span> · toque numa receita para abrir a batelada</span>
           </p>
-        )}
-      </div>
-      {!available && (
-        <div className="mortar-warning">
-          <span>Os aditivos ficam disponíveis depois da migração 051 aplicada no banco.</span>
-        </div>
+          {!available && (
+            <div className="mortar-warning">
+              <span>Os aditivos ficam disponíveis depois da migração 051 aplicada no banco.</span>
+            </div>
+          )}
+          {recipes.length ? (
+            <RecipeTable
+              recipes={recipes}
+              canEdit={canEdit}
+              additivesReady={available}
+              onEdit={setEditing}
+              products={products.data?.products ?? []}
+              bagRecipes={bagNames}
+              bagged={bagged}
+              onLink={(recipe, productId) =>
+                void mutate('/mortar/recipes', 'PUT', { recipe, productId }).then(refreshAll)
+              }
+            />
+          ) : (
+            <div className="stops-empty">O misturador ainda não registrou nenhuma batelada.</div>
+          )}
+        </>
       )}
-      {tab === 'recipes' ? (
-        recipes.length ? (
-          <RecipeTable recipes={recipes} canEdit={canEdit && available} onEdit={setEditing} />
+      {tab === 'bagging' &&
+        (products.data ? (
+          <ProductsBoard
+            products={products.data.products}
+            recipes={products.data.recipes}
+            canEdit={canEdit}
+            onChanged={refreshAll}
+          />
         ) : (
-          <div className="stops-empty">O misturador ainda não registrou nenhuma batelada.</div>
-        )
-      ) : (
-        <AdditivesCatalog
-          catalog={catalog.data?.additives ?? []}
-          canEdit={canEdit && available}
-          onChanged={() => {
-            void catalog.refresh();
-            void board.refresh();
-          }}
-        />
+          <div className="stops-empty">{products.error ?? 'Carregando…'}</div>
+        ))}
+      {tab === 'inputs' && (
+        <div className="ri">
+          <MaterialPrices
+            labels={labels}
+            usedBy={(label) =>
+              recipes.filter(
+                (item) => item.batches > 0 && item.materials.some((m) => m.label === label),
+              ).length
+            }
+            canEdit={canEdit}
+          />
+          <section className="ri-section">
+            <header>
+              <b>Aditivos colocados à mão</b>
+              <small>
+                O que o operador põe direto no misturador e a balança não pesa. Cadastre aqui e diga
+                em cada receita (aba Bateladas) quantos kg vão por batelada.
+              </small>
+            </header>
+            {!available && (
+              <div className="mortar-warning">
+                <span>Os aditivos ficam disponíveis depois da migração 051 aplicada no banco.</span>
+              </div>
+            )}
+            <AdditivesCatalog
+              catalog={catalog.data?.additives ?? []}
+              canEdit={canEdit && available}
+              onChanged={() => void refreshAll()}
+            />
+          </section>
+        </div>
       )}
       {editing && (
         <ModalPortal>
@@ -803,10 +1107,7 @@ export function RecipesBoard({
             catalog={catalog.data?.additives ?? []}
             onClose={(saved) => {
               setEditing(null);
-              if (saved) {
-                void board.refresh();
-                void catalog.refresh();
-              }
+              if (saved) void refreshAll();
             }}
           />
         </ModalPortal>

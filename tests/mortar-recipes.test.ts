@@ -55,9 +55,13 @@ describe('mortar recipe additives', () => {
     expect(put.statusCode).toBeLessThan(300);
 
     const board = (
-      await api.inject({ method: 'GET', url: `/api/devices/${GENERIC}/mortar/recipes-board?from=${today}&to=${today}` })
+      await api.inject({
+        method: 'GET',
+        url: `/api/devices/${GENERIC}/mortar/recipes-board?from=${today}&to=${today}`,
+      })
     ).json<{
       additivesAvailable: boolean;
+      bagged: Array<{ recipe: string; bags: number }>;
       recipes: Array<{
         recipe: string;
         batches: number;
@@ -83,16 +87,45 @@ describe('mortar recipe additives', () => {
 
     // The summary: 3 × 12,5 kg more mixed, listed as a manual material.
     const summary = (
-      await api.inject({ method: 'GET', url: `/api/devices/${GENERIC}/mortar?from=${today}&to=${today}` })
-    ).json<{ mix: { kg: number; additivesKg: number; materials: Array<{ label: string; kg: number; manual: boolean }> } }>();
+      await api.inject({
+        method: 'GET',
+        url: `/api/devices/${GENERIC}/mortar?from=${today}&to=${today}`,
+      })
+    ).json<{
+      mix: {
+        kg: number;
+        additivesKg: number;
+        materials: Array<{ label: string; kg: number; manual: boolean }>;
+      };
+    }>();
     expect(summary.mix.additivesKg).toBeCloseTo(37.5);
     expect(summary.mix.kg).toBeCloseTo(8037.5);
-    expect(summary.mix.materials.find((item) => item.manual)).toMatchObject({ label: 'Polímero VAE' });
+    expect(summary.mix.materials.find((item) => item.manual)).toMatchObject({
+      label: 'Polímero VAE',
+    });
+
+    // The catalog tells the mixer's names from the bagger's: the batches tab links the first.
+    await api.inject({
+      method: 'PUT',
+      url: '/api/mortar/recipes',
+      payload: { recipe: 'AC3 BELLAFIX', productId: null },
+    });
+    const catalog = (await api.inject({ method: 'GET', url: '/api/mortar/products' })).json<{
+      recipes: Array<{ recipe: string; mixer: boolean; bagger: boolean }>;
+    }>();
+    expect(Array.isArray(board.bagged)).toBe(true);
+    expect(catalog.recipes.every((item) => typeof item.mixer === 'boolean')).toBe(true);
 
     // Removing the additive takes it out of the recipe.
-    expect((await api.inject({ method: 'DELETE', url: `/api/mortar/additives/${additive.id}` })).statusCode).toBeLessThan(300);
+    expect(
+      (await api.inject({ method: 'DELETE', url: `/api/mortar/additives/${additive.id}` }))
+        .statusCode,
+    ).toBeLessThan(300);
     const after = (
-      await api.inject({ method: 'GET', url: `/api/devices/${GENERIC}/mortar/recipes-board?from=${today}&to=${today}` })
+      await api.inject({
+        method: 'GET',
+        url: `/api/devices/${GENERIC}/mortar/recipes-board?from=${today}&to=${today}`,
+      })
     ).json<{ recipes: Array<{ recipe: string; batchKg: number }> }>();
     expect(after.recipes.find((item) => item.recipe === 'AC3 BELLAFIX')!.batchKg).toBeCloseTo(2010);
   }, 60_000);

@@ -80,7 +80,16 @@ export async function loadRecipeAdditives(db: Database, tenantId: string) {
   return byRecipe;
 }
 
-const KINDS = ['celulose', 'polimero', 'incorporador', 'retardador', 'hidrofugante', 'pigmento', 'fibra', 'outro'] as const;
+const KINDS = [
+  'celulose',
+  'polimero',
+  'incorporador',
+  'retardador',
+  'hidrofugante',
+  'pigmento',
+  'fibra',
+  'outro',
+] as const;
 const additiveBody = z.object({
   name: z.string().trim().min(1).max(60),
   kind: z.enum(KINDS).default('outro'),
@@ -131,11 +140,12 @@ export function registerMortarRecipeRoutes(
     if (!(await hasTables(db))) return missing(reply);
     const current = access.principal(req);
     const body = additiveBody.parse(req.body);
-    const exists = await db.query('SELECT 1 FROM mortar_additives WHERE tenant_id=$1 AND lower(name)=lower($2)', [
-      current.tenantId,
-      body.name,
-    ]);
-    if (exists.rows.length) return reply.code(409).send({ error: 'Já existe um aditivo com esse nome.' });
+    const exists = await db.query(
+      'SELECT 1 FROM mortar_additives WHERE tenant_id=$1 AND lower(name)=lower($2)',
+      [current.tenantId, body.name],
+    );
+    if (exists.rows.length)
+      return reply.code(409).send({ error: 'Já existe um aditivo com esse nome.' });
     const row = await db.query<{ id: string }>(
       `INSERT INTO mortar_additives(tenant_id,name,kind,price_per_kg,package_kg)
        VALUES($1,$2,$3,$4,$5) RETURNING id`,
@@ -159,7 +169,14 @@ export function registerMortarRecipeRoutes(
     const updated = await db.query(
       `UPDATE mortar_additives SET name=$3,kind=$4,price_per_kg=$5,package_kg=$6,updated_at=now()
        WHERE tenant_id=$1 AND id=$2 RETURNING id`,
-      [current.tenantId, additive, body.name, body.kind, body.pricePerKg ?? null, body.packageKg ?? null],
+      [
+        current.tenantId,
+        additive,
+        body.name,
+        body.kind,
+        body.pricePerKg ?? null,
+        body.packageKg ?? null,
+      ],
     );
     if (!updated.rows.length) return reply.code(404).send({ error: 'Aditivo não encontrado' });
     await recordAudit(db, req, current, {
@@ -176,10 +193,10 @@ export function registerMortarRecipeRoutes(
     if (!(await hasTables(db))) return missing(reply);
     const current = access.principal(req);
     const { additive } = z.object({ additive: z.uuid() }).parse(req.params);
-    const removed = await db.query('DELETE FROM mortar_additives WHERE tenant_id=$1 AND id=$2 RETURNING id', [
-      current.tenantId,
-      additive,
-    ]);
+    const removed = await db.query(
+      'DELETE FROM mortar_additives WHERE tenant_id=$1 AND id=$2 RETURNING id',
+      [current.tenantId, additive],
+    );
     if (!removed.rows.length) return reply.code(404).send({ error: 'Aditivo não encontrado' });
     await recordAudit(db, req, current, {
       action: 'mortar.additive.delete',
@@ -248,7 +265,7 @@ export function registerMortarRecipeRoutes(
     const from = query.from && query.from <= to ? query.from : addDays(to, -29);
     const start = plantInstant(from, '00:00');
     const end = plantInstant(addDays(to, 1), '00:00');
-    const [recipes, materials, links, prices, additives, catalog] = await Promise.all([
+    const [recipes, materials, links, prices, additives, catalog, bagged] = await Promise.all([
       db.query<{
         recipe: string;
         batches: number;
@@ -290,6 +307,12 @@ export function registerMortarRecipeRoutes(
       ),
       loadRecipeAdditives(db, tenantId),
       hasTables(db),
+      db.query<{ recipe: string; bags: number }>(
+        // What the bagger HMI bagged under each of its recipe names in the period.
+        `SELECT recipe,sum(bags)::float bags FROM bagging_buckets
+         WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4 GROUP BY recipe`,
+        [tenantId, id, start, end],
+      ),
     ]);
     const price = new Map(prices.rows.map((row) => [row.label, Number(row.price_per_ton)]));
     const link = new Map(links.rows.map((row) => [row.recipe, row]));
@@ -297,6 +320,7 @@ export function registerMortarRecipeRoutes(
       from,
       to,
       additivesAvailable: catalog,
+      bagged: bagged.rows.map((row) => ({ recipe: row.recipe, bags: Number(row.bags) })),
       recipes: recipes.rows.map((row) => {
         const own = materials.rows
           .filter((item) => item.recipe === row.recipe)
@@ -317,11 +341,15 @@ export function registerMortarRecipeRoutes(
           ? own.reduce((sum, item) => sum + (item.cost ?? 0), 0)
           : null;
         const costPerBatch =
-          materialsCost == null || added.costPerBatch == null ? null : materialsCost + added.costPerBatch;
+          materialsCost == null || added.costPerBatch == null
+            ? null
+            : materialsCost + added.costPerBatch;
         const product = link.get(row.recipe);
         return {
           recipe: row.recipe,
-          product: product ? { id: product.product_id, name: product.name, nominalKg: Number(product.nominal_kg) } : null,
+          product: product
+            ? { id: product.product_id, name: product.name, nominalKg: Number(product.nominal_kg) }
+            : null,
           batches: Number(row.period_batches),
           lastAt: new Date(row.last_at).toISOString(),
           recipeKg,
@@ -335,7 +363,9 @@ export function registerMortarRecipeRoutes(
           costPerBatch,
           costPerTon: costPerBatch == null || !batchKg ? null : costPerBatch / (batchKg / 1000),
           costPerBag:
-            costPerBatch == null || !batchKg || !product ? null : (costPerBatch / batchKg) * Number(product.nominal_kg),
+            costPerBatch == null || !batchKg || !product
+              ? null
+              : (costPerBatch / batchKg) * Number(product.nominal_kg),
           bagsPerBatch: product ? batchKg / Number(product.nominal_kg) : null,
         };
       }),

@@ -399,15 +399,23 @@ export function registerMortarRoutes(
     );
     // The manual additives of each recipe (migration 051): poured into the mixer, never weighed.
     const additives = await loadRecipeAdditives(db, tenantId);
-    const additiveTotals = new Map<string, { kg: number; cost: number | null; pricePerKg: number | null }>();
+    const additiveTotals = new Map<
+      string,
+      { kg: number; cost: number | null; pricePerKg: number | null }
+    >();
     for (const row of batches.rows) {
       const own = additives.get(row.recipe);
       if (!own) continue;
       for (const item of own.items) {
-        const entry = additiveTotals.get(item.name) ?? { kg: 0, cost: 0, pricePerKg: item.pricePerKg };
+        const entry = additiveTotals.get(item.name) ?? {
+          kg: 0,
+          cost: 0,
+          pricePerKg: item.pricePerKg,
+        };
         const kg = item.kgPerBatch * Number(row.batches);
         entry.kg += kg;
-        entry.cost = entry.cost == null || item.pricePerKg == null ? null : entry.cost + kg * item.pricePerKg;
+        entry.cost =
+          entry.cost == null || item.pricePerKg == null ? null : entry.cost + kg * item.pricePerKg;
         additiveTotals.set(item.name, entry);
       }
     }
@@ -450,7 +458,11 @@ export function registerMortarRoutes(
             .map(([label, kg]) => ({ label, kg, manual: false }))
             .sort((a, b) => rank(a.label) - rank(b.label)),
           // The additives last, marked as poured by hand.
-          ...[...additiveTotals.entries()].map(([label, item]) => ({ label, kg: item.kg, manual: true })),
+          ...[...additiveTotals.entries()].map(([label, item]) => ({
+            label,
+            kg: item.kg,
+            manual: true,
+          })),
         ],
         cycleMinutes: cycles.rows[0]?.minutes ?? null,
         // What the raw materials cost, at the prices set in Produtos e receitas.
@@ -480,7 +492,8 @@ export function registerMortarRoutes(
                 .reduce(
                   (sum, item) => sum + (Number(item.kg) / 1000) * (price.get(item.label) ?? 0),
                   0,
-                ) + (own?.costPerBatch ?? 0) * Number(row.batches);
+                ) +
+              (own?.costPerBatch ?? 0) * Number(row.batches);
             const kg = Number(row.total_kg) + addedKg;
             return {
               recipe: row.recipe,
@@ -678,8 +691,20 @@ export function registerMortarRoutes(
         'SELECT id,name,nominal_kg::float nominal_kg,standard_rate::float standard_rate FROM mortar_products WHERE tenant_id=$1 ORDER BY name',
         [current.tenantId],
       ),
-      db.query<{ recipe: string; product_id: string | null; bags: number; last_at: Date | null }>(
-        `SELECT r.recipe,l.product_id,coalesce(r.bags,0)::float bags,r.last_at FROM (
+      db.query<{
+        recipe: string;
+        product_id: string | null;
+        bags: number;
+        last_at: Date | null;
+        mixer: boolean;
+        bagger: boolean;
+      }>(
+        // Where each name comes from: the bagger HMI (it bagged under it) or the mixer (it ran
+        // batches under it); both are linked to products in the same table.
+        `SELECT r.recipe,l.product_id,coalesce(r.bags,0)::float bags,r.last_at,
+                EXISTS(SELECT 1 FROM mix_batches m WHERE m.tenant_id=$1 AND m.recipe=r.recipe) mixer,
+                EXISTS(SELECT 1 FROM bagging_buckets b WHERE b.tenant_id=$1 AND b.recipe=r.recipe) bagger
+         FROM (
            SELECT recipe,sum(bags) bags,max(bucket) last_at FROM bagging_buckets
            WHERE tenant_id=$1 AND ($2::uuid[] IS NULL OR device_id=ANY($2)) GROUP BY recipe
            UNION ALL
@@ -698,6 +723,8 @@ export function registerMortarRoutes(
         productId: row.product_id,
         bags: Number(row.bags),
         lastAt: row.last_at,
+        mixer: Boolean(row.mixer),
+        bagger: Boolean(row.bagger),
       })),
     };
   });
