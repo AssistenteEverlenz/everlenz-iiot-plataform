@@ -9,7 +9,8 @@ export type MortarView =
   | 'mortar_output'
   | 'mortar_materials'
   | 'mortar_yield'
-  | 'mortar_mixer';
+  | 'mortar_mixer'
+  | 'mortar_recipes';
 
 export type SpoutState = 'running' | 'idle' | 'off' | 'offline' | 'unknown';
 export type SpoutProduct = {

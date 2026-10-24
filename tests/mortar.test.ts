@@ -209,8 +209,8 @@ describe('mortar summary', () => {
     expect(summary.mix.batches).toBe(3);
     expect(summary.mix.materials).toEqual(
       expect.arrayContaining([
-        { label: 'Areia', kg: 1500 },
-        { label: 'Cimento', kg: 360 },
+        { label: 'Areia', kg: 1500, manual: false },
+        { label: 'Cimento', kg: 360, manual: false },
       ]),
     );
     expect(summary.yield.mixedKg).toBe(1860);

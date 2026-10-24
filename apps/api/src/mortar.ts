@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Database } from '@iiot/database';
 import { addDays, env, NO_RECIPE, plantDate, plantInstant } from '@iiot/shared';
 import type { createAccessControl } from './auth.js';
+import { loadRecipeAdditives } from './mortar-recipes.js';
 import { recordAudit } from './audit.js';
 
 /**
@@ -396,8 +397,24 @@ export function registerMortarRoutes(
       (sum, row) => sum + Number(row.scale_theoretical),
       0,
     );
-    // The mass that went into the silo: the scale where it weighed, the recipe elsewhere.
-    const realMixedKg = mixedKg - scaleTheoretical + scaleKg;
+    // The manual additives of each recipe (migration 051): poured into the mixer, never weighed.
+    const additives = await loadRecipeAdditives(db, tenantId);
+    const additiveTotals = new Map<string, { kg: number; cost: number | null; pricePerKg: number | null }>();
+    for (const row of batches.rows) {
+      const own = additives.get(row.recipe);
+      if (!own) continue;
+      for (const item of own.items) {
+        const entry = additiveTotals.get(item.name) ?? { kg: 0, cost: 0, pricePerKg: item.pricePerKg };
+        const kg = item.kgPerBatch * Number(row.batches);
+        entry.kg += kg;
+        entry.cost = entry.cost == null || item.pricePerKg == null ? null : entry.cost + kg * item.pricePerKg;
+        additiveTotals.set(item.name, entry);
+      }
+    }
+    const additivesKg = [...additiveTotals.values()].reduce((sum, item) => sum + item.kg, 0);
+    // The mass that went into the silo: the scale where it weighed, the recipe elsewhere, and
+    // the additives poured by hand.
+    const realMixedKg = mixedKg - scaleTheoretical + scaleKg + additivesKg;
 
     return {
       from,
@@ -419,7 +436,8 @@ export function registerMortarRoutes(
       },
       mix: {
         batches: batchCount,
-        kg: mixedKg,
+        kg: mixedKg + additivesKg,
+        additivesKg,
         scaleKg: scaleTheoretical > 0 ? scaleKg : null,
         scaleTheoreticalKg: scaleTheoretical,
         lastBatchAt: batches.rows.reduce<Date | null>(
@@ -427,36 +445,52 @@ export function registerMortarRoutes(
           null,
         ),
         // In the order the plant set them up (sand, cement, complement), not the database's.
-        materials: [...materialTotals.entries()]
-          .map(([label, kg]) => ({ label, kg }))
-          .sort((a, b) => rank(a.label) - rank(b.label)),
+        materials: [
+          ...[...materialTotals.entries()]
+            .map(([label, kg]) => ({ label, kg, manual: false }))
+            .sort((a, b) => rank(a.label) - rank(b.label)),
+          // The additives last, marked as poured by hand.
+          ...[...additiveTotals.entries()].map(([label, item]) => ({ label, kg: item.kg, manual: true })),
+        ],
         cycleMinutes: cycles.rows[0]?.minutes ?? null,
         // What the raw materials cost, at the prices set in Produtos e receitas.
         cost: (() => {
           const price = new Map(prices.rows.map((row) => [row.label, Number(row.price_per_ton)]));
-          if (!price.size) return null;
-          const items = [...materialTotals.entries()].map(([label, kg]) => ({
-            label,
-            pricePerTon: price.get(label) ?? null,
-            cost: price.has(label) ? (kg / 1000) * (price.get(label) ?? 0) : null,
-          }));
+          if (!price.size && !additiveTotals.size) return null;
+          const items = [
+            ...[...materialTotals.entries()].map(([label, kg]) => ({
+              label,
+              pricePerTon: price.get(label) ?? null,
+              cost: price.has(label) ? (kg / 1000) * (price.get(label) ?? 0) : null,
+            })),
+            // The additives at their own price per kg (the recipes card sets it).
+            ...[...additiveTotals.entries()].map(([label, item]) => ({
+              label,
+              pricePerTon: item.pricePerKg == null ? null : item.pricePerKg * 1000,
+              cost: item.cost,
+            })),
+          ];
           const total = items.reduce((sum, item) => sum + (item.cost ?? 0), 0);
           const byRecipe = batches.rows.map((row) => {
-            const cost = materials.rows
-              .filter((item) => item.recipe === row.recipe)
-              .reduce(
-                (sum, item) => sum + (Number(item.kg) / 1000) * (price.get(item.label) ?? 0),
-                0,
-              );
+            const own = additives.get(row.recipe);
+            const addedKg = (own?.kgPerBatch ?? 0) * Number(row.batches);
+            const cost =
+              materials.rows
+                .filter((item) => item.recipe === row.recipe)
+                .reduce(
+                  (sum, item) => sum + (Number(item.kg) / 1000) * (price.get(item.label) ?? 0),
+                  0,
+                ) + (own?.costPerBatch ?? 0) * Number(row.batches);
+            const kg = Number(row.total_kg) + addedKg;
             return {
               recipe: row.recipe,
               cost,
-              perTon: Number(row.total_kg) ? cost / (Number(row.total_kg) / 1000) : null,
+              perTon: kg ? cost / (kg / 1000) : null,
             };
           });
           return {
             total,
-            perTon: mixedKg ? total / (mixedKg / 1000) : null,
+            perTon: mixedKg + additivesKg ? total / ((mixedKg + additivesKg) / 1000) : null,
             perBatch: batchCount ? total / batchCount : null,
             missing: items.filter((item) => item.pricePerTon == null).map((item) => item.label),
             materials: items,

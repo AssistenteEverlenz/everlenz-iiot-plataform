@@ -200,6 +200,7 @@ const defaultRows: Record<DashboardWidget['widget_type'], number> = {
   mortar_materials: 19,
   mortar_yield: 9,
   mortar_mixer: 30,
+  mortar_recipes: 16,
 };
 /**
  * Where each card lands on the 12-column desktop grid, which packs densely: a later small
@@ -1419,7 +1420,8 @@ export function DashboardCanvas({ id }: { id: string }) {
           widgetType === 'shift_board' ||
           widgetType === 'wear' ||
           widgetType === 'bagging' ||
-          widgetType === 'mortar_mixer'
+          widgetType === 'mortar_mixer' ||
+          widgetType === 'mortar_recipes'
             ? 'full'
             : isMortarView(widgetType)
               ? 'large'

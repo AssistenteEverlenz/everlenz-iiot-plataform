@@ -106,7 +106,8 @@ export interface DashboardWidget {
     | 'mortar_output'
     | 'mortar_materials'
     | 'mortar_yield'
-    | 'mortar_mixer';
+    | 'mortar_mixer'
+    | 'mortar_recipes';
   title: string;
   position: number;
   /** Which tab of the panel shows it; null means it has none and rides on the first. */

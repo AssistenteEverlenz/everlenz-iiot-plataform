@@ -20,6 +20,7 @@ import { registerMortarRoutes } from './mortar.js';
 import { registerMortarBoardRoutes } from './mortar-board.js';
 import { registerMortarAdherenceRoutes } from './mortar-adherence.js';
 import { registerMortarMixerRoutes } from './mortar-mixer.js';
+import { registerMortarRecipeRoutes } from './mortar-recipes.js';
 import { registerMortarHistoryRoutes } from './mortar-history.js';
 import { registerHmiCheckRoutes } from './hmi-check.js';
 import { applyDashboardTemplate, registerDashboardSnapshotRoutes } from './dashboard-snapshots.js';
@@ -780,6 +781,7 @@ export async function createApp(
   registerMortarBoardRoutes(app, db, access);
   registerMortarAdherenceRoutes(app, db, access);
   registerMortarMixerRoutes(app, db, access);
+  registerMortarRecipeRoutes(app, db, access);
   registerMortarHistoryRoutes(app, db, access);
   registerHmiCheckRoutes(app, db, access);
   registerDashboardSnapshotRoutes(app, db, access);
@@ -1870,6 +1872,8 @@ export async function createApp(
           'mortar_yield',
           // The mixer board (migration 046).
           'mortar_mixer',
+          // The recipes and their manual additives (migration 051).
+          'mortar_recipes',
         ]),
         title: z.string().min(1).max(120),
         width: z.enum(['small', 'medium', 'large', 'full']).default('medium'),
@@ -2471,7 +2475,8 @@ interface DashboardWidgetRecord {
     | 'mortar_output'
     | 'mortar_materials'
     | 'mortar_yield'
-    | 'mortar_mixer';
+    | 'mortar_mixer'
+    | 'mortar_recipes';
   title: string;
   position: number;
   width: 'small' | 'medium' | 'large' | 'full';

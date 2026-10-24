@@ -7,6 +7,7 @@ import { ModalPortal } from './ModalPortal';
 import { usePlatform } from './PlatformShell';
 import { Bagging, Materials, MortarColors, Output, Yield } from './MortarBoards';
 import { MixerBoard } from './MortarMixer';
+import { RecipesBoard } from './MortarRecipes';
 import { MixerSettings, type MixerSettingsHandle } from './MortarMixerSettings';
 import {
   PERIODS,
@@ -46,7 +47,7 @@ export function MortarPanel({
         ? custom
         : windowOf(period);
   const summary = usePoll<Summary>(
-    view === 'mortar_mixer' ? null : `/devices/${deviceId}/mortar?from=${range.from}&to=${range.to}`,
+    view === 'mortar_mixer' || view === 'mortar_recipes' ? null : `/devices/${deviceId}/mortar?from=${range.from}&to=${range.to}`,
     view === 'bagging' ? 30000 : 120000,
   );
 
@@ -93,6 +94,16 @@ export function MortarPanel({
       <MortarColors.Provider value={paletteOf(config)}>
         <div className="stops-panel mortar-panel">
           <MixerBoard deviceId={deviceId} />
+        </div>
+      </MortarColors.Provider>
+    );
+  // The recipes card reads its own route too: each recipe, its additives and its cost.
+  if (view === 'mortar_recipes')
+    return (
+      <MortarColors.Provider value={paletteOf(config)}>
+        <div className="stops-panel mortar-panel">
+          <div className="stops-head">{tools}</div>
+          <RecipesBoard deviceId={deviceId} from={range.from} to={range.to} canEdit={master} />
         </div>
       </MortarColors.Provider>
     );
@@ -638,6 +649,13 @@ export function MortarCardSettings({
   );
 
   if (view === 'mortar_mixer') return <MixerSettings deviceId={deviceId} handle={mixerHandle} />;
+  if (view === 'mortar_recipes')
+    return (
+      <div className="notice full-field">
+        Os aditivos de cada receita se configuram no próprio card: <b>Configurar</b> em cada receita, e o
+        catálogo na aba <b>Aditivos</b>. Aqui fica só a cor do card.
+      </div>
+    );
   if (!edits)
     return (
       <div className="notice full-field">
@@ -901,6 +919,12 @@ export const MORTAR_CARDS: Array<[MortarView, string, string, string]> = [
     '◎',
     'Misturador',
     'A batelada em andamento, a balança contra a receita, as bateladas do dia e a curva de trabalho.',
+  ],
+  [
+    'mortar_recipes',
+    '⚗',
+    'Receitas',
+    'O que vai em cada batelada, os aditivos colocados à mão e quanto custa a batelada, a tonelada e o saco.',
   ],
 ];
 export const isMortarView = (type: string): type is MortarView =>

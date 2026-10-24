@@ -17,6 +17,7 @@ import { recordAudit } from './audit.js';
 import { loadShifts } from './shift-production.js';
 import { chartSpanOf, effectiveShifts, type EffectiveOccurrence } from './effective-shifts.js';
 import { reconcile, type Campaign } from './mortar-reconcile.js';
+import { loadRecipeAdditives } from './mortar-recipes.js';
 import {
   mortarUtilizationError,
   mortarUtilizationFrom,
@@ -885,6 +886,14 @@ export function registerMortarBoardRoutes(
       ),
       loadLinks(db, tenantId),
     ]);
+    // The manual additives (migration 051) are mass of the batch the scale never saw: every
+    // batch carries them, in its mass and in what the recipe asked for alike.
+    const additives = await loadRecipeAdditives(db, tenantId);
+    for (const row of batches.rows) {
+      const added = (additives.get(row.recipe)?.kgPerBatch ?? 0) * Number(row.batches);
+      row.kg = Number(row.kg) + added;
+      row.total_kg = Number(row.total_kg) + added;
+    }
     const result = reconcile({
       batches: batches.rows.map((row) => {
         const link = product.get(row.recipe);
@@ -1076,6 +1085,9 @@ export function registerMortarBoardRoutes(
       rows.set(key, row);
       return { row, link };
     };
+    const additives = await loadRecipeAdditives(db, tenantId);
+    for (const item of mixed.rows)
+      item.kg = Number(item.kg) + (additives.get(item.recipe)?.kgPerBatch ?? 0) * Number(item.batches);
     for (const item of mixed.rows) {
       const { row } = rowOf(item.recipe);
       row.batches += Number(item.batches);
