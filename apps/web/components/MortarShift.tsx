@@ -98,8 +98,30 @@ export function madeOf(spouts: SpoutRow[]) {
   return [...made.values()].sort((a, b) => b.bags - a.bags);
 }
 
+/**
+ * One colour per product, the same wherever a product shows on the board (the list beside the
+ * produced figure, the bars of the spouts): quiet tones, apart from the spouts' and the states'.
+ */
+const PRODUCT_TONES = ['#2f6f8f', '#c39252', '#7a5ea8', '#4f9d69', '#c96f4a', '#5f7d95', '#a8727e', '#8a9a3d'];
+export function productTones(
+  spouts: Array<{ products: Array<{ recipe: string; product: string | null; bags: number }> }>,
+) {
+  const totals = new Map<string, number>();
+  for (const spout of spouts)
+    for (const item of spout.products)
+      if (item.bags > 0) {
+        const name = item.product ?? item.recipe;
+        totals.set(name, (totals.get(name) ?? 0) + item.bags);
+      }
+  return new Map(
+    [...totals.entries()]
+      .sort((x, y) => y[1] - x[1])
+      .map(([name], index) => [name, PRODUCT_TONES[index % PRODUCT_TONES.length]]),
+  );
+}
+
 /** Beside the produced figure: the products of the period and the spouts that add up to it. */
-function HeroMade({ spouts }: { spouts: SpoutRow[] }) {
+function HeroMade({ spouts, tones }: { spouts: SpoutRow[]; tones: Map<string, string> }) {
   const made = madeOf(spouts);
   if (!made.length) return null;
   const shown = made.slice(0, 4);
@@ -109,8 +131,11 @@ function HeroMade({ spouts }: { spouts: SpoutRow[] }) {
     <div className="mortar-hero-made" aria-label="O que foi produzido">
       <ul>
         {shown.map((item) => (
-          <li key={item.name}>
-            <span title={item.name}>{item.name}</span>
+          <li key={item.name} style={{ '--tone': tones.get(item.name) } as React.CSSProperties}>
+            <span title={item.name}>
+              <em className="tone-dot" />
+              {item.name}
+            </span>
             <i>
               <u style={{ width: `${(item.bags / peak) * 100}%` }} />
             </i>
@@ -136,6 +161,55 @@ function HeroMade({ spouts }: { spouts: SpoutRow[] }) {
         </p>
       )}
     </div>
+  );
+}
+
+/** Bags an hour, half hour by half hour, from the board's cumulative curve. */
+function paceSeries(curve: MortarBoard['curve']) {
+  const SLOT = 30 * 60_000;
+  const slots = new Map<number, number>();
+  for (const point of curve) if (point.actual != null) slots.set(Math.floor(new Date(point.t).getTime() / SLOT), point.actual);
+  const keys = [...slots.keys()].sort((a, b) => a - b);
+  return keys.slice(1).map((key, index) => Math.max(0, (slots.get(key)! - slots.get(keys[index])!) * 2));
+}
+
+/** A small line of the pace through the period, its area under it. */
+function Sparkline({ values }: { values: number[] }) {
+  if (values.length < 2) return null;
+  const peak = Math.max(1, ...values);
+  const at = (value: number, index: number) =>
+    `${(index / (values.length - 1)) * 100},${30 - (value / peak) * 26}`;
+  const line = values.map(at).join(' ');
+  return (
+    <svg className="kpi-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true">
+      <polygon points={`0,32 ${line} 100,32`} />
+      <polyline points={line} />
+    </svg>
+  );
+}
+
+/** How the spouts' time went, as one bar: bagging, idle, disabled, no communication. */
+function TimeBar({ time }: { time: MortarBoard['time'] }) {
+  const parts = [
+    ['producing', time.producing],
+    ['idle', time.idle],
+    ['disabled', time.disabled],
+    ['offline', time.offline],
+  ] as const;
+  const total = parts.reduce((sum, [, seconds]) => sum + seconds, 0);
+  if (!total) return null;
+  return (
+    <span className="kpi-timebar" aria-hidden="true">
+      {parts
+        .filter(([, seconds]) => seconds > 0)
+        .map(([state, seconds]) => (
+          <i
+            key={state}
+            style={{ width: `${(seconds / total) * 100}%`, background: stateInfo[state]?.color }}
+            title={`${label(state)}: ${percent(seconds / total, 0)}`}
+          />
+        ))}
+    </span>
   );
 }
 
@@ -429,24 +503,37 @@ export function MortarShiftBoard({
       : data.shifts[0]
         ? shiftTitle(data.shifts[0], data.now)
         : 'Sem turno');
+  // The day view runs to midnight; what ends is the last shift of the day.
+  const remaining =
+    ((data.mode === 'day' && data.shifts.length
+      ? Math.max(...data.shifts.map((item) => new Date(item.end).getTime()))
+      : new Date(board.span.end).getTime()) -
+      new Date(data.now).getTime()) /
+    1000;
   const statusText =
     data.status === 'running' && inOvertime(data.shifts[0], data.now)
       ? 'em hora extra'
       : data.status === 'running'
-      ? // The day view runs to midnight; what ends is the last shift of the day.
-        `termina em ${duration(
-          ((data.mode === 'day' && data.shifts.length
-            ? Math.max(...data.shifts.map((item) => new Date(item.end).getTime()))
-            : new Date(board.span.end).getTime()) -
-            new Date(data.now).getTime()) /
-            1000,
-        )}`
+      ? remaining > 0
+        ? `termina em ${duration(remaining)}`
+        : // Past its end and still bagging (the shift follows the line).
+          'em hora extra'
       : data.status === 'finished'
         ? data.mode === 'day'
           ? 'dia encerrado'
           : 'turno encerrado'
         : `começa às ${clock(board.span.start)}`;
   const live = data.status === 'running';
+  const tones = productTones(data.spouts);
+  // The last bag of the spouts on screen: how long the line has been quiet, at a glance.
+  const lastBag = Math.max(
+    0,
+    ...(spout ? data.spouts.filter((item) => item.id === spout) : data.spouts).map((item) =>
+      item.lastBagAt ? new Date(item.lastBagAt).getTime() : 0,
+    ),
+  );
+  const sinceBag = lastBag ? Math.max(0, (new Date(data.now).getTime() - lastBag) / 1000) : null;
+  const pace = paceSeries(board.curve);
   const opens = (focus: Focus) => ({
     role: 'button' as const,
     tabIndex: 0,
@@ -565,25 +652,44 @@ export function MortarShiftBoard({
 
   return (
     <div className={`shift-board mortar-board${other ? ' comparing' : ''}`}>
-      <div className="mortar-board-head">
+      <div className="mortar-board-head mortar-status">
+        {/* What the line is doing now, before anything else: its state in colour, how long since
+            the last bag, and the product on the spouts. */}
+        <div
+          className={`mortar-live${live ? ' on' : ''}`}
+          style={{ '--state': live ? stateInfo[data.state]?.color : '#98a6ab' } as React.CSSProperties}
+        >
+          <span className="mortar-live-dot" aria-hidden="true" />
+          <div>
+            <b>{live ? label(data.state) : data.status === 'upcoming' ? 'Ainda não começou' : statusText.charAt(0).toUpperCase() + statusText.slice(1)}</b>
+            <small>
+              {live
+                ? sinceBag == null
+                  ? 'nenhum saco ainda'
+                  : sinceBag < 60
+                    ? 'último saco agora'
+                    : `último saco há ${duration(sinceBag)}`
+                : `${integer(board.totals.bags)} sacos no período`}
+            </small>
+          </div>
+        </div>
+        {live && data.product && (
+          <div className="mortar-now" style={{ '--tone': tones.get(data.product) ?? '#5f7d95' } as React.CSSProperties}>
+            <small>No bico</small>
+            <b>
+              <em className="tone-dot" />
+              {data.product}
+            </b>
+          </div>
+        )}
         <div className="mortar-board-title">
           <strong>{title}</strong>
           <span>
             {statusText}
-            {data.product ? ` · produto ${data.product}` : ''}
             {data.defaultShifts ? ' · turno padrão (cadastre os turnos em Produção)' : ''}
           </span>
         </div>
         <div className="mortar-board-switches">
-          {live && (
-            <span
-              className="shift-state"
-              style={{ '--state': stateInfo[data.state]?.color } as React.CSSProperties}
-            >
-              <i />
-              {label(data.state)}
-            </span>
-          )}
           {mode === 'shift' && data.available.length > 1 && (
             <div className="shift-mode shift-pick" role="group" aria-label="Turno">
               {data.available.map((item) => (
@@ -633,7 +739,10 @@ export function MortarShiftBoard({
               )}
             </em>
           </div>
-          <HeroMade spouts={spout ? data.spouts.filter((item) => item.id === spout) : data.spouts} />
+          <HeroMade
+            spouts={spout ? data.spouts.filter((item) => item.id === spout) : data.spouts}
+            tones={tones}
+          />
           </div>
           {target ? (
             <>
@@ -726,6 +835,7 @@ export function MortarShiftBoard({
               {fmt(board.pacePerHour)} <small>{unit}/h</small>
             </b>
             <em>{perBag(secondsPerBag)} por saco</em>
+            <Sparkline values={pace} />
             {other && (
               <i className="mortar-against">
                 {otherLabel}: {fmt(other.pacePerHour)} {unit}/h
@@ -735,11 +845,18 @@ export function MortarShiftBoard({
           <div className="shift-kpi clickable" {...opens('efficiency')}>
             <span>Eficiência</span>
             <b>{percent(board.effectiveness ?? board.utilization, 1)}</b>
+            <TimeBar time={board.time} />
             <em>
-              {percent(board.utilization, 0)} disp. ×{' '}
-              {board.performance == null
-                ? 'sem ritmo padrão'
-                : `${percent(board.performance, 0)} desemp.`}
+              {percent(
+                (() => {
+                  // The share of the bar: bagging over all the spouts' time.
+                  const all = board.time.producing + board.time.idle + board.time.disabled + board.time.offline;
+                  return all ? board.time.producing / all : null;
+                })(),
+                0,
+              )}{' '}
+              do tempo ensacando
+              {board.performance != null && ` · desemp. ${percent(board.performance, 0)}`}
             </em>
             {other && (
               <i className="mortar-against">
@@ -755,6 +872,11 @@ export function MortarShiftBoard({
                 ? `${duration(board.stops.seconds)} · ${percent(stopShare, 0)} do tempo`
                 : 'nenhuma no período'}
             </em>
+            {board.stops.longest > 0 && (
+              <span className="kpi-longest">
+                maior parada <b>{duration(board.stops.longest)}</b>
+              </span>
+            )}
             {other && (
               <i className="mortar-against">
                 {otherLabel}: {integer(other.stops.count)}

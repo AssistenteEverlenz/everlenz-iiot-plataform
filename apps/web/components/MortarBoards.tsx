@@ -19,7 +19,7 @@ import {
 import { usePoll } from './data';
 import { useFirstDraw } from './firstDraw';
 import { ModalPortal } from './ModalPortal';
-import { MortarShiftBoard, type MortarBoardResponse } from './MortarShift';
+import { MortarShiftBoard, productTones, type MortarBoardResponse } from './MortarShift';
 import { LotsTable, useLots } from './MortarLots';
 import { YieldBoard, rememberReconcile, useReconcile } from './MortarBridge';
 import { UnlinkedNotice } from './MortarUnlinked';
@@ -268,18 +268,13 @@ export function Bagging({
         from={data.from}
         to={data.to}
       />
-      <div className="mortar-divider" role="separator" />
-      <div className="mortar-spouts">
-        {spouts.map((spout, index) => (
-          <SpoutCard
-            key={spout.id}
-            spout={spout}
-            color={palette.spout(index)}
-            live={live}
-            onOpen={() => setSpoutOpen(spout.id)}
-          />
-        ))}
-      </div>
+      <SpoutRows
+        spouts={spouts}
+        tones={productTones(spouts)}
+        colorOf={(index) => palette.spout(index)}
+        live={live}
+        onOpen={setSpoutOpen}
+      />
     </>
   );
   const spoutModal = opened && (
@@ -427,18 +422,13 @@ function SpoutsInWindow({
         from={boardDate}
         to={boardDate}
       />
-      <div className="mortar-divider" role="separator" />
-      <div className="mortar-spouts">
-        {spouts.map((spout, index) => (
-          <SpoutCard
-            key={spout.id}
-            spout={spout}
-            color={palette.spout(index)}
-            live={live}
-            onOpen={() => setSpoutOpen(spout.id)}
-          />
-        ))}
-      </div>
+      <SpoutRows
+        spouts={spouts}
+        tones={productTones(spouts)}
+        colorOf={(index) => palette.spout(index)}
+        live={live}
+        onOpen={setSpoutOpen}
+      />
       {opened && data && (
         <SpoutModal
           data={data}
@@ -455,126 +445,120 @@ function SpoutsInWindow({
 }
 
 /**
- * One spout, read top-down in three weights: the bags it made and its efficiency large, the
- * three figures that explain them small and aligned, and what it filled in light text last.
+ * The spouts side by side, one row each, so they compare at a glance: what is on the spout now,
+ * its bags as a bar on one scale for all (split by product, in the products' colours), its pace,
+ * how its time went, its stops. A spout well behind the others says so. A row opens the spout.
  */
-function SpoutCard({
-  spout,
-  color,
+function SpoutRows({
+  spouts,
+  tones,
+  colorOf,
   live,
   onOpen,
 }: {
-  spout: Spout;
-  color: string;
+  spouts: Spout[];
+  tones: Map<string, string>;
+  colorOf: (index: number) => string;
   live: boolean;
-  onOpen: () => void;
+  onOpen: (id: string) => void;
 }) {
-  const state = STATES[spout.state];
-  // What the spout filled in the window, product by product (recipes of one product together).
-  const made = new Map<string, { bags: number; kg: number | null }>();
-  for (const item of spout.products) {
-    if (item.bags <= 0) continue;
-    const key = item.product ?? item.recipe;
-    const entry = made.get(key) ?? { bags: 0, kg: item.kg == null ? null : 0 };
-    entry.bags += item.bags;
-    if (entry.kg != null && item.kg != null) entry.kg += item.kg;
-    made.set(key, entry);
-  }
-  const names = [...made.entries()].sort((a, b) => b[1].bags - a[1].bags);
-  // Live, the large number is what is on the spout now; the spout's total sits beside it.
-  const nowKey = live ? (spout.product ?? spout.recipe) : null;
-  const now = nowKey ? made.get(nowKey) : undefined;
-  const several = names.length > 1;
-  const enabled = spout.runningS + spout.idleS;
-  const efficiency =
-    spout.performance != null && enabled > 0
-      ? (spout.runningS / enabled) * spout.performance
-      : null;
+  const peak = Math.max(1, ...spouts.map((spout) => spout.bags));
   return (
-    <button type="button" className="mortar-spout" onClick={onOpen} title="Ver o turno deste bico">
-      <header>
-        <i style={{ background: color }} />
-        <b>Bico {spout.name}</b>
-        {live && (
-          <em style={{ color: state.color }}>
-            <u style={{ background: state.color }} />
-            {state.label}
-          </em>
-        )}
-        <span className="mortar-spout-open" aria-hidden="true">
-          ›
-        </span>
-      </header>
-      {/* What is on the spout right now: the first thing anyone at the line asks. */}
-      {live && (
-        <div
-          className={`mortar-spout-now${spout.recipe ? '' : ' mortar-spout-now-none'}`}
-          style={{ '--spout': color } as React.CSSProperties}
-        >
-          <span>No bico</span>
-          <b>{spout.product ?? spout.recipe ?? 'Sem receita na IHM'}</b>
-          {spout.recipe && spout.product && spout.product !== spout.recipe && (
-            <small>receita {spout.recipe}</small>
-          )}
-          {spout.recipe && !spout.product && <small>receita sem produto ligado</small>}
-        </div>
-      )}
-      <div className="mortar-spout-main">
-        {nowKey && several ? (
-          <div className="mortar-spout-hero" title={`Sacos de ${nowKey} no período`}>
-            <b>{integer(now?.bags ?? 0)}</b>
-            <small>sacos</small>
-            {now?.kg != null && <em>{tons(now.kg)} t</em>}
-            <span className="mortar-spout-total">
-              de <b>{integer(spout.bags)}</b> no bico · {tons(spout.kg)} t
+    <div className="spout-rows" role="table" aria-label="Bicos">
+      <div className="spout-rows-head" role="row">
+        <span>Bico</span>
+        <span>Sacos, por produto</span>
+        <span>Ritmo</span>
+        <span>Tempo</span>
+        <span>Paradas</span>
+      </div>
+      {spouts.map((spout, index) => {
+        const state = STATES[spout.state];
+        const enabled = spout.runningS + spout.idleS + spout.offS;
+        const behind = spouts.length > 1 && spout.bags > 0 && spout.bags < peak * 0.85;
+        const made = new Map<string, number>();
+        for (const item of spout.products) {
+          if (item.bags <= 0) continue;
+          const name = item.product ?? item.recipe;
+          made.set(name, (made.get(name) ?? 0) + item.bags);
+        }
+        const nowName = spout.product ?? spout.recipe;
+        return (
+          <button
+            type="button"
+            key={spout.id}
+            className="spout-row"
+            role="row"
+            style={{ '--spout': colorOf(index) } as React.CSSProperties}
+            onClick={() => onOpen(spout.id)}
+            title={`Abrir o bico ${spout.name}`}
+          >
+            <span className="sr-id">
+              <b>
+                <i aria-hidden="true" />
+                Bico {spout.name}
+              </b>
+              {live && (
+                <em style={{ '--state': state.color } as React.CSSProperties}>
+                  <u aria-hidden="true" />
+                  {state.label}
+                </em>
+              )}
+              {live && nowName && (
+                <small style={{ '--tone': tones.get(nowName) ?? '#5f7d95' } as React.CSSProperties}>
+                  <u className="tone-dot" aria-hidden="true" />
+                  {nowName}
+                </small>
+              )}
             </span>
-          </div>
-        ) : (
-          <div className="mortar-spout-hero">
-            <b>{integer(spout.bags)}</b>
-            <small>sacos</small>
-            <em>{tons(spout.kg)} t</em>
-          </div>
-        )}
-        {efficiency != null && (
-          <div className="mortar-spout-eff" title="Disponível × desempenho">
-            <b>{percent(efficiency, 0)}</b>
-            <span>eficiência</span>
-          </div>
-        )}
-      </div>
-      <div className="mortar-spout-stats">
-        <div>
-          <span>Ritmo</span>
-          <b>
-            {spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}
-            <small> sacos/h</small>
-          </b>
-        </div>
-        <div>
-          <span>Por saco</span>
-          <b>{perBag(spout.secondsPerBag)}</b>
-        </div>
-        <div title={spout.stops ? `Maior parada: ${duration(spout.longestStop)}` : undefined}>
-          <span>Paradas</span>
-          <b>
-            {integer(spout.stops)}
-            {spout.stops > 0 && <small> · {duration(spout.stopSeconds)}</small>}
-          </b>
-        </div>
-      </div>
-      <TimeSplit running={spout.runningS} idle={spout.idleS} off={spout.offS} compact />
-      <div className="mortar-spout-products mortar-spout-made">
-        {names.length === 0
-          ? 'Nada ensacado no período'
-          : names.map(([name, item], index) => (
-              <span key={name} className={name === nowKey ? 'now' : undefined}>
-                {index > 0 && ' · '}
-                {name} <b>{integer(item.bags)}</b>
+            <span className="sr-bags">
+              <span className="sr-figure">
+                <b>{integer(spout.bags)}</b> sacos <small>{tons(spout.kg)} t</small>
+                {behind && <em className="sr-behind">abaixo dos outros</em>}
               </span>
-            ))}
-      </div>
-    </button>
+              <span className="sr-bar" aria-hidden="true">
+                <span style={{ width: `${(spout.bags / peak) * 100}%` }}>
+                  {[...made.entries()].map(([name, bags]) => (
+                    <i
+                      key={name}
+                      style={{ width: `${(bags / Math.max(1, spout.bags)) * 100}%`, background: tones.get(name) ?? '#9aa9ad' }}
+                      title={`${name}: ${integer(bags)} sacos`}
+                    />
+                  ))}
+                </span>
+              </span>
+            </span>
+            <span className="sr-pace">
+              <b>{spout.bagsPerHour == null ? '—' : integer(spout.bagsPerHour)}</b>
+              <small>sacos/h · {perBag(spout.secondsPerBag)}</small>
+            </span>
+            <span className="sr-time">
+              <span className="sr-timebar" aria-hidden="true">
+                {(
+                  [
+                    ['running', spout.runningS],
+                    ['idle', spout.idleS],
+                    ['off', spout.offS],
+                  ] as const
+                )
+                  .filter(([, seconds]) => seconds > 0)
+                  .map(([key, seconds]) => (
+                    <i key={key} style={{ width: `${(seconds / Math.max(1, enabled)) * 100}%`, background: STATES[key].color }} />
+                  ))}
+              </span>
+              <small>{enabled ? `${percent(spout.runningS / enabled, 0)} ensacando` : 'sem tempo'}</small>
+            </span>
+            <span className="sr-stops">
+              <b>{integer(spout.stops)}</b>
+              <small>{spout.stops > 0 ? duration(spout.stopSeconds) : 'nenhuma'}</small>
+            </span>
+            <span className="sr-open" aria-hidden="true">
+              ›
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

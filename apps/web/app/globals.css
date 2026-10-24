@@ -15711,3 +15711,371 @@ button.mortar-spout:hover .mortar-spout-open {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* The bagging board read like a manager reads it (MortarShift.tsx, MortarBoards.tsx): what the
+   line is doing now first, the figures with small drawings, the spouts compared row by row. */
+.tone-dot {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 3px;
+  background: var(--tone, #9aa9ad);
+  vertical-align: 0;
+}
+.mortar-hero-made li > i > u {
+  background: var(--tone, var(--brand-accent, #12b8a6));
+  opacity: 0.85;
+}
+.mortar-hero-made li > span {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The status band: the line's state, the product on the spouts, the period. */
+.mortar-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e6edef;
+}
+.mortar-live {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--state) 35%, #fff);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--state) 9%, #fff);
+}
+.mortar-live > div {
+  display: grid;
+}
+.mortar-live b {
+  color: color-mix(in srgb, var(--state) 70%, #0b2028);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.mortar-live small {
+  color: #5d747b;
+  font-size: 12px;
+}
+.mortar-live-dot {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--state);
+}
+.mortar-live.on .mortar-live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid var(--state);
+  opacity: 0;
+  animation: mortar-pulse 2s ease-out infinite;
+}
+@keyframes mortar-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mortar-live.on .mortar-live-dot::after {
+    animation: none;
+  }
+}
+.mortar-now {
+  display: grid;
+  min-width: 0;
+  padding: 8px 14px;
+  border: 1px solid #e3ebed;
+  border-radius: 14px;
+}
+.mortar-now small {
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mortar-now b {
+  display: flex;
+  align-items: center;
+  color: #0b2028;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.mortar-status .mortar-board-title {
+  flex: 1;
+  min-width: 200px;
+}
+.mortar-status .mortar-board-title strong {
+  font-size: 15px;
+}
+
+/* The tiles' drawings: the pace line, the time bar, the longest stop. */
+.kpi-spark {
+  display: block;
+  width: 100%;
+  height: 30px;
+  margin-top: 6px;
+}
+.kpi-spark polygon {
+  fill: color-mix(in srgb, var(--brand-accent, #12b8a6) 14%, transparent);
+}
+.kpi-spark polyline {
+  fill: none;
+  stroke: var(--brand-accent, #12b8a6);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+.kpi-timebar {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  margin: 6px 0 2px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #eef2f3;
+}
+.kpi-timebar i {
+  height: 100%;
+}
+.kpi-longest {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fbeee9;
+  color: #8f3d22;
+  font-size: 11.5px;
+}
+.kpi-longest b {
+  font-weight: 600;
+}
+
+/* The spouts, one row each, on one scale. */
+.spout-rows {
+  display: grid;
+  gap: 6px;
+  container-type: inline-size;
+}
+.spout-rows-head,
+.spout-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.1fr) minmax(0, 2fr) 104px minmax(110px, 0.9fr) 76px 16px;
+  align-items: center;
+  gap: 14px;
+}
+.spout-rows-head {
+  padding: 0 14px;
+  color: #8a9ca2;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.spout-row {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid #e3ebed;
+  border-left: 4px solid var(--spout);
+  border-radius: 12px;
+  background: #fff;
+  color: #20353d;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.spout-row:hover {
+  border-color: var(--brand-accent, #12b8a6);
+  border-left-color: var(--spout);
+}
+.sr-id {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.sr-id b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0b2028;
+  font-size: 14px;
+}
+.sr-id b i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--spout);
+}
+.sr-id em {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--state);
+  font-size: 11.5px;
+  font-style: normal;
+}
+.sr-id em u {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--state);
+}
+.sr-id small {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: #4d6770;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sr-bags {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.sr-figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  color: #71868d;
+  font-size: 12px;
+}
+.sr-figure b {
+  color: #0b2028;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sr-figure small {
+  color: #8a9ca2;
+}
+.sr-behind {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fdf3e2;
+  color: #8a5a10;
+  font-size: 11px;
+  font-style: normal;
+}
+.sr-bar {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: #eef2f3;
+}
+.sr-bar > span {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 5px;
+}
+.sr-bar i {
+  height: 100%;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.7);
+}
+.sr-pace,
+.sr-stops {
+  display: grid;
+  gap: 1px;
+}
+.sr-pace b,
+.sr-stops b {
+  color: #0b2028;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.sr-pace small,
+.sr-stops small,
+.sr-time small {
+  color: #8a9ca2;
+  font-size: 11.5px;
+}
+.sr-time {
+  display: grid;
+  gap: 5px;
+}
+.sr-timebar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #eef2f3;
+}
+.sr-timebar i {
+  height: 100%;
+}
+.sr-open {
+  color: #a7b6bb;
+  font-size: 18px;
+}
+@container (max-width: 760px) {
+  .spout-rows-head {
+    display: none;
+  }
+  .spout-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 16px;
+    grid-template-areas:
+      'id id id open'
+      'bags bags bags bags'
+      'pace time stops stops';
+    gap: 10px 14px;
+  }
+  .sr-id {
+    grid-area: id;
+  }
+  .sr-bags {
+    grid-area: bags;
+  }
+  .sr-pace {
+    grid-area: pace;
+  }
+  .sr-time {
+    grid-area: time;
+  }
+  .sr-stops {
+    grid-area: stops;
+  }
+  .sr-open {
+    grid-area: open;
+    justify-self: end;
+  }
+}
+
+/* The longest stop sits in a tile whose spans and figures are large: it keeps its own size. */
+.shift-kpi .kpi-longest {
+  width: fit-content;
+  color: #8f3d22;
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.shift-kpi .kpi-longest b {
+  font-size: 12px;
+  font-weight: 600;
+}
+.sr-pace small {
+  white-space: nowrap;
+}
+@container (max-width: 760px) {
+  .sr-pace small {
+    font-size: 11px;
+  }
+}
