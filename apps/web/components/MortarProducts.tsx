@@ -365,13 +365,8 @@ export function ProductsBoard({
           );
           if (!shown.length) return null;
           return (
-            <div key={mix} className="pt-family" role="rowgroup">
-              <div className="pt-group" role="row">
-                <b>{mix}</b>
-                <small>
-                  {items.length} {items.length === 1 ? 'produto' : 'produtos'}
-                </small>
-              </div>
+            // The sizes of one mix sit together, set apart from the next mix by a firmer line.
+            <div key={mix} className="pt-family" role="rowgroup" aria-label={mix}>
               {shown.map((product) => {
                 const own = names.filter((item) => item.productId === product.id);
                 const bags = own.reduce((sum, item) => sum + item.bags, 0);
@@ -399,10 +394,6 @@ export function ProductsBoard({
                     {...target(product.id, product.id)}
                   >
                     <span className="pt-name" role="cell">
-                      <span className="rp-bag" aria-hidden="true">
-                        {product.nominal_kg.toLocaleString('pt-BR')}
-                        <small>kg</small>
-                      </span>
                       <b>{product.name}</b>
                     </span>
                     <span className="rp-chips" role="cell">

@@ -16864,10 +16864,7 @@ button.mortar-spout:hover .mortar-spout-open {
   width: 100%;
   min-width: 0;
 }
-.rc-form-hint {
-  color: #8a9ca2;
-  font-size: 12px;
-}
+
 
 /* ---- Recipes hub: tabs Bateladas · Ensaque · Insumos ---- */
 .rc-tabs {
@@ -17391,24 +17388,8 @@ button.mortar-spout:hover .mortar-spout-open {
 
 
 
-.rp-bag {
-  display: grid;
-  place-items: center;
-  align-content: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 10px 10px 14px 14px;
-  background: linear-gradient(#e9eff1, #dde7ea);
-  color: #20353d;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1;
-}
-.rp-bag small {
-  color: #6c8188;
-  font-size: 10px;
-  font-weight: 600;
-}
+
+
 
 
 
@@ -17600,11 +17581,7 @@ button.mortar-spout:hover .mortar-spout-open {
     padding: 5px 10px;
   }
 
-  .rp-bag {
-    width: 40px;
-    height: 40px;
-    font-size: 14px;
-  }
+
 
 
   .rp-actions {
@@ -17689,12 +17666,11 @@ button.mortar-spout:hover .mortar-spout-open {
   color: #20353d;
 }
 .pt-row {
-  grid-template-columns: minmax(210px, 1.3fr) minmax(260px, 2.3fr) 84px 96px 104px 68px;
+  grid-template-columns: minmax(190px, 1.1fr) minmax(300px, 2.6fr) 84px 96px 104px 68px;
 }
 .at-row {
   grid-template-columns:
-    minmax(170px, 1.2fr) minmax(150px, 0.9fr) minmax(200px, 1.8fr) 104px 96px 84px
-    68px;
+    minmax(200px, 1.6fr) minmax(170px, 1.2fr) 112px 104px 92px 68px;
 }
 .pt-headrow,
 .at-headrow {
@@ -17721,25 +17697,9 @@ button.mortar-spout:hover .mortar-spout-open {
 .pt-num small {
   color: #a3b2b6;
 }
-.pt-group {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 7px 16px;
-  border-top: 1px solid #e3ebed;
-  background: #fbfcfc;
-}
-.pt-group b {
-  color: #5d7279;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-.pt-group small {
-  color: #a3b2b6;
-  font-size: 11px;
-}
+
+
+
 .pt-name {
   display: flex;
   align-items: center;
@@ -17752,13 +17712,7 @@ button.mortar-spout:hover .mortar-spout-open {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pt-name .rp-bag {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 8px 8px 11px 11px;
-  font-size: 13px;
-}
+
 .pt-row:hover,
 .at-row:hover {
   background: #fafcfc;
@@ -17817,11 +17771,7 @@ button.mortar-spout:hover .mortar-spout-open {
   font-weight: 600;
   white-space: nowrap;
 }
-.at-hint {
-  color: #6c8188;
-  font-size: 12px;
-  line-height: 1.4;
-}
+
 .at-row.editing {
   background: color-mix(in srgb, var(--brand-accent, #12b8a6) 6%, #fff);
 }
@@ -17852,8 +17802,7 @@ button.mortar-spout:hover .mortar-spout-open {
     opacity: 1;
   }
   .pt-row > .rp-chips,
-  .at-row > :nth-child(2),
-  .at-row > .at-hint {
+  .at-row > :nth-child(2) {
     grid-column: 1 / -1;
   }
   .pt-row .pt-num,
@@ -17878,4 +17827,31 @@ button.mortar-spout:hover .mortar-spout-open {
 .pt-headrow .pt-num,
 .at-headrow .pt-num {
   font-size: inherit;
+}
+
+/* Ensaque table, compact: one line per product, the sizes of a mix together and set apart
+   from the next mix by a firmer line instead of a heading row of their own. */
+.pt-row,
+.at-row {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.pt-headrow,
+.at-headrow {
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.pt-family + .pt-family > .pt-row:first-child,
+.pt-family + .pt-family > .pt-edit:first-child {
+  border-top: 1px solid #cfdcdf;
+}
+.pt-name b {
+  font-weight: 600;
+}
+.pt .rp-chips {
+  gap: 4px;
+}
+.pt .rp-chip {
+  padding: 1px 4px 1px 6px;
+  font-size: 11.5px;
 }

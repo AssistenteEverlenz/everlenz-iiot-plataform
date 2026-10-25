@@ -49,30 +49,28 @@ type Board = {
   bagged: Array<{ recipe: string; bags: number }>;
 };
 
-/** The kinds of additive a dry-mortar plant pours, with what each one is for. */
-export const ADDITIVE_KINDS: Record<string, { label: string; hint: string; color: string }> = {
-  celulose: {
-    label: 'Éter de celulose',
-    hint: 'retém a água e dá trabalhabilidade (MHEC, HPMC)',
-    color: '#2f8f83',
-  },
-  polimero: {
-    label: 'Polímero redispersível',
-    hint: 'aderência e flexibilidade (EVA, VAE) — AC2 e AC3',
-    color: '#5b6fc4',
-  },
-  incorporador: {
-    label: 'Incorporador de ar',
-    hint: 'microbolhas: leveza e trabalhabilidade',
-    color: '#7a9cc0',
-  },
-  retardador: { label: 'Retardador', hint: 'aumenta o tempo em aberto', color: '#b88a3a' },
-  hidrofugante: { label: 'Hidrofugante', hint: 'repele a água', color: '#3f87a8' },
-  pigmento: { label: 'Pigmento', hint: 'cor (ex.: branca)', color: '#b36a8a' },
-  fibra: { label: 'Fibra', hint: 'reduz fissuras', color: '#7d8a4a' },
-  outro: { label: 'Outro', hint: 'qualquer outro produto colocado à mão', color: '#8a9ca2' },
+/**
+ * The common kinds of additive, offered when one is registered. Only names: what each one does is
+ * the supplier's word, not the platform's. A plant can type a kind of its own (migration 052).
+ */
+export const ADDITIVE_KINDS: Record<string, { label: string; color: string }> = {
+  celulose: { label: 'Éter de celulose', color: '#2f8f83' },
+  polimero: { label: 'Polímero redispersível', color: '#5b6fc4' },
+  incorporador: { label: 'Incorporador de ar', color: '#7a9cc0' },
+  retardador: { label: 'Retardador', color: '#b88a3a' },
+  hidrofugante: { label: 'Hidrofugante', color: '#3f87a8' },
+  pigmento: { label: 'Pigmento', color: '#b36a8a' },
+  fibra: { label: 'Fibra', color: '#7d8a4a' },
+  outro: { label: 'Outro', color: '#8a9ca2' },
 };
-const kindOf = (kind: string) => ADDITIVE_KINDS[kind] ?? ADDITIVE_KINDS.outro;
+// A kind the plant named itself keeps one colour wherever it shows, picked from its name.
+const OWN_KIND_COLORS = ['#8b6fc4', '#c0703a', '#3a9c6e', '#c45b7a', '#5f8fb0', '#a08a2e'];
+const kindOf = (kind: string) => {
+  if (ADDITIVE_KINDS[kind]) return ADDITIVE_KINDS[kind];
+  const seed = [...kind].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return { label: kind, color: OWN_KIND_COLORS[seed % OWN_KIND_COLORS.length] };
+};
+const NEW_KIND = '__novo__';
 const number = (text: string) => Number(text.replace(',', '.'));
 /** Additives are a few kilos: they keep up to two places, where the batch mass rounds to the kilo. */
 const fineKg = (kg: number) => `${kg.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg`;
@@ -666,15 +664,23 @@ function AdditivesCatalog({
   canEdit: boolean;
   onChanged: () => void;
 }) {
-  const blank = { id: '', name: '', kind: 'polimero', price: '', pack: '' };
+  const blank = { id: '', name: '', kind: 'polimero', ownKind: '', price: '', pack: '' };
   const [form, setForm] = useState<typeof blank | null>(null);
   const [error, setError] = useState('');
+  // The common kinds, then every kind of the plant's own already in use.
+  const kinds = [
+    ...Object.entries(ADDITIVE_KINDS).map(([value, kind]) => [value, kind.label]),
+    ...[...new Set(catalog.map((item) => item.kind))]
+      .filter((kind) => !ADDITIVE_KINDS[kind])
+      .map((kind) => [kind, kind]),
+  ];
+  const kindReady = !form || form.kind !== NEW_KIND || form.ownKind.trim().length > 0;
   async function save() {
     if (!form) return;
     setError('');
     const body = {
       name: form.name,
-      kind: form.kind,
+      kind: form.kind === NEW_KIND ? form.ownKind.trim() : form.kind,
       pricePerKg: form.price.trim() ? number(form.price) : null,
       packageKg: form.pack.trim() ? number(form.pack) : null,
     };
@@ -707,7 +713,6 @@ function AdditivesCatalog({
           <div className="at-row at-headrow" role="row">
             <span role="columnheader">Aditivo</span>
             <span role="columnheader">Tipo</span>
-            <span role="columnheader">Para que serve</span>
             <span role="columnheader" className="pt-num">
               Preço
             </span>
@@ -735,9 +740,6 @@ function AdditivesCatalog({
                 <span role="cell">
                   <em className="at-kind">{kind.label}</em>
                 </span>
-                <span className="at-hint" role="cell">
-                  {kind.hint}
-                </span>
                 <span className="pt-num" role="cell" data-label="Preço">
                   <b>{item.pricePerKg == null ? '—' : `${money(item.pricePerKg, 2)}/kg`}</b>
                 </span>
@@ -760,6 +762,7 @@ function AdditivesCatalog({
                             id: item.id,
                             name: item.name,
                             kind: item.kind,
+                            ownKind: '',
                             price:
                               item.pricePerKg == null
                                 ? ''
@@ -817,13 +820,26 @@ function AdditivesCatalog({
                 value={form.kind}
                 onChange={(event) => setForm({ ...form, kind: event.target.value })}
               >
-                {Object.entries(ADDITIVE_KINDS).map(([value, kind]) => (
+                {kinds.map(([value, label]) => (
                   <option key={value} value={value}>
-                    {kind.label}
+                    {label}
                   </option>
                 ))}
+                <option value={NEW_KIND}>+ Novo tipo…</option>
               </select>
             </label>
+            {form.kind === NEW_KIND && (
+              <label>
+                Nome do novo tipo
+                <input
+                  autoFocus
+                  value={form.ownKind}
+                  maxLength={40}
+                  placeholder="ex.: Acelerador de pega"
+                  onChange={(event) => setForm({ ...form, ownKind: event.target.value })}
+                />
+              </label>
+            )}
             <label>
               Preço por kg (R$)
               <input
@@ -843,7 +859,6 @@ function AdditivesCatalog({
               />
             </label>
           </div>
-          <small className="rc-form-hint">{kindOf(form.kind).hint}</small>
           {error && <div className="form-error">{error}</div>}
           <div className="modal-actions">
             <button type="button" onClick={() => setForm(null)}>
@@ -852,7 +867,7 @@ function AdditivesCatalog({
             <button
               type="button"
               className="primary-button"
-              disabled={!form.name.trim()}
+              disabled={!form.name.trim() || !kindReady}
               onClick={() => void save()}
             >
               Salvar

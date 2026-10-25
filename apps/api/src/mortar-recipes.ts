@@ -80,19 +80,10 @@ export async function loadRecipeAdditives(db: Database, tenantId: string) {
   return byRecipe;
 }
 
-const KINDS = [
-  'celulose',
-  'polimero',
-  'incorporador',
-  'retardador',
-  'hidrofugante',
-  'pigmento',
-  'fibra',
-  'outro',
-] as const;
 const additiveBody = z.object({
   name: z.string().trim().min(1).max(60),
-  kind: z.enum(KINDS).default('outro'),
+  // A common kind's key (polimero, celulose...) or the plant's own word (migration 052).
+  kind: z.string().trim().min(1).max(40).default('outro'),
   pricePerKg: z.number().min(0).max(100_000).nullable().optional(),
   packageKg: z.number().positive().max(5_000).nullable().optional(),
 });
@@ -102,6 +93,15 @@ export function registerMortarRecipeRoutes(
   db: Database,
   access: ReturnType<typeof createAccessControl>,
 ) {
+  // A base with 051 but not 052 still holds the kind to the fixed list.
+  const kindRefused = (error: unknown) => {
+    if ((error as { code?: string }).code === '23514') return null;
+    throw error;
+  };
+  const newKind = (reply: { code: (n: number) => { send: (body: unknown) => unknown } }) =>
+    reply
+      .code(409)
+      .send({ error: 'Tipos novos de aditivo precisam da migração 052 aplicada no banco.' });
   const missing = (reply: { code: (n: number) => { send: (body: unknown) => unknown } }) =>
     reply.code(409).send({ error: 'Os aditivos precisam da migração 051 aplicada no banco.' });
 
@@ -146,11 +146,14 @@ export function registerMortarRecipeRoutes(
     );
     if (exists.rows.length)
       return reply.code(409).send({ error: 'Já existe um aditivo com esse nome.' });
-    const row = await db.query<{ id: string }>(
-      `INSERT INTO mortar_additives(tenant_id,name,kind,price_per_kg,package_kg)
+    const row = await db
+      .query<{ id: string }>(
+        `INSERT INTO mortar_additives(tenant_id,name,kind,price_per_kg,package_kg)
        VALUES($1,$2,$3,$4,$5) RETURNING id`,
-      [current.tenantId, body.name, body.kind, body.pricePerKg ?? null, body.packageKg ?? null],
-    );
+        [current.tenantId, body.name, body.kind, body.pricePerKg ?? null, body.packageKg ?? null],
+      )
+      .catch(kindRefused);
+    if (!row) return newKind(reply);
     await recordAudit(db, req, current, {
       action: 'mortar.additive.create',
       targetType: 'additive',
@@ -166,18 +169,21 @@ export function registerMortarRecipeRoutes(
     const current = access.principal(req);
     const { additive } = z.object({ additive: z.uuid() }).parse(req.params);
     const body = additiveBody.parse(req.body);
-    const updated = await db.query(
-      `UPDATE mortar_additives SET name=$3,kind=$4,price_per_kg=$5,package_kg=$6,updated_at=now()
+    const updated = await db
+      .query(
+        `UPDATE mortar_additives SET name=$3,kind=$4,price_per_kg=$5,package_kg=$6,updated_at=now()
        WHERE tenant_id=$1 AND id=$2 RETURNING id`,
-      [
-        current.tenantId,
-        additive,
-        body.name,
-        body.kind,
-        body.pricePerKg ?? null,
-        body.packageKg ?? null,
-      ],
-    );
+        [
+          current.tenantId,
+          additive,
+          body.name,
+          body.kind,
+          body.pricePerKg ?? null,
+          body.packageKg ?? null,
+        ],
+      )
+      .catch(kindRefused);
+    if (!updated) return newKind(reply);
     if (!updated.rows.length) return reply.code(404).send({ error: 'Aditivo não encontrado' });
     await recordAudit(db, req, current, {
       action: 'mortar.additive.update',

@@ -46,6 +46,19 @@ describe('mortar recipe additives', () => {
       payload: { name: 'Polímero VAE', kind: 'polimero' },
     });
     expect(duplicate.statusCode).toBe(409);
+    // A kind the plant names itself is kept as written (migration 052).
+    const own = await api.inject({
+      method: 'POST',
+      url: '/api/mortar/additives',
+      payload: { name: 'Acelerador X', kind: 'Acelerador de pega', pricePerKg: 9 },
+    });
+    expect(own.statusCode).toBe(200);
+    const listed = (await api.inject({ method: 'GET', url: '/api/mortar/additives' })).json<{
+      additives: Array<{ name: string; kind: string }>;
+    }>();
+    expect(listed.additives.find((item) => item.name === 'Acelerador X')?.kind).toBe(
+      'Acelerador de pega',
+    );
 
     const put = await api.inject({
       method: 'PUT',
