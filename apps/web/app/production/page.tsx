@@ -604,7 +604,16 @@ function ProductionPage() {
   }
 
   // A mortar line has its own production page: bags, spouts, mix and stock, by day, week or month.
-  if (device?.site_segment === 'argamassa') return <MortarProduction initialLine={device.id} />;
+  // Its picker lists the other machines too, or a mixed plant could never leave it.
+  if (device?.site_segment === 'argamassa')
+    return (
+      <MortarProduction
+        key={device.id}
+        initialLine={device.id}
+        others={(devices.data ?? []).filter((item) => item.site_segment !== 'argamassa')}
+        onPickOther={setDeviceId}
+      />
+    );
   return (
     <>
       <div className="heading">
@@ -1261,11 +1270,10 @@ function ShiftsModal({
             </span>
           </label>
           <p className="shifts-help">
-            Se a linha começa antes do turno ou continua produzindo depois dele, o turno acompanha
-            a produção: tudo conta no turno, paradas inclusive. Uma parada maior que este tempo
-            depois do fim do turno encerra o turno no último produto feito. Num dia sem turno
-            cadastrado, a produção vira um <b>turno extra</b>. Use 0 para manter o turno só no
-            horário cadastrado.
+            Se a linha começa antes do turno ou continua produzindo depois dele, o turno acompanha a
+            produção: tudo conta no turno, paradas inclusive. Uma parada maior que este tempo depois
+            do fim do turno encerra o turno no último produto feito. Num dia sem turno cadastrado, a
+            produção vira um <b>turno extra</b>. Use 0 para manter o turno só no horário cadastrado.
           </p>
         </div>
         {error && <div className="form-error">{error}</div>}

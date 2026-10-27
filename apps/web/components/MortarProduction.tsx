@@ -203,7 +203,16 @@ const AXIS = { fontSize: 11, fill: '#71868d' };
 
 // ---- The page ---------------------------------------------------------------------------------
 
-export function MortarProduction({ initialLine }: { initialLine?: string }) {
+export function MortarProduction({
+  initialLine,
+  others = [],
+  onPickOther,
+}: {
+  initialLine?: string;
+  /** The other machines (ceramic lines): picking one leaves this page for theirs. */
+  others?: { id: string; name: string; site_name?: string }[];
+  onPickOther?: (id: string) => void;
+}) {
   const { user } = usePlatform();
   const lines = usePoll<{ lines: Line[] }>('/mortar/lines', 600000);
   const [line, setLine] = useState(initialLine ?? 'all');
@@ -269,16 +278,31 @@ export function MortarProduction({ initialLine }: { initialLine?: string }) {
           <select
             value={line}
             onChange={(event) => {
+              if (others.some((item) => item.id === event.target.value)) {
+                onPickOther?.(event.target.value);
+                return;
+              }
               setLine(event.target.value);
               setDrill(null);
             }}
           >
-            <option value="all">Todas as linhas</option>
-            {lineList.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} · {item.site_name}
-              </option>
-            ))}
+            <optgroup label="Argamassa">
+              <option value="all">Todas as linhas</option>
+              {lineList.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.site_name}
+                </option>
+              ))}
+            </optgroup>
+            {others.length > 0 && (
+              <optgroup label="Outros equipamentos">
+                {others.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} · {item.site_name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
         <div className="field">
