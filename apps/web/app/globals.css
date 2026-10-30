@@ -7861,7 +7861,7 @@ main {
 }
 @media (max-width: 700px) {
   main {
-    --page-gutter: 15px;
+    --page-gutter: 13px;
   }
 }
 .dashboard-tabs {
@@ -17855,3 +17855,140 @@ button.mortar-spout:hover .mortar-spout-open {
   padding: 1px 4px 1px 6px;
   font-size: 11.5px;
 }
+
+/* Home: one line per plant, what needs a look first (app/page.tsx). */
+.home-heading h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.home-date { font-size: 15px; font-weight: 450; letter-spacing: 0; color: #6d828c; }
+.home-date::first-letter { text-transform: uppercase; }
+.home-heading p { font-size: 15px; color: #39535d; margin-top: 8px; }
+.home-muted { color: #8a9ca2; }
+.home-attention {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  border: 1px solid #f1d3c8;
+  border-left: 4px solid #e4572e;
+  border-radius: 14px;
+  background: #fff8f5;
+}
+.home-attention h2 { margin: 0 0 10px; font-size: 14px; color: #9b3218; }
+.home-attention ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.home-attention li { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 14px; }
+.home-attention li a, .home-attention li b { font-weight: 600; color: #182e38; text-decoration: none; }
+.home-attention li a:hover { color: var(--brand-accent, #12b8a6); }
+.home-attention li span { color: #9b3218; }
+.home-plants { padding: 8px 0; }
+.home-plants-head,
+.home-plant {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.3fr) minmax(120px, 0.7fr) minmax(220px, 1.4fr) minmax(90px, 0.45fr);
+  gap: 20px;
+  align-items: center;
+  padding: 14px 23px;
+}
+.home-plants-head { padding-top: 10px; padding-bottom: 6px; font-size: 11px; color: #8a9ca2; }
+.home-plant {
+  border-top: 1px solid #edf2f3;
+  color: inherit;
+  text-decoration: none;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  border-radius: 10px;
+  transition: outline-color 0.15s;
+}
+a.home-plant:hover, a.home-plant:focus-visible { outline-color: var(--brand-accent, #12b8a6); }
+.home-plant-name { display: grid; gap: 4px; min-width: 0; }
+.home-plant-name b { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.home-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6d828c; }
+.home-state i { width: 7px; height: 7px; border-radius: 50%; background: #98a6ab; flex: none; }
+.home-state.producing i { background: #1fbf7a; }
+.home-state.idle i, .home-state.pause i { background: #f2a93b; }
+.home-state.manual i { background: #e4572e; }
+.home-plant-made strong { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+.home-plant-made small, .home-plant-pace small, .home-plant-goal small { font-size: 12px; color: #6d828c; }
+.home-plant-pace b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.home-plant-goal { display: grid; gap: 7px; }
+/* Made (solid), where the day closes at this pace (pale), the target (tick). */
+.home-bar { position: relative; height: 8px; border-radius: 999px; background: #e8eff1; }
+.home-bar i, .home-bar u { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
+.home-bar u { opacity: 0.28; }
+.home-bar.good i, .home-bar.good u { background: #1fbf7a; }
+.home-bar.warn i, .home-bar.warn u { background: #f2a93b; }
+.home-bar.bad i, .home-bar.bad u { background: #e4572e; }
+.home-bar.none i { background: var(--brand-accent, #12b8a6); }
+.home-bar s { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -2px; background: #182e38; border-radius: 1px; }
+.home-infra { margin-top: 28px; }
+.home-infra summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.home-infra summary span { font-size: 12px; font-weight: 400; color: #8a9ca2; }
+@media (max-width: 760px) {
+  .home-plants-head { display: none; }
+  .home-plant {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'name made' 'goal goal' 'pace pace';
+    gap: 10px 14px;
+    padding: 14px 16px;
+  }
+  .home-plant-name { grid-area: name; }
+  .home-plant-made { grid-area: made; text-align: right; }
+  .home-plant-made strong { font-size: 20px; }
+  .home-plant-goal { grid-area: goal; }
+  .home-plant-pace { grid-area: pace; }
+  .home-plant-pace:has(.home-muted) { display: none; }
+}
+/* The brand in the phone's top bar (PlatformShell); desktop has it in the sidebar. */
+.topbar-brand { display: none; }
+@media (max-width: 700px) {
+  .topbar-page:empty ~ .topbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .topbar-brand b {
+    display: grid;
+    place-items: center;
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: var(--brand-accent, #12b8a6);
+    color: white;
+    font-size: 21px;
+    line-height: 1;
+  }
+  .topbar-brand img { width: 30px; height: 30px; object-fit: contain; border-radius: 8px; }
+  .topbar-brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .home-heading .primary-button { display: none; }
+  .home-plants-head + .home-plant { border-top: 0; }
+}
+/* Devices on a phone: each one a block, every value with its label (DevicesTable). */
+@media (max-width: 700px) {
+  .devices-table thead { display: none; }
+  .devices-table,
+  .devices-table tbody { display: block; width: 100%; }
+  .devices-table tr {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    padding: 14px 0;
+    border-bottom: 1px solid #edf2f3;
+  }
+  .devices-table td { display: flex; justify-content: space-between; gap: 12px; padding: 0; border: 0; font-size: 13px; }
+  .devices-table td[data-label]::before { content: attr(data-label); color: #8a9ca2; font-size: 12px; }
+  .devices-table td:first-child { display: block; padding-right: 44px; }
+  .devices-table-action { position: absolute; top: 12px; right: 0; }
+}
+.home-plant-pace { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; }
+.topbar-brand { letter-spacing: -0.2px; }

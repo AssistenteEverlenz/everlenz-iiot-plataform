@@ -257,6 +257,11 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
           <header className="platform-topbar">
             <div className="topbar-page" ref={setHeaderSlot} />
             <span className="topbar-default">PLATAFORMA IIoT</span>
+            {/* Phones have no sidebar: the brand takes the empty corner unless the page uses it. */}
+            <Link className="topbar-brand" href="/" aria-label={branding.product_name}>
+              {branding.logo_url ? <img src={branding.logo_url} alt="" /> : <b>e</b>}
+              <span>{branding.product_name}</span>
+            </Link>
             <div className="topbar-user">
               <span className="topbar-default topbar-live">
                 <span className="live-dot" /> Dados em tempo real

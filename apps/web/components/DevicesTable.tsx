@@ -9,7 +9,7 @@ export function DevicesTable({
 }) {
   return (
     <div className="table-scroll">
-      <table>
+      <table className="devices-table">
         <thead>
           <tr>
             <th>DISPOSITIVO</th>
@@ -34,17 +34,17 @@ export function DevicesTable({
                   <span className="code-chip">{d.device_code}</span> · {d.adapter_type}
                 </div>
               </td>
-              <td>
+              <td data-label="Fabricante / modelo">
                 {d.manufacturer} / {d.model}
               </td>
-              <td>
+              <td data-label="Estado">
                 <span className={`badge ${d.online ? '' : 'offline'}`}>
                   {d.online ? 'Online' : 'Offline'}
                 </span>
               </td>
-              <td>{time(d.last_message_at)}</td>
+              <td data-label="Última comunicação">{time(d.last_message_at)}</td>
               {onSelect && (
-                <td>
+                <td className="devices-table-action">
                   <button
                     className="icon-button"
                     title="Ver e editar equipamento"
