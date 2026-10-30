@@ -18,7 +18,9 @@ export type BrokerEvent =
       at: Date;
       clientId: string;
       reason: 'closed' | 'disconnected' | 'timeout' | 'replaced';
-    };
+    }
+  // The broker started or stopped: it writes no line per client, so every open row ends here.
+  | { kind: 'restart'; at: Date };
 
 // Mosquitto 2 prefixes each line with the epoch second unless log_timestamp_format says otherwise.
 const STAMP = /^(\d{9,11}):\s+(.*)$/;
@@ -26,6 +28,8 @@ const STAMP = /^(\d{9,11}):\s+(.*)$/;
 const CONNECT = /^New client connected from (.+?):(\d+) as (\S+) \(.*?u'([^']*)'\)/;
 // "Client A7-001 closed its connection." / "Client A7-001 [1.2.3.4:51234] disconnected."
 // "Client A7-001 has exceeded timeout, disconnecting." / "... already connected, closing old connection."
+// "mosquitto version 2.0.18 starting" / "mosquitto version 2.0.18 terminating"
+const RESTART = /^mosquitto version \S+ (starting|terminating)/;
 const CLIENT =
   /^Client (\S+)(?: \[[^\]]*\])? (closed its connection|disconnected|has exceeded timeout|already connected, closing old connection)/;
 
@@ -44,6 +48,7 @@ export function parseBrokerLine(line: string): BrokerEvent | null {
       clientId: connect[3],
       username: connect[4],
     };
+  if (RESTART.test(text)) return { kind: 'restart', at };
   const client = CLIENT.exec(text);
   if (!client || client[1] === '<unknown>') return null;
   const reason = client[2].startsWith('closed')
@@ -81,6 +86,14 @@ export class ConnectionRecorder {
   }
 
   async apply(event: BrokerEvent) {
+    if (event.kind === 'restart') {
+      await this.db.query(
+        `UPDATE device_connections SET disconnected_at=$1,end_reason='broker_restart'
+         WHERE disconnected_at IS NULL AND connected_at<$1`,
+        [event.at],
+      );
+      return;
+    }
     if (event.kind === 'disconnect') {
       // "already connected" names the client that is being pushed out: its open row closes and
       // the connection that pushed it arrives as the next line.

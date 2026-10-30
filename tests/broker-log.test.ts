@@ -53,12 +53,21 @@ describe('parseBrokerLine', () => {
     ).toMatchObject({ reason: 'replaced' });
   });
 
+  it('reads the broker starting and stopping', () => {
+    expect(parseBrokerLine('1761742353: mosquitto version 2.0.18 starting')).toEqual({
+      kind: 'restart',
+      at: new Date(1761742353 * 1000),
+    });
+    expect(parseBrokerLine('1761742353: mosquitto version 2.0.18 terminating')).toMatchObject({
+      kind: 'restart',
+    });
+  });
+
   it('ignores everything else', () => {
     expect(parseBrokerLine('1761742353: New connection from 1.2.3.4:5 on port 8883.')).toBeNull();
     expect(
       parseBrokerLine('1761742353: Client <unknown> disconnected, not authorised.'),
     ).toBeNull();
-    expect(parseBrokerLine('1761742353: mosquitto version 2.0.18 running')).toBeNull();
     expect(parseBrokerLine('not a log line')).toBeNull();
   });
 });
@@ -136,6 +145,16 @@ describe('ConnectionRecorder', () => {
     const [first, second] = await rows();
     expect(first.end_reason).toBe('replaced');
     expect(second).toMatchObject({ new_client: false, overlapped: true });
+  });
+
+  it('closes every open connection when the broker restarts, so none stays open forever', async () => {
+    const { recorder, rows } = setup();
+    await recorder.apply(connect(0, 'HW-real'));
+    await recorder.apply({ kind: 'restart', at: new Date(T + 600_000) });
+    await recorder.apply(connect(605, 'HW-real'));
+    const all = await rows();
+    expect(all.map((row) => row.end_reason)).toEqual(['broker_restart', null]);
+    expect(all[1]).toMatchObject({ new_client: false, overlapped: false });
   });
 
   it('ignores users that are not devices and reads the same lines twice without doubling', async () => {
