@@ -40,6 +40,9 @@ export const env = z
     MQTT_TOPIC_FILTER: z.string().default('iiot/+/+/+/telemetry,data/POC/group1/A7-001'),
     MQTT_CLIENT_ID: z.string().default('everlenz-ingestor'),
     MQTT_PROVISION_DIR: z.string().optional(),
+    // The broker's log file, read by the ingestor to tell apart the clients that connect with a
+    // device's credential (migration 054). Empty = not read.
+    BROKER_LOG_PATH: z.string().default(''),
     // Broker user the API publishes equipment commands with ("Zerar contador" on the PLC).
     // Without a password the platform only reads, as before.
     MQTT_COMMAND_USERNAME: z.string().default('commander'),

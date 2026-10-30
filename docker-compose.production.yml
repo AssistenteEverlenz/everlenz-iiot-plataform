@@ -67,6 +67,10 @@ services:
       MQTT_TOPIC_FILTER: ${MQTT_TOPIC_FILTER:-iiot/+/+/+/telemetry,data/POC/group1/A7-001}
       DEVICE_OFFLINE_SECONDS: ${DEVICE_OFFLINE_SECONDS:-30}
       INGESTOR_HEALTH_PORT: 3002
+      # The broker's connection log (client id and address per connection), read-only.
+      BROKER_LOG_PATH: /broker-log/mosquitto.log
+    volumes:
+      - mqtt-log:/broker-log:ro
     depends_on:
       mosquitto: { condition: service_healthy }
     healthcheck:

@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { usePoll, time, type Device, type Topic } from '../components/data';
+import { mutate, usePoll, time, type Device, type Topic } from '../components/data';
+import { usePlatform } from '../components/PlatformShell';
 import { metricInfo, type ProductionMetric } from '../components/ShiftBoard';
 
 // The master's home: how each plant is doing right now, with what needs a look first. Plant users
@@ -27,6 +28,42 @@ type Overview = {
   sites: Array<{ machines: Machine[] }>;
 };
 type MortarDay = { totals: { bags: number; targetBags: number } };
+/** A connection with a plant's credential that did not look like its own HMI (migration 054). */
+type ConnectionAlert = {
+  id: string;
+  device_name: string;
+  client_id: string;
+  ip: string | null;
+  connected_at: string;
+  disconnected_at: string | null;
+  new_client: boolean;
+  overlapped: boolean;
+  usual_client: string | null;
+  usual_ip: string | null;
+};
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+const hour = (iso: string) =>
+  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/** What happened, when, and which HMI it was against the plant's own. */
+function connectionText(alert: ConnectionAlert) {
+  const what = alert.overlapped
+    ? 'outra IHM entrou com a credencial da fábrica'
+    : 'uma IHM nova entrou com a credencial da fábrica';
+  const end = alert.disconnected_at;
+  const when = !end
+    ? `desde ${day(alert.connected_at)} ${hour(alert.connected_at)}`
+    : day(end) === day(alert.connected_at)
+      ? `em ${day(alert.connected_at)}, das ${hour(alert.connected_at)} às ${hour(end)}`
+      : `de ${day(alert.connected_at)} ${hour(alert.connected_at)} a ${day(end)} ${hour(end)}`;
+  const own =
+    alert.usual_client && alert.usual_client !== alert.client_id
+      ? `; a da fábrica é ${alert.usual_client}`
+      : '';
+  return `${what} ${when} (${alert.client_id}${alert.ip ? `, ${alert.ip}` : ''}${own}).`;
+}
 
 /** A plant silent this long is a problem, not a night off. */
 const SILENT_ALERT_MS = 24 * 3600_000;
@@ -239,6 +276,17 @@ export default function Home() {
     lastMessageAt: string | null;
   }>('/overview', 30000);
   const topics = usePoll<Topic[]>('/mqtt/topics?limit=5', 30000);
+  // Only the platform's master hears about a second HMI on a plant's credential.
+  const { user } = usePlatform();
+  const connections = usePoll<ConnectionAlert[]>(
+    user.role === 'master' ? '/connections/alerts' : null,
+    60000,
+  );
+  async function dismiss(id: string) {
+    await mutate(`/connections/${id}/dismiss`, 'POST');
+    await connections.refresh();
+  }
+  const alerts = connections.data ?? [];
 
   const rows = rowsOf(overview.data, devices.data, mortar.data);
   // What needs a look first, then the rest by name.
@@ -274,7 +322,7 @@ export default function Home() {
         </div>
       )}
 
-      {flagged.length > 0 && (
+      {(flagged.length > 0 || alerts.length > 0) && (
         <section className="home-attention" aria-label="Precisa de atenção">
           <h2>Precisa de atenção</h2>
           <ul>
@@ -282,6 +330,15 @@ export default function Home() {
               <li key={row.id}>
                 {row.href ? <Link href={row.href}>{row.name}</Link> : <b>{row.name}</b>}
                 <span>{concern(row)}</span>
+              </li>
+            ))}
+            {alerts.map((alert) => (
+              <li key={`connection-${alert.id}`} className="home-attention-connection">
+                <b>{alert.device_name}</b>
+                <span>{connectionText(alert)}</span>
+                <button type="button" onClick={() => void dismiss(alert.id)}>
+                  Dispensar
+                </button>
               </li>
             ))}
           </ul>

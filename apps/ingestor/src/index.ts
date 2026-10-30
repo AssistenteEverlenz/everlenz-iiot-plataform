@@ -4,6 +4,7 @@ import { env, logger, mqttUrl, mqttOptions, decodePayload } from '@iiot/shared';
 import { database, pool } from '@iiot/database';
 import { IngestionPipeline } from './pipeline.js';
 import { ingestionHealth } from './health.js';
+import { followBrokerLog } from './broker-log.js';
 const log = logger('ingestor');
 const pipeline = new IngestionPipeline(database);
 let processingSchemaPromise: Promise<void> | undefined;
@@ -124,6 +125,10 @@ client.handleMessage = (packet, done) => {
     done(new Error('Ingestor shutting down before persistence'));
   })();
 };
+// Who connects with each device's credential; never in the way of the messages themselves.
+const stopBrokerLog = env.BROKER_LOG_PATH
+  ? followBrokerLog(database, env.BROKER_LOG_PATH, log)
+  : () => undefined;
 const statusTimer = setInterval(() => {
   void database
     .query(
@@ -165,6 +170,7 @@ async function shutdown() {
   if (stopping) return;
   stopping = true;
   clearInterval(statusTimer);
+  stopBrokerLog();
   health.close();
   log.info({ event: 'shutdown' });
   const deadline = setTimeout(() => process.exit(1), 10000);

@@ -17992,3 +17992,9 @@ a.home-plant:hover, a.home-plant:focus-visible { outline-color: var(--brand-acce
 }
 .home-plant-pace { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; }
 .topbar-brand { letter-spacing: -0.2px; }
+.home-attention-connection button {
+  margin-left: auto;
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
