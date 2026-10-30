@@ -107,6 +107,13 @@ export class ConnectionRecorder {
     const device = await this.deviceFor(event.username);
     // The ingestor, the simulator, the command user: not a device.
     if (!device) return;
+    // The broker holds one connection per client id: an earlier one still open here ended
+    // without a line in the log (a broker restart, a lost network), so it ends now.
+    await this.db.query(
+      `UPDATE device_connections SET disconnected_at=$2,end_reason='superseded'
+       WHERE client_id=$1 AND disconnected_at IS NULL AND connected_at<$2`,
+      [event.clientId, event.at],
+    );
     const history = (
       await this.db.query<{ known: boolean; any: boolean; open_other: boolean; replaced: boolean }>(
         `SELECT

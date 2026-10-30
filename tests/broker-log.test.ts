@@ -157,6 +157,15 @@ describe('ConnectionRecorder', () => {
     expect(all[1]).toMatchObject({ new_client: false, overlapped: false });
   });
 
+  it('ends a connection the log never closed when the same client id connects again', async () => {
+    const { recorder, rows } = setup();
+    await recorder.apply(connect(0, 'HW-real'));
+    await recorder.apply(connect(900, 'HW-real'));
+    const all = await rows();
+    expect(all.map((row) => row.end_reason)).toEqual(['superseded', null]);
+    expect(all[1]).toMatchObject({ new_client: false, overlapped: false });
+  });
+
   it('ignores users that are not devices and reads the same lines twice without doubling', async () => {
     const { recorder, rows } = setup();
     await recorder.apply({ ...connect(0, 'everlenz-ingestor'), username: 'ingestor' });
