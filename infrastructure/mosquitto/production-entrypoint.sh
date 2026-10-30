@@ -31,6 +31,12 @@ test -s /mosquitto/certs/fullchain.pem && test -s /mosquitto/certs/privkey.pem |
   echo 'service=mosquitto event=tls_files_missing' >&2; exit 1;
 }
 chown -R 1883:1883 /mosquitto/config /mosquitto/data /mosquitto/log
+# The ingestor reads the connection log as another user to tell apart the HMIs on one
+# credential (migration 054). It holds client ids, addresses and usernames, never passwords.
+touch /mosquitto/log/mosquitto.log
+chown 1883:1883 /mosquitto/log/mosquitto.log
+chmod 755 /mosquitto/log
+chmod 644 /mosquitto/log/mosquitto.log
 echo 'service=mosquitto event=broker_starting'
 mosquitto -c /mosquitto/config/mosquitto.conf &
 broker_pid=$!
