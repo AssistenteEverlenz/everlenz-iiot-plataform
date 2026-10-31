@@ -2,10 +2,12 @@ import type { Database } from '@iiot/database';
 import {
   attribute,
   booleanOf,
+  BUCKET_SECONDS,
   convertTag,
   numberOf,
   type Device,
   type Observation,
+  type RejectedStep,
   type Runtime,
   type TagConfig,
   type TrackerConfig,
@@ -123,7 +125,13 @@ export class ProductionTracker {
       weightKg: numberOf(read(config.weightKey ?? null)),
     };
     const previous = await this.runtime(device);
-    const { runtime, deltas } = attribute(previous, observation, config, this.offlineSeconds);
+    const { runtime, deltas, rejected } = attribute(
+      previous,
+      observation,
+      config,
+      this.offlineSeconds,
+    );
+    if (rejected.length) await this.recordRefused(device, rejected);
     if (deltas.length) {
       const values: unknown[] = [];
       const tuples = deltas.map((delta) => {
@@ -176,4 +184,43 @@ export class ProductionTracker {
     // Only after both writes: a failed write re-attributes the same interval next time.
     this.runtimes.set(device.id, runtime);
   }
+
+  /**
+   * A counter step refused by the limit goes on record (migration 055), one row per counter
+   * and 5-minute bucket, so two HMIs swapping every few seconds make one finding, not hundreds.
+   * Never in the way of the counts: before the migration, or on any failure, it is skipped.
+   */
+  private async recordRefused(device: Device, rejected: RejectedStep[]) {
+    for (const step of rejected) {
+      const bucket = Math.floor(step.at / BUCKET_MS) * BUCKET_MS;
+      try {
+        await this.db.query(
+          `INSERT INTO production_anomalies(tenant_id,device_id,kind,counter,window_start,window_end,
+             amount,details)
+           VALUES($1,$2,'refused_step',$3,$4,$5,$6,$7)
+           ON CONFLICT(device_id,kind,counter,window_start) DO UPDATE SET
+             occurrences=production_anomalies.occurrences+1,
+             amount=production_anomalies.amount+EXCLUDED.amount,
+             details=EXCLUDED.details,detected_at=now()`,
+          [
+            device.tenant_id,
+            device.id,
+            step.counter,
+            new Date(bucket),
+            new Date(bucket + BUCKET_MS),
+            step.delta,
+            JSON.stringify({
+              previous: step.previous,
+              reading: step.reading,
+              seconds: Math.round(step.seconds),
+            }),
+          ],
+        );
+      } catch {
+        return;
+      }
+    }
+  }
 }
+
+const BUCKET_MS = BUCKET_SECONDS * 1000;

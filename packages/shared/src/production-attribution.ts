@@ -31,6 +31,8 @@ export interface Runtime {
   lastIncrementAt: number | null;
   auto: boolean | null;
   productCode: string | null;
+  /** A reading refused by the counter limit, kept to tell an intruder from a re-baseline. */
+  pending?: Partial<Record<'pieces' | 'pallets' | 'tons', number | null>>;
 }
 export interface Observation {
   at: number;
@@ -54,6 +56,37 @@ export interface BucketDelta {
 }
 
 const BUCKET_MS = BUCKET_SECONDS * 1000;
+
+/**
+ * The most a counter can climb in the time since the previous message, far above any line seen
+ * (the fastest ceramic line makes ~3.6 pieces/s and a pallet every ~100 s). A step above it is
+ * not production: on 28/10/2026 a second HMI published on Cerâmica Capixaba's credential with
+ * its own counter (0 → 2962) between the real one's readings (~200,000), and every swap read as
+ * a reset plus a 200,000-piece climb: 6 million pieces in ten minutes. A hand-edited pallet
+ * counter (+38 in one reading) is the same kind of step. The refused reading is kept aside:
+ * when the next one goes on from the old baseline, it was an intruder and the real counter
+ * keeps counting; when it goes on from the refused one, the counter really was set to a new
+ * value and that becomes the baseline. After an offline gap the allowance grows with the gap,
+ * so the production the PLC kept counting while the HMI was away still comes in.
+ */
+export const COUNTER_LIMITS = {
+  pieces: { base: 50, perSecond: 20 },
+  pallets: { base: 2, perSecond: 1 / 30 },
+  tons: { base: 0.5, perSecond: 0.05 },
+} as const;
+export type CounterName = keyof typeof COUNTER_LIMITS;
+export interface RejectedStep {
+  counter: CounterName;
+  at: number;
+  previous: number | null;
+  reading: number | null;
+  delta: number;
+  seconds: number;
+}
+export function counterLimit(counter: CounterName, seconds: number) {
+  const limit = COUNTER_LIMITS[counter];
+  return limit.base + limit.perSecond * Math.max(seconds, 0);
+}
 
 /**
  * Counter increment and the reading to compare the next one with. A reset (the counter falls
@@ -92,7 +125,7 @@ export function attribute(
   observation: Observation,
   config: TrackerConfig,
   offlineSeconds: number,
-): { runtime: Runtime; deltas: BucketDelta[] } {
+): { runtime: Runtime; deltas: BucketDelta[]; rejected: RejectedStep[] } {
   if (!runtime)
     return {
       runtime: {
@@ -105,6 +138,7 @@ export function attribute(
         productCode: observation.productCode,
       },
       deltas: [],
+      rejected: [],
     };
   const buckets = new Map<string, BucketDelta>();
   const entry = (at: number, productCode: string) => {
@@ -148,9 +182,25 @@ export function attribute(
     }
   }
 
-  const piecesStep = counterStep(runtime.lastPieces, observation.pieces);
-  const palletsStep = counterStep(runtime.lastPallets, observation.pallets);
-  const tonsStep = counterStep(runtime.lastTons, observation.tons);
+  const seconds = Math.max(gap, 0) / 1000;
+  const rejected: RejectedStep[] = [];
+  const pending: NonNullable<Runtime['pending']> = {};
+  const guarded = (counter: CounterName, previous: number | null, next: number | null) => {
+    const limit = counterLimit(counter, seconds);
+    const step = counterStep(previous, next);
+    if (step.delta <= limit) return step;
+    const aside = runtime.pending?.[counter];
+    if (aside != null) {
+      const resumed = counterStep(aside, next);
+      if (resumed.delta <= limit) return resumed;
+    }
+    rejected.push({ counter, at: observation.at, previous, reading: next, delta: step.delta, seconds });
+    pending[counter] = next;
+    return { delta: 0, reading: previous };
+  };
+  const piecesStep = guarded('pieces', runtime.lastPieces, observation.pieces);
+  const palletsStep = guarded('pallets', runtime.lastPallets, observation.pallets);
+  const tonsStep = guarded('tons', runtime.lastTons, observation.tons);
   const pieces = config.piecesKey ? piecesStep.delta : 0;
   const pallets = config.palletsKey ? palletsStep.delta : 0;
   const weight =
@@ -174,6 +224,7 @@ export function attribute(
       lastIncrementAt: counted ? observation.at : runtime.lastIncrementAt,
       auto: observation.auto ?? runtime.auto,
       productCode: observation.productCode,
+      ...(Object.keys(pending).length ? { pending } : {}),
     },
     deltas: [...buckets.values()].filter(
       (delta) =>
@@ -183,6 +234,13 @@ export function attribute(
         delta.producing ||
         delta.idle ||
         delta.manual,
+    ),
+    // Only configured counters: an unused signal stepping wildly is nobody's production.
+    rejected: rejected.filter(
+      (step) =>
+        (step.counter === 'pieces' && config.piecesKey) ||
+        (step.counter === 'pallets' && config.palletsKey) ||
+        (step.counter === 'tons' && config.tonsKey),
     ),
   };
 }

@@ -119,3 +119,48 @@ describe('production tracker', () => {
     ]);
   });
 });
+describe('counter limit', () => {
+  it('refuses the swaps of two HMIs on one credential (Capixaba 28/10/2026)', () => {
+    // Captured readings: the real HMI at ~200,000, a second one publishing 0 / 2962 in between.
+    const readings: Array<[number, number]> = [
+      [0, 200137],
+      [6, 0],
+      [10, 200145],
+      [20, 200151],
+      [41, 2962],
+      [44, 200159],
+      [50, 2962],
+      [54, 200169],
+      [64, 200177],
+    ];
+    let state: Runtime | null = runtime({ lastPieces: 200129, lastPallets: 13 });
+    let pieces = 0;
+    let refused = 0;
+    for (const [second, value] of readings) {
+      const step = attribute(state, observe(second, { pieces: value, pallets: 13 }), config, 30);
+      pieces += sum(step.deltas, 'pieces');
+      refused += step.rejected.length;
+      state = step.runtime;
+    }
+    // Every step of the real HMI counts (200129 → 200177), none of the intruder's.
+    expect(pieces).toBe(48);
+    expect(refused).toBe(2);
+    expect(state?.lastPieces).toBe(200177);
+  });
+
+  it('refuses a hand-edited pallet counter', () => {
+    const step = attribute(runtime(), observe(10, { pallets: 40 }), config, 30);
+    expect(sum(step.deltas, 'pallets')).toBe(0);
+    expect(step.rejected).toMatchObject([{ counter: 'pallets', delta: 38 }]);
+    // The edited value is the new baseline: the next pallet counts as one.
+    const next = attribute(step.runtime, observe(120, { pallets: 41 }), config, 30);
+    expect(sum(next.deltas, 'pallets')).toBe(1);
+  });
+
+  it('still takes the production counted while the HMI was offline', () => {
+    // 80 minutes without messages, 17,180 pieces in the PLC meanwhile (Artrical 22/10/2026).
+    const step = attribute(runtime(), observe(80 * 60, { pieces: 17280 }), config, 30);
+    expect(sum(step.deltas, 'pieces')).toBe(17180);
+    expect(step.rejected).toHaveLength(0);
+  });
+});
