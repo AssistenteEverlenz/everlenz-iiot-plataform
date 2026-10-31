@@ -10,6 +10,7 @@ import {
 import { pruneReadings } from './retention.js';
 import { recordStops } from './production-stops.js';
 import { linkTruncatedRecipes } from './mortar-links.js';
+import { runProductionAudit } from './production-audit.js';
 import { dispatchProductionMessages, queueProductionMessages } from './production-messages.js';
 const app = await createApp();
 await app.listen({ port: env.API_PORT, host: process.env.API_HOST ?? '127.0.0.1' });
@@ -206,6 +207,24 @@ async function linkRecipes() {
 }
 setInterval(() => void linkRecipes(), 15 * 60 * 1000).unref();
 setTimeout(() => void linkRecipes(), 30_000).unref();
+
+// The production check (production-audit.ts): every four hours each line's counts are compared
+// with a recount of the readings and searched for impossible or late buckets. It must run well
+// inside the three days the readings are kept, or a recount has nothing left to count from.
+let auditing = false;
+async function auditProduction() {
+  if (auditing) return;
+  auditing = true;
+  try {
+    await runProductionAudit(database, app.log);
+  } catch (error) {
+    await recordJobFailure('production_audit', error);
+  } finally {
+    auditing = false;
+  }
+}
+setInterval(() => void auditProduction(), 4 * 60 * 60 * 1000).unref();
+setTimeout(() => void auditProduction(), 10 * 60 * 1000).unref();
 
 let stopping = false;
 async function shutdown() {

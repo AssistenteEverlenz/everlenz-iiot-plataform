@@ -194,7 +194,14 @@ export function attribute(
       const resumed = counterStep(aside, next);
       if (resumed.delta <= limit) return resumed;
     }
-    rejected.push({ counter, at: observation.at, previous, reading: next, delta: step.delta, seconds });
+    rejected.push({
+      counter,
+      at: observation.at,
+      previous,
+      reading: next,
+      delta: step.delta,
+      seconds,
+    });
     pending[counter] = next;
     return { delta: 0, reading: previous };
   };

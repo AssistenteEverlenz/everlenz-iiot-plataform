@@ -15,6 +15,7 @@ import { registerUsageRoutes } from './usage.js';
 import { registerProductionMessageRoutes } from './production-messages.js';
 import { registerBriefingRoutes } from './briefing.js';
 import { registerDeviceConnectionRoutes } from './device-connections.js';
+import { registerProductionAuditRoutes } from './production-audit.js';
 import { registerWhatsappAssistantRoutes } from './whatsapp-assistant.js';
 import { registerWearRoutes } from './wear.js';
 import { registerMortarRoutes } from './mortar.js';
@@ -791,6 +792,7 @@ export async function createApp(
   registerProductionMessageRoutes(app, db, access);
   registerBriefingRoutes(app, db, access);
   registerDeviceConnectionRoutes(app, db, access);
+  registerProductionAuditRoutes(app, db, access);
   registerWhatsappAssistantRoutes(app, db);
   registerOperationTvRoutes(app, db, access);
   app.get('/api/devices/:id/production-context', async (req, reply) => {

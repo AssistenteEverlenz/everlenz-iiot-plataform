@@ -7,6 +7,7 @@ import {
   BUCKET_SECONDS,
   counterStep,
   type BucketDelta,
+  type RejectedStep,
   type Runtime,
   type TrackerConfig,
   DEFAULT_SHIFTS,
@@ -943,6 +944,55 @@ export async function rebuildProductionBuckets(
   deviceId: string,
   options: { from?: Date; until?: Date } = {},
 ) {
+  const recount = await recountProduction(db, tenantId, deviceId, options);
+  if (!recount) return null;
+  const { start, until, deltas } = recount;
+  await db.transaction(async (sql) => {
+    await sql.query(
+      'DELETE FROM production_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4',
+      [tenantId, deviceId, new Date(start), new Date(until)],
+    );
+    for (let index = 0; index < deltas.length; index += 400) {
+      const values: unknown[] = [];
+      const tuples = deltas.slice(index, index + 400).map((delta) => {
+        const item = [
+          tenantId,
+          deviceId,
+          new Date(delta.bucket),
+          delta.productCode,
+          delta.pieces,
+          delta.pallets,
+          delta.tons,
+          delta.producing,
+          delta.idle,
+          delta.manual,
+        ];
+        return `(${item.map((value) => (values.push(value), `$${values.length}`)).join(',')})`;
+      });
+      await sql.query(
+        `INSERT INTO production_buckets(tenant_id,device_id,bucket,product_code,pieces,pallets,tons,producing_s,idle_s,manual_s)
+         VALUES ${tuples.join(',')}
+         ON CONFLICT(device_id,bucket,product_code) DO UPDATE SET pieces=EXCLUDED.pieces,
+           pallets=EXCLUDED.pallets,tons=EXCLUDED.tons,producing_s=EXCLUDED.producing_s,
+           idle_s=EXCLUDED.idle_s,manual_s=EXCLUDED.manual_s`,
+        values,
+      );
+    }
+  });
+  return new Date(start);
+}
+
+/**
+ * The buckets the stored telemetry gives, without writing them: the rebuild writes them, the
+ * production check (production-audit.ts) compares them with what is stored. `rejected` lists
+ * the counter steps the limit refused on the way, with when they happened.
+ */
+export async function recountProduction(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  options: { from?: Date; until?: Date } = {},
+) {
   const settings = await db.query<{
     blocks_tag_id: string | null;
     pallets_tag_id: string | null;
@@ -1077,11 +1127,13 @@ export async function rebuildProductionBuckets(
     }
   }
   const buckets = new Map<string, BucketDelta>();
+  const rejected: RejectedStep[] = [];
   for (let chunk = start; chunk < until; chunk += DAY_MS) {
     const rows = await replay(new Date(chunk), new Date(Math.min(chunk + DAY_MS, until)), 'ASC');
     for (const item of rows.rows) {
       const step = attribute(runtime, observationOf(item), config, env.DEVICE_OFFLINE_SECONDS);
       runtime = step.runtime;
+      rejected.push(...step.rejected);
       for (const delta of step.deltas) {
         if (delta.bucket < start || delta.bucket >= until) continue;
         const key = `${delta.bucket}|${delta.productCode}`;
@@ -1098,40 +1150,48 @@ export async function rebuildProductionBuckets(
       }
     }
   }
-  const deltas = [...buckets.values()];
-  await db.transaction(async (sql) => {
-    await sql.query(
-      'DELETE FROM production_buckets WHERE tenant_id=$1 AND device_id=$2 AND bucket>=$3 AND bucket<$4',
-      [tenantId, deviceId, new Date(start), new Date(until)],
-    );
-    for (let index = 0; index < deltas.length; index += 400) {
-      const values: unknown[] = [];
-      const tuples = deltas.slice(index, index + 400).map((delta) => {
-        const item = [
-          tenantId,
-          deviceId,
-          new Date(delta.bucket),
-          delta.productCode,
-          delta.pieces,
-          delta.pallets,
-          delta.tons,
-          delta.producing,
-          delta.idle,
-          delta.manual,
-        ];
-        return `(${item.map((value) => (values.push(value), `$${values.length}`)).join(',')})`;
-      });
-      await sql.query(
-        `INSERT INTO production_buckets(tenant_id,device_id,bucket,product_code,pieces,pallets,tons,producing_s,idle_s,manual_s)
-         VALUES ${tuples.join(',')}
-         ON CONFLICT(device_id,bucket,product_code) DO UPDATE SET pieces=EXCLUDED.pieces,
-           pallets=EXCLUDED.pallets,tons=EXCLUDED.tons,producing_s=EXCLUDED.producing_s,
-           idle_s=EXCLUDED.idle_s,manual_s=EXCLUDED.manual_s`,
-        values,
-      );
-    }
+  return { start, until, firstAt, deltas: [...buckets.values()], rejected };
+}
+
+/**
+ * Counts a period again: the buckets from the stored telemetry (where it still exists, unless
+ * `rebuild` is false because the buckets were just corrected by hand), then the automatic shift
+ * rows of those days from the buckets, keeping their targets.
+ */
+export async function recountPeriod(
+  db: Database,
+  tenantId: string,
+  deviceId: string,
+  from: string,
+  to: string,
+  { rebuild = true }: { rebuild?: boolean } = {},
+) {
+  if (rebuild)
+    await rebuildProductionBuckets(db, tenantId, deviceId, {
+      from: plantInstant(from, '00:00'),
+      until: plantInstant(addDays(to, 1), '00:00'),
+    });
+  const targets = await keptTargets(db, tenantId, deviceId, from, to);
+  await db.query(
+    `DELETE FROM shift_reports WHERE tenant_id=$1 AND device_id=$2 AND source='auto'
+     AND production_date BETWEEN $3 AND $4`,
+    [tenantId, deviceId, from, to],
+  );
+  const written = await closeShiftReports(db, new Date(), {
+    deviceId,
+    fromDate: from,
+    toDate: to,
+    targets,
   });
-  return new Date(start);
+  // The recount changed these periods: their photos are taken again, but only where the
+  // readings still exist (an older photo is all that is left of its period).
+  await db.query(
+    `DELETE FROM production_photos p WHERE p.tenant_id=$1 AND p.device_id=$2
+     AND p.production_date BETWEEN $3 AND $4
+     AND ${HAS_READINGS_SQL('p.device_id', 'p.period_start', 'p.period_end')}`,
+    [tenantId, deviceId, from, to],
+  );
+  return written;
 }
 
 /** Rewrites the automatic shift rows from a date on (rows someone deleted stay deleted). */
@@ -3419,31 +3479,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     if (addDays(body.from, 62) < body.to)
       return reply.code(400).send({ error: 'Recalcule no máximo 62 dias por vez' });
     const current = access.principal(req);
-    // First the counts themselves, from the stored telemetry of the period.
-    await rebuildProductionBuckets(db, current.tenantId, id, {
-      from: plantInstant(body.from, '00:00'),
-      until: plantInstant(addDays(body.to, 1), '00:00'),
-    });
-    const targets = await keptTargets(db, current.tenantId, id, body.from, body.to);
-    await db.query(
-      `DELETE FROM shift_reports WHERE tenant_id=$1 AND device_id=$2 AND source='auto'
-       AND production_date BETWEEN $3 AND $4`,
-      [current.tenantId, id, body.from, body.to],
-    );
-    const written = await closeShiftReports(db, new Date(), {
-      deviceId: id,
-      fromDate: body.from,
-      toDate: body.to,
-      targets,
-    });
-    // The recount changed these periods: their photos are taken again, but only where the
-    // readings still exist (an older photo is all that is left of its period).
-    await db.query(
-      `DELETE FROM production_photos p WHERE p.tenant_id=$1 AND p.device_id=$2
-       AND p.production_date BETWEEN $3 AND $4
-       AND ${HAS_READINGS_SQL('p.device_id', 'p.period_start', 'p.period_end')}`,
-      [current.tenantId, id, body.from, body.to],
-    );
+    const written = await recountPeriod(db, current.tenantId, id, body.from, body.to);
     await recordAudit(db, req, current, {
       action: 'shift_report.recalculate',
       targetType: 'device',
