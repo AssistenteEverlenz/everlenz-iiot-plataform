@@ -7836,6 +7836,121 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
   border: 1px solid #eef3f4;
   border-radius: 10px;
 }
+/* "Verificar dados": each finding a row with its date, what happened in plain words, the
+   correction proposed and the two answers. The colour bar says how much it matters: red for a
+   count that is wrong, amber for one worth a look, the accent for what the lock already held. */
+.data-check-modal {
+  width: min(820px, 100%);
+}
+.data-check-notice {
+  width: 100%;
+  border: 1px solid #f1d7a4;
+  text-align: left;
+  cursor: pointer;
+}
+.data-check-notice:hover {
+  outline: 1px solid var(--brand-accent, #0d8f82);
+}
+.data-check-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+.data-check-bar .field {
+  flex: 1;
+  max-width: 260px;
+}
+.data-check-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.data-check-section h3 {
+  margin: 0 0 2px;
+  color: #24434d;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.data-check-item {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid #e3ecee;
+  border-left: 4px solid #e4572e;
+  border-radius: 10px;
+  background: #fff;
+}
+.data-check-item:hover {
+  outline: 1px solid var(--brand-accent, #0d8f82);
+}
+.data-check-item.suspicious,
+.data-check-item.late_burst {
+  border-left-color: #f2a93b;
+}
+.data-check-item.refused_step {
+  border-left-color: var(--brand-accent, #0d8f82);
+}
+.data-check-when {
+  display: grid;
+  gap: 2px;
+  color: #24434d;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.data-check-when span {
+  color: #71868d;
+  font-size: 12px;
+}
+.data-check-body strong {
+  color: #16323b;
+  font-size: 14px;
+}
+.data-check-body p {
+  margin: 4px 0 0;
+  color: #47626a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.data-check-body .data-check-fix {
+  color: #24434d;
+}
+.data-check-fix span {
+  font-weight: 700;
+}
+.data-check-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 110px;
+}
+.data-check-toggle {
+  justify-self: start;
+  border: 0;
+  background: none;
+  padding: 2px 0;
+  color: #24434d;
+  font-weight: 700;
+  cursor: pointer;
+}
+@media (max-width: 760px) {
+  .data-check-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .data-check-when {
+    grid-auto-flow: column;
+    justify-content: start;
+    gap: 8px;
+  }
+  .data-check-actions {
+    flex-direction: row;
+  }
+}
 /* Cards whose labels run to three lines must still line up: the value sits at the bottom. */
 .production-detail-summary > div {
   display: flex;

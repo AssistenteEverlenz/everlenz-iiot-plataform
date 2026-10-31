@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { ActionModal } from '../../components/ActionModal';
 import { ProductionConfigModal } from '../../components/ProductionConfigModal';
 import { HmiCheckModal } from '../../components/HmiCheckModal';
+import { DataCheckModal } from '../../components/DataCheckModal';
 import {
   photoCalculated,
   photoWindow,
@@ -421,6 +422,7 @@ function ProductionPage() {
   const [editingShifts, setEditingShifts] = useState(false);
   const [editingConfig, setEditingConfig] = useState(false);
   const [checkingHmi, setCheckingHmi] = useState(false);
+  const [checkingData, setCheckingData] = useState(false);
   // Row maintenance (master): partial snapshot, rebuild of automatic rows, removal.
   const [selected, setSelected] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<'delete' | 'recalculate' | null>(null);
@@ -476,6 +478,16 @@ function ProductionPage() {
     deviceId ? `/devices/${deviceId}/shift-reports?from=${from}&to=${to}` : null,
     60000,
   );
+  // Points the production check left for the master to decide (production-audit.ts).
+  const openChecks = usePoll<Array<{ status: string; kind: string }>>(
+    canMaintain && deviceId
+      ? `/devices/${deviceId}/production-anomalies?from=${shiftDay(plantToday(), -29)}&to=${plantToday()}`
+      : null,
+    600000,
+  );
+  const toDecide = (openChecks.data ?? []).filter(
+    (item) => item.status === 'open' && item.kind !== 'refused_step',
+  ).length;
   const shiftRows = useMemo(
     () =>
       (reports.data?.reports ?? [])
@@ -630,6 +642,7 @@ function ProductionPage() {
             )}
             <button onClick={() => setEditingConfig(true)}>Configurar equipamento</button>
             <button onClick={() => setCheckingHmi(true)}>Conferir com a IHM</button>
+            {canMaintain && <button onClick={() => setCheckingData(true)}>Verificar dados</button>}
           </div>
         )}
       </div>
@@ -717,6 +730,13 @@ function ProductionPage() {
           turno, de segunda a sexta, das 07:00 às 17:00.
           {user.role === 'master' && ' Cadastre os turnos reais em "Turnos da fábrica".'}
         </div>
+      )}
+      {toDecide > 0 && (
+        <button type="button" className="notice data-check-notice" onClick={() => setCheckingData(true)}>
+          <b>Dados para conferir</b>
+          A verificação automática encontrou {toDecide} ponto(s) na contagem dos últimos 30 dias que
+          precisam da sua decisão. Clique para ver.
+        </button>
       )}
       {reports.error && <div className="error-banner">{reports.error}</div>}
 
@@ -1006,6 +1026,17 @@ function ProductionPage() {
           confirmLabel="Recalcular"
           onConfirm={recalculate}
           onClose={() => setConfirming(null)}
+        />
+      )}
+      {checkingData && device && (
+        <DataCheckModal
+          deviceId={device.id}
+          deviceName={device.name}
+          onClose={() => {
+            setCheckingData(false);
+            void openChecks.refresh();
+          }}
+          onChanged={() => void reports.refresh()}
         />
       )}
       {checkingHmi && device && (
