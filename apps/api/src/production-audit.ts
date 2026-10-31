@@ -389,15 +389,19 @@ async function storeFindings(
 ) {
   const ids: Array<{ id: string; autoFix: boolean }> = [];
   for (const finding of findings) {
-    const row = await db.query<{ id: string; status: string }>(
+    const row = await db.query<{ id: string; status: string; auto_fix: boolean | null }>(
       `INSERT INTO production_anomalies(tenant_id,device_id,kind,counter,window_start,window_end,
          production_date,amount,details)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT(device_id,kind,counter,window_start) DO UPDATE SET
          amount=CASE WHEN production_anomalies.status='open' THEN EXCLUDED.amount ELSE production_anomalies.amount END,
-         details=CASE WHEN production_anomalies.status='open' THEN EXCLUDED.details ELSE production_anomalies.details END,
+         -- A correction that already failed once stays with the master: never retried on its own.
+         details=CASE WHEN production_anomalies.status<>'open' THEN production_anomalies.details
+           WHEN production_anomalies.details ? 'unfixed' THEN EXCLUDED.details || jsonb_build_object(
+             'autoFix', false, 'unfixed', production_anomalies.details->'unfixed')
+           ELSE EXCLUDED.details END,
          detected_at=CASE WHEN production_anomalies.status='open' THEN now() ELSE production_anomalies.detected_at END
-       RETURNING id::text,status`,
+       RETURNING id::text,status,(details->>'autoFix')::boolean auto_fix`,
       [
         tenantId,
         deviceId,
@@ -410,7 +414,8 @@ async function storeFindings(
         JSON.stringify({ ...finding.details, autoFix: finding.autoFix }),
       ],
     );
-    if (row.rows[0]?.status === 'open') ids.push({ id: row.rows[0].id, autoFix: finding.autoFix });
+    if (row.rows[0]?.status === 'open')
+      ids.push({ id: row.rows[0].id, autoFix: Boolean(row.rows[0].auto_fix) });
   }
   await db.query(
     `UPDATE production_anomalies SET status='fixed',resolved_at=now(),
@@ -459,19 +464,66 @@ function split(value: number, parts: number, whole: boolean) {
   return Array.from({ length: parts }, () => base + (left-- > 0 ? 1 : 0));
 }
 
+/** A correction that ran but left the day still not adding up: the master has to look. */
+export class UnfixedError extends Error {
+  constructor(
+    readonly reported: Totals,
+    readonly counted: Totals,
+  ) {
+    super('A correção automática não fechou o dia: os turnos ainda não batem com a contagem.');
+  }
+}
+
+/** The day's automatic shift rows against its buckets, after a correction. */
+async function dayCheck(db: Database, tenantId: string, deviceId: string, date: string) {
+  const reports = await db.query<{ pieces: number; pallets: number; tons: number }>(
+    `SELECT coalesce(sum(pieces),0)::float8 pieces,coalesce(sum(pallets),0)::float8 pallets,
+       coalesce(sum(tons),0)::float8 tons
+     FROM shift_reports WHERE tenant_id=$1 AND device_id=$2 AND source='auto'
+       AND deleted_at IS NULL AND production_date=$3`,
+    [tenantId, deviceId, date],
+  );
+  const reported = {
+    pieces: Number(reports.rows[0]?.pieces ?? 0),
+    pallets: Number(reports.rows[0]?.pallets ?? 0),
+    tons: Number(reports.rows[0]?.tons ?? 0),
+  };
+  const counted =
+    byDay(
+      await storedBuckets(
+        db,
+        tenantId,
+        deviceId,
+        plantInstant(date, '00:00'),
+        plantInstant(addDays(date, 1), '00:00'),
+      ),
+    ).get(date) ?? zero();
+  return {
+    reported: mapTotals(reported),
+    counted: mapTotals(counted),
+    differs: differs(reported, counted),
+  };
+}
+
 /**
  * Applies the correction a finding proposes and records what changed. Returns the days whose
  * totals moved.
  */
 export async function fixAnomaly(db: Database, row: AnomalyRow) {
   const date = row.production_date ?? plantDate(new Date(row.window_start));
-  if (row.kind === 'recount') {
-    await recountPeriod(db, row.tenant_id, row.device_id, date, date);
-    return { dates: [date], change: { recount: row.details.recount } };
-  }
-  if (row.kind === 'report_mismatch') {
-    await recountPeriod(db, row.tenant_id, row.device_id, date, date, { rebuild: false });
-    return { dates: [date], change: { reports: row.details.buckets } };
+  if (row.kind === 'recount' || row.kind === 'report_mismatch') {
+    await recountPeriod(db, row.tenant_id, row.device_id, date, date, {
+      rebuild: row.kind === 'recount',
+    });
+    // Nothing is called fixed until the day adds up: Imperial's first day (28/10/2026) was
+    // written again and still read 54 pieces against 428 in its buckets.
+    const check = await dayCheck(db, row.tenant_id, row.device_id, date);
+    if (check.differs) throw new UnfixedError(check.reported, check.counted);
+    return {
+      dates: [date],
+      change:
+        row.kind === 'recount' ? { recount: row.details.recount } : { reports: check.counted },
+    };
   }
   const before = await bucketsOf(db, row);
   if (row.kind === 'jump' || row.kind === 'suspicious') {
@@ -579,6 +631,17 @@ async function loadAnomaly(db: Database, tenantId: string, id: string) {
   return result.rows[0] ?? null;
 }
 
+/** Kept open for the master, with what the correction left; never retried on its own. */
+async function markUnfixed(db: Database, id: string, error: UnfixedError) {
+  await db.query(`UPDATE production_anomalies SET details=details||$2::jsonb WHERE id=$1`, [
+    id,
+    JSON.stringify({
+      autoFix: false,
+      unfixed: { reported: error.reported, counted: error.counted },
+    }),
+  ]);
+}
+
 /** Checks one line over a period, stores the findings and applies the certain corrections. */
 export async function checkDevice(
   db: Database,
@@ -593,8 +656,13 @@ export async function checkDevice(
   for (const item of stored.filter((entry) => entry.autoFix)) {
     const row = await loadAnomaly(db, tenantId, item.id);
     if (!row || row.status !== 'open') continue;
-    await resolve(db, row, 'fix', { id: null, label: 'verificação automática' });
-    fixed += 1;
+    try {
+      await resolve(db, row, 'fix', { id: null, label: 'verificação automática' });
+      fixed += 1;
+    } catch (error) {
+      if (!(error instanceof UnfixedError)) throw error;
+      await markUnfixed(db, row.id, error);
+    }
   }
   return { found: findings.length, fixed };
 }
@@ -704,7 +772,14 @@ export function registerProductionAuditRoutes(app: FastifyInstance, db: Database
       return reply
         .code(400)
         .send({ error: 'Não há horário de turno no intervalo para onde levar esta produção' });
-    const outcome = await resolve(db, row, body.action, { id: current.id, label: current.email });
+    let outcome;
+    try {
+      outcome = await resolve(db, row, body.action, { id: current.id, label: current.email });
+    } catch (error) {
+      if (!(error instanceof UnfixedError)) throw error;
+      await markUnfixed(db, row.id, error);
+      return reply.code(409).send({ error: error.message });
+    }
     await recordAudit(db, req, current, {
       action: body.action === 'fix' ? 'production.anomaly_fix' : 'production.anomaly_accept',
       targetType: 'device',

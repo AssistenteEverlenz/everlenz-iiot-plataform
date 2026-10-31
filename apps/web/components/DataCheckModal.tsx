@@ -109,12 +109,17 @@ function explain(item: Anomaly) {
           : 'O intervalo ficou fora do horário de turno: não há para onde levar. Se a quantidade está certa, aceite.',
       };
     }
-    case 'report_mismatch':
+    case 'report_mismatch': {
+      const left = d.unfixed as { reported: Totals; counted: Totals } | undefined;
       return {
         title: 'O relatório do dia não bate com a contagem',
-        text: `Os turnos do dia somam ${totals(d.reported)}, mas a contagem da linha é ${totals(d.buckets)}.`,
-        fix: 'Refazer os turnos do dia a partir da contagem.',
+        text: `Os turnos do dia somam ${totals(left?.reported ?? d.reported)}, mas a contagem da linha é ${totals(left?.counted ?? d.buckets)}.`,
+        fix: left ? null : 'Refazer os turnos do dia a partir da contagem.',
+        note: left
+          ? 'A plataforma refez os turnos e o dia continuou sem fechar: o fechamento não está alcançando parte dessa produção (costuma ser o primeiro dia da linha na plataforma, ou produção fora de qualquer turno). Precisa de análise; se o relatório estiver certo, aceite.'
+          : null,
       };
+    }
   }
 }
 
