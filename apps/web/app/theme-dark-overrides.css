@@ -9,6 +9,10 @@
   :root[data-theme='dark'] body {
     background: #091317;
   }
+  /* Reference lines drawn in ink (averages, targets) and their end labels. */
+  :root[data-theme='dark'] {
+    --chart-ink: #dbe7ea;
+  }
 
   /* Credential rows and the missing-variable warning. */
   :root[data-theme='dark'] .credential-row .copy-cell {

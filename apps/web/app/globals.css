@@ -18113,3 +18113,241 @@ a.home-plant:hover, a.home-plant:focus-visible { outline-color: var(--brand-acce
   font-size: 12px;
   border-radius: 8px;
 }
+
+/* ---------- Ceramic production page (CeramicProduction.tsx) ----------
+   Built on the mortar page's pieces (mp-*); only what the ceramic sections add is here. */
+
+/* The "i" beside a figure: what it is, for a reader who did not build the page. */
+.info-tip {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 2px;
+  border: 1px solid #b9c9cd;
+  border-radius: 50%;
+  color: #5d747b;
+  font-family: Georgia, serif;
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: middle;
+  cursor: help;
+}
+.info-tip:hover,
+.info-tip:focus-visible {
+  border-color: var(--brand-accent, #12b8a6);
+  color: var(--brand-accent, #12b8a6);
+  outline: none;
+}
+.info-tip:hover::after,
+.info-tip:focus-visible::after {
+  content: attr(data-info);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 40;
+  width: max-content;
+  max-width: 280px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #0b2028;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  color: #fff;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.45;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.info-tip.end:hover::after,
+.info-tip.end:focus-visible::after {
+  right: -8px;
+  left: auto;
+  transform: none;
+}
+/* Inside a KPI the label rule (uppercase, spaced) would reach the "i" and its text too. */
+.shift-kpi span.info-tip {
+  color: #5d747b;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cp-kpi-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+/* A KPI near the right edge opens its explanation leftwards, so it never leaves the screen. */
+.cp-kpis .shift-kpi:nth-last-child(-n + 2) .info-tip:hover::after,
+.cp-kpis .shift-kpi:nth-last-child(-n + 2) .info-tip:focus-visible::after {
+  right: -8px;
+  left: auto;
+  transform: none;
+}
+.cp-kpis.no-pallets {
+  grid-template-columns: 1.3fr repeat(4, minmax(0, 1fr));
+}
+.cp-tooltip {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid #dfe8ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(11, 32, 40, 0.12);
+  color: #3d5a62;
+  font-size: 12px;
+}
+.cp-tooltip b {
+  color: #0b2028;
+}
+.cp-tooltip i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.cp-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+.cp-share {
+  display: grid;
+  grid-template-columns: minmax(60px, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+}
+.cp-share small {
+  color: #5d747b;
+  font-variant-numeric: tabular-nums;
+}
+.production-table.cp-products td,
+.production-table.cp-compare td {
+  cursor: default;
+}
+/* Where the shift's time went: one bar, cut by state. */
+.cp-timebar {
+  display: flex;
+  height: 18px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #eef4f5;
+}
+.cp-timebar i {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  animation: grow-right 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.cp-timeparts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.cp-timeparts > div {
+  display: grid;
+  gap: 2px;
+}
+.cp-timeparts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5d747b;
+  font-size: 12px;
+}
+.cp-timeparts span i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.cp-timeparts b {
+  color: #0b2028;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.cp-timeparts small {
+  color: #8a9ca2;
+  font-size: 11px;
+}
+.cp-longest {
+  display: grid;
+}
+.cp-longest > div {
+  display: grid;
+  grid-template-columns: 16px 110px 70px 1fr;
+  align-items: center;
+  padding: 7px 4px;
+  border-bottom: 1px solid #eef3f4;
+  color: #3d5a62;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.cp-longest > div:last-child {
+  border-bottom: 0;
+}
+.cp-longest b {
+  color: #0b2028;
+}
+.cp-longest small {
+  color: #71868d;
+}
+@media (max-width: 1100px) {
+  .cp-kpis.no-pallets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .cp-kpis.no-pallets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cp-timeparts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cp-longest > div {
+    grid-template-columns: 16px 1fr auto;
+  }
+  .cp-longest small {
+    grid-column: 2 / -1;
+  }
+}
+.cp-ellipsis {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-offline-note {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed #dfe8ea;
+  color: #5d747b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.cp-offline-note i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border-radius: 3px;
+}
+.cp-offline-note b {
+  color: #20353d;
+}

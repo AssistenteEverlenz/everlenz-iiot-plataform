@@ -23,6 +23,7 @@ import { DifferenceLedger, useReconcile } from './MortarBridge';
 import { MortarShiftBoard } from './MortarShift';
 import { ProductsModal } from './MortarPanel';
 import { usePlatform } from './PlatformShell';
+import { InfoTip } from './InfoTip';
 import {
   MATERIAL_COLORS,
   PRODUCT_COLORS,
@@ -184,9 +185,9 @@ function compareRange(range: { from: string; to: string }, against: Against) {
   return { from: addDays(range.from, -length), to: addDays(range.from, -1) };
 }
 
-const delta = (now: number | null | undefined, before: number | null | undefined) =>
+export const delta = (now: number | null | undefined, before: number | null | undefined) =>
   now == null || before == null || !before ? null : now / before - 1;
-function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
+export function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
   if (value == null || !Number.isFinite(value)) return null;
   // Under a tenth of a percent is no change worth an arrow.
   if (Math.abs(value) < 0.0005) return <i className="mp-delta">= igual</i>;
@@ -198,8 +199,8 @@ function Delta({ value, invert }: { value: number | null; invert?: boolean }) {
   );
 }
 
-const color = (palette: string[], index: number) => palette[index % palette.length];
-const AXIS = { fontSize: 11, fill: '#71868d' };
+export const color = (palette: string[], index: number) => palette[index % palette.length];
+export const AXIS = { fontSize: 11, fill: '#71868d' };
 
 // ---- The page ---------------------------------------------------------------------------------
 
@@ -529,18 +530,30 @@ function SectionTabs({ tab, onPick }: { tab: Tab; onPick: (tab: Tab) => void }) 
 }
 
 /** The target as the board paints it: green when beaten, amber close, red below. */
-const HIT = '#1fbf7a';
-const NEAR = '#f2a93b';
-const MISS = '#e4572e';
+export const HIT = '#1fbf7a';
+export const NEAR = '#f2a93b';
+export const MISS = '#e4572e';
 const reach = (bags: number, target: number) =>
   !target ? null : bags >= target ? HIT : bags >= target * 0.9 ? NEAR : MISS;
 const unitOf = (group: Group) => (group === 'day' ? 'dia' : group === 'week' ? 'semana' : 'mês');
 
 /** A card's title, what it shows, and the one figure to take away from it. */
-function Head({ title, hint, note }: { title: string; hint?: string; note?: ReactNode }) {
+export function Head({
+  title,
+  hint,
+  note,
+  info,
+}: {
+  title: string;
+  hint?: string;
+  note?: ReactNode;
+  /** What the card shows, behind an "i", for a reader who needs it explained. */
+  info?: string;
+}) {
   return (
     <div className="mp-card-head">
       <strong>{title}</strong>
+      {info && <InfoTip text={info} />}
       {hint && <small>{hint}</small>}
       {note && <span className="mp-note">{note}</span>}
     </div>
@@ -548,7 +561,7 @@ function Head({ title, hint, note }: { title: string; hint?: string; note?: Reac
 }
 
 /** The last point of a line carries its own name and value, so no legend has to be read. */
-const endLabel =
+export const endLabel =
   (count: number, text: (value: number) => string, fill: string) =>
   (props: { x?: number | string; y?: number | string; index?: number; value?: unknown }) => {
     if (props.index !== count - 1 || props.value == null) return <g />;
