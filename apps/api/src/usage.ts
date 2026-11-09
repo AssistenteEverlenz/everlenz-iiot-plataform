@@ -85,10 +85,9 @@ const daysSchema = z.object({ days: z.coerce.number().int().min(1).max(400).defa
 /** Behaviour events (migration 056) are kept 90 days; the API's retention job calls this. */
 export const USAGE_EVENTS_KEEP_DAYS = 90;
 export async function pruneUsageEvents(db: Database, now = new Date()) {
-  const result = await db.query(
-    `DELETE FROM usage_events WHERE at < $1`,
-    [new Date(now.getTime() - USAGE_EVENTS_KEEP_DAYS * 86_400_000)],
-  );
+  const result = await db.query(`DELETE FROM usage_events WHERE at < $1`, [
+    new Date(now.getTime() - USAGE_EVENTS_KEEP_DAYS * 86_400_000),
+  ]);
   return result.rowCount ?? 0;
 }
 
@@ -127,6 +126,20 @@ const since = (days: number) => new Date(Date.now() - days * 86_400_000);
 const SIGNALS = ['repeat', 'dead', 'modal', 'form_abandoned', 'empty_search', 'error'];
 
 /**
+ * A click worth reading in "O que mais clicam": a named control. Closing or cancelling a window,
+ * the TV "touch to open" cover and a text with no word left after the digits were masked
+ * ("#x#x#.#,# kg") say nothing about how the platform is used.
+ */
+const CLICK_NOISE = /^(fechar|cancelar|voltar|sair|ok|não|nao|agora não|×|x|✕)$/i;
+export function meaningfulClick(target: string | null) {
+  if (!target) return false;
+  const text = target.replace(/\s*\(desativado\)$/, '').trim();
+  return (
+    !CLICK_NOISE.test(text) && !/^toque em qualquer lugar/i.test(text) && /\p{L}{3,}/u.test(text)
+  );
+}
+
+/**
  * How the platform is used, from the behaviour events (056): where people got stuck, how long
  * a visit to each page lasts and which controls they use. For one person, or for everyone but
  * the master accounts (the master's own clicking around is not how the plants use it).
@@ -147,7 +160,14 @@ async function behaviour(
         `SELECT kind,count(*) n,count(DISTINCT user_id) people ${base} GROUP BY kind`,
         params,
       ),
-      db.query<{ kind: string; path: string; target: string | null; n: string; people: string; last: string }>(
+      db.query<{
+        kind: string;
+        path: string;
+        target: string | null;
+        n: string;
+        people: string;
+        last: string;
+      }>(
         `SELECT kind,path,target,count(*) n,count(DISTINCT user_id) people,max(at) last ${base}
            AND kind = ANY($${params.length + 1}::text[])
          GROUP BY 1,2,3 ORDER BY count(DISTINCT user_id) DESC,count(*) DESC,max(at) DESC LIMIT 40`,
@@ -161,7 +181,7 @@ async function behaviour(
       ),
       db.query<{ path: string; target: string | null; n: string; people: string }>(
         `SELECT path,target,count(*) n,count(DISTINCT user_id) people ${base} AND kind='click'
-         GROUP BY 1,2 ORDER BY count(*) DESC LIMIT 15`,
+         GROUP BY 1,2 ORDER BY count(*) DESC LIMIT 80`,
         params,
       ),
       db.query<{ first: string | null }>(
@@ -189,12 +209,15 @@ async function behaviour(
         totalMs: Number(row.total_ms),
         people: Number(row.people),
       })),
-      clicks: clicks.rows.map((row) => ({
-        page: pageLabel(row.path, panels),
-        target: row.target,
-        count: Number(row.n),
-        people: Number(row.people),
-      })),
+      clicks: clicks.rows
+        .filter((row) => meaningfulClick(row.target))
+        .slice(0, 15)
+        .map((row) => ({
+          page: pageLabel(row.path, panels),
+          target: row.target,
+          count: Number(row.n),
+          people: Number(row.people),
+        })),
     };
   } catch {
     // Migration 056 not applied: the page still shows the minutes.
@@ -372,59 +395,65 @@ export function registerUsageRoutes(app: FastifyInstance, db: Database, access: 
     if (!user.rows[0]) return reply.code(404).send({ error: 'User not found' });
     const from = since(days);
     const mine = 'tenant_id=$1 AND minute>=$2 AND user_id=$3';
-    const [daily, visits, pages, hours, weekdays, devices, logins, panels, loginCount] = await Promise.all([
-      db.query<{ day: string; open: string; active: string; tv: string }>(
-        `SELECT to_char(${LOCAL},'YYYY-MM-DD') AS day,
+    const [daily, visits, pages, hours, weekdays, devices, logins, panels, loginCount] =
+      await Promise.all([
+        db.query<{ day: string; open: string; active: string; tv: string }>(
+          `SELECT to_char(${LOCAL},'YYYY-MM-DD') AS day,
            count(*) FILTER (WHERE NOT tv) open,count(*) FILTER (WHERE active AND NOT tv) active,
            count(*) FILTER (WHERE tv) tv
          FROM usage_minutes WHERE ${mine} GROUP BY 1 ORDER BY 1`,
-        [tenantId, from, id],
-      ),
-      db.query<{
-        started: string;
-        ended: string;
-        minutes: string;
-        active: string;
-        paths: string[];
-        device: string;
-      }>(
-        `${VISITS_SQL}
+          [tenantId, from, id],
+        ),
+        db.query<{
+          started: string;
+          ended: string;
+          minutes: string;
+          active: string;
+          paths: string[];
+          device: string;
+        }>(
+          `${VISITS_SQL}
          SELECT min(minute) started,max(minute) ended,count(*) minutes,
            count(*) FILTER (WHERE active) active,array_agg(DISTINCT path) paths,
            mode() WITHIN GROUP (ORDER BY device) device
          FROM v WHERE user_id=$3 GROUP BY visit ORDER BY min(minute) DESC LIMIT 60`,
-        [tenantId, from, id],
-      ),
-      db.query<{ path: string; tv: boolean; minutes: string; active: string }>(
-        `SELECT path,tv,count(*) minutes,count(*) FILTER (WHERE active) active
+          [tenantId, from, id],
+        ),
+        db.query<{ path: string; tv: boolean; minutes: string; active: string }>(
+          `SELECT path,tv,count(*) minutes,count(*) FILTER (WHERE active) active
          FROM usage_minutes WHERE ${mine} GROUP BY path,tv ORDER BY count(*) DESC LIMIT 20`,
-        [tenantId, from, id],
-      ),
-      db.query<{ hour: number; minutes: string }>(
-        `SELECT extract(hour FROM ${LOCAL})::int AS hour,count(*) minutes
+          [tenantId, from, id],
+        ),
+        db.query<{ hour: number; minutes: string }>(
+          `SELECT extract(hour FROM ${LOCAL})::int AS hour,count(*) minutes
          FROM usage_minutes WHERE ${mine} AND NOT tv GROUP BY 1`,
-        [tenantId, from, id],
-      ),
-      db.query<{ weekday: number; minutes: string }>(
-        `SELECT extract(dow FROM ${LOCAL})::int AS weekday,count(*) minutes
+          [tenantId, from, id],
+        ),
+        db.query<{ weekday: number; minutes: string }>(
+          `SELECT extract(dow FROM ${LOCAL})::int AS weekday,count(*) minutes
          FROM usage_minutes WHERE ${mine} AND NOT tv GROUP BY 1`,
-        [tenantId, from, id],
-      ),
-      db.query<{ device: string; minutes: string }>(
-        `SELECT device,count(*) minutes FROM usage_minutes WHERE ${mine} GROUP BY 1 ORDER BY 2 DESC`,
-        [tenantId, from, id],
-      ),
-      db.query<{ at: string; ip_address: string | null; user_agent: string | null; persistent: boolean }>(
-        `SELECT at,ip_address,user_agent,persistent FROM usage_logins
+          [tenantId, from, id],
+        ),
+        db.query<{ device: string; minutes: string }>(
+          `SELECT device,count(*) minutes FROM usage_minutes WHERE ${mine} GROUP BY 1 ORDER BY 2 DESC`,
+          [tenantId, from, id],
+        ),
+        db.query<{
+          at: string;
+          ip_address: string | null;
+          user_agent: string | null;
+          persistent: boolean;
+        }>(
+          `SELECT at,ip_address,user_agent,persistent FROM usage_logins
          WHERE tenant_id=$1 AND user_id=$2 ORDER BY at DESC LIMIT 30`,
-        [tenantId, id],
-      ),
-      panelNames(db, tenantId),
-      db.query<{ n: string }>(
-        'SELECT count(*) n FROM usage_logins WHERE tenant_id=$1 AND user_id=$2 AND at>=$3',
-        [tenantId, id, from],
-      ),
-    ]);
+          [tenantId, id],
+        ),
+        panelNames(db, tenantId),
+        db.query<{ n: string }>(
+          'SELECT count(*) n FROM usage_logins WHERE tenant_id=$1 AND user_id=$2 AND at>=$3',
+          [tenantId, id, from],
+        ),
+      ]);
     const hourly = Array.from({ length: 24 }, (_, hour) => ({
       hour,
       minutes: Number(hours.rows.find((row) => Number(row.hour) === hour)?.minutes ?? 0),

@@ -16,14 +16,7 @@ import { useEffect, useRef } from 'react';
 // Sent in batches; a batch that cannot be sent is lost, which costs nothing.
 
 type Kind =
-  | 'screen'
-  | 'click'
-  | 'repeat'
-  | 'dead'
-  | 'modal'
-  | 'form_abandoned'
-  | 'empty_search'
-  | 'error';
+  'screen' | 'click' | 'repeat' | 'dead' | 'modal' | 'form_abandoned' | 'empty_search' | 'error';
 interface UsageEvent {
   kind: Kind;
   path: string;
@@ -39,6 +32,16 @@ const QUICK_CLOSE_MS = 2_000;
 const INTERACTIVE =
   'a,button,input,select,textarea,label,summary,option,[role=button],[role=tab],[role=link],[role=checkbox],[role=switch],[role=menuitem],[data-usage]';
 const CANCEL = /^(cancelar|fechar|voltar|sair|não|nao|agora não|×|x|✕)$/i;
+/**
+ * A click worth keeping: a named control. Closing a window, the TV "touch to open" cover and a
+ * card whose text is mostly figures ("12x30x2,5 kg") say nothing about how the platform is used.
+ * Same rule as meaningfulClick in the API, which also hides what was recorded before.
+ */
+const worthCounting = (label: string) =>
+  !CANCEL.test(label) &&
+  !/^ok$/i.test(label) &&
+  !/^toque em qualquer lugar/i.test(label) &&
+  /\p{L}{3,}/u.test(label.replace(/\d/g, ''));
 
 const state = {
   on: false,
@@ -102,7 +105,10 @@ function describe(element: Element): string {
   // The first class that says something ("card" alone does not); the API masks digits, so a
   // heading tag is named in words.
   const cls = (el: Element) =>
-    (el.getAttribute('class') ?? '').trim().split(/\s+/).find((name) => name && name !== 'card') ?? '';
+    (el.getAttribute('class') ?? '')
+      .trim()
+      .split(/\s+/)
+      .find((name) => name && name !== 'card') ?? '';
   const tag = /^H\d$/.test(element.tagName) ? 'título' : element.tagName.toLowerCase();
   const own = `${tag}${cls(element) ? `.${cls(element)}` : ''}`;
   const card = element.closest('.card');
@@ -172,7 +178,8 @@ export function useUsageEvents(enabled: boolean, pathname: string) {
       if (control) {
         lastLabel = label;
         const disabled =
-          (control as HTMLButtonElement).disabled || control.getAttribute('aria-disabled') === 'true';
+          (control as HTMLButtonElement).disabled ||
+          control.getAttribute('aria-disabled') === 'true';
         if (
           modal &&
           control.closest('.modal-backdrop') &&
@@ -181,10 +188,10 @@ export function useUsageEvents(enabled: boolean, pathname: string) {
           !disabled
         )
           modal.sent = true;
-        push('click', disabled ? `${label} (desativado)` : label);
+        if (worthCounting(label)) push('click', disabled ? `${label} (desativado)` : label);
       } else if (clickable) {
         lastLabel = label;
-        push('click', label);
+        if (worthCounting(label)) push('click', label);
       } else if (
         element.closest('.card') &&
         !element.closest('.modal-backdrop') &&

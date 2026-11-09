@@ -169,12 +169,19 @@ describe('uso da plataforma', () => {
       headers: { authorization: `Bearer ${master}` },
       payload: { session, events: [{ kind: 'dead', path: '/', target: 'card do master' }] },
     });
+    // Closing a window, the TV cover and a card of masked figures are not worth reading.
+    for (const noise of ['Fechar', '×', 'Toque em qualquer lugar para abrir o painel', '#x#x#.#,# kg#%A'])
+      await db.query(
+        `INSERT INTO usage_events(tenant_id,user_id,role,session,kind,path,target,device)
+         VALUES($1,$2,'user',$3,'click','/production',$4,'desktop')`,
+        [TENANT, userId, session, noise],
+      );
     const everyone = (
       await api.inject({ url: '/api/usage/overview?days=7', headers: { authorization: `Bearer ${master}` } })
     ).json().behaviour;
     expect(everyone.kinds).toEqual({
       screen: { count: 1, people: 1 },
-      click: { count: 1, people: 1 },
+      click: { count: 5, people: 1 },
       dead: { count: 1, people: 1 },
     });
     expect(everyone.signals).toEqual([
@@ -188,7 +195,9 @@ describe('uso da plataforma', () => {
       await api.inject({ url: `/api/usage/users/${userId}?days=7`, headers: { authorization: `Bearer ${master}` } })
     ).json().behaviour;
     expect(one.signals.map((signal: { target: string }) => signal.target)).toEqual(['svg em Produção do dia']);
-    await db.query(`DELETE FROM usage_events WHERE target='card do master'`);
+    await db.query(
+      `DELETE FROM usage_events WHERE target='card do master' OR (kind='click' AND target NOT LIKE 'Lote%')`,
+    );
 
     await db.query(`UPDATE usage_events SET at=now()-interval '91 days' WHERE kind='screen'`);
     expect(await pruneUsageEvents(db)).toBe(1);
