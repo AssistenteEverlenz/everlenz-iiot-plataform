@@ -150,6 +150,46 @@ describe('uso da plataforma', () => {
       { user_id: userId, role: 'user', session, kind: 'dead', path: '/production', target: 'svg em Produção do dia', ms: null, device: 'mobile' },
     ]);
 
+    // The master reads it back: everyone (masters left out) and the one person.
+    await db.query(
+      `INSERT INTO app_users(tenant_id,email,full_name,role,password_hash,must_change_password)
+       VALUES($1,'chefe-evento@usage.test','Chefe','master',$2,false)`,
+      [TENANT, await hashPassword('UsageCheck9!x')],
+    );
+    const master = (
+      await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'chefe-evento@usage.test', password: 'UsageCheck9!x' },
+      })
+    ).json().token as string;
+    await api.inject({
+      method: 'POST',
+      url: '/api/usage/events',
+      headers: { authorization: `Bearer ${master}` },
+      payload: { session, events: [{ kind: 'dead', path: '/', target: 'card do master' }] },
+    });
+    const everyone = (
+      await api.inject({ url: '/api/usage/overview?days=7', headers: { authorization: `Bearer ${master}` } })
+    ).json().behaviour;
+    expect(everyone.kinds).toEqual({
+      screen: { count: 1, people: 1 },
+      click: { count: 1, people: 1 },
+      dead: { count: 1, people: 1 },
+    });
+    expect(everyone.signals).toEqual([
+      expect.objectContaining({ kind: 'dead', page: 'Produção', target: 'svg em Produção do dia', count: 1, people: 1 }),
+    ]);
+    expect(everyone.screens).toEqual([
+      { page: 'Produção', visits: 1, averageMs: 42001, totalMs: 42001, people: 1 },
+    ]);
+    expect(everyone.clicks).toEqual([{ page: 'Produção', target: 'Lote ####-##', count: 1, people: 1 }]);
+    const one = (
+      await api.inject({ url: `/api/usage/users/${userId}?days=7`, headers: { authorization: `Bearer ${master}` } })
+    ).json().behaviour;
+    expect(one.signals.map((signal: { target: string }) => signal.target)).toEqual(['svg em Produção do dia']);
+    await db.query(`DELETE FROM usage_events WHERE target='card do master'`);
+
     await db.query(`UPDATE usage_events SET at=now()-interval '91 days' WHERE kind='screen'`);
     expect(await pruneUsageEvents(db)).toBe(1);
     expect(

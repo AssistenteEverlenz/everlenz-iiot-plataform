@@ -12183,6 +12183,86 @@ button.mortar-spout:hover .mortar-spout-open {
   .usage-pages { max-width: 220px; }
 }
 
+/* Como as pessoas usam (056): where a screen confused, time per page, what is clicked. */
+.usage-behaviour { display: grid; gap: 14px; }
+.ub-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.ub-head strong { font-size: 16px; font-weight: 600; }
+.ub-head small { color: #6b7f86; font-size: 12px; }
+.ub-lead { display: flex; align-items: baseline; gap: 10px; }
+.ub-lead b { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ub-lead span { color: #4d6770; }
+.ub-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px; }
+.ub-scroll { overflow-x: auto; }
+.ub-kind {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 12px;
+  border: 1px solid #e3ebed;
+  border-radius: 12px;
+  background: #ffffff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.ub-kind:hover,
+.ub-kind:focus-visible,
+.ub-kind.active { border-color: var(--brand-accent, #12b8a6); }
+.ub-kind.active { box-shadow: inset 0 0 0 1px var(--brand-accent, #12b8a6); }
+.ub-kind .ub-ico { grid-row: span 3; }
+.ub-kind b { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ub-kind span:not(.ub-ico) { font-size: 12.5px; color: #34505a; }
+.ub-kind small { color: #7b9097; font-size: 11px; }
+.ub-kind.zero { opacity: 0.55; }
+.ub-ico {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: #fdf3e1;
+  color: #b7791f;
+}
+.ub-ico svg { width: 18px; height: 18px; }
+.bad > .ub-ico { background: #fde8e8; color: #c53030; }
+.ub-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.ub-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e3ebed;
+  border-left: 3px solid #e2a93b;
+  border-radius: 10px;
+}
+.ub-list li.bad { border-left-color: #e05252; }
+.ub-list p { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.ub-list li small { display: block; margin-top: 2px; color: #6b7f86; font-size: 12px; }
+.ub-count { text-align: right; white-space: nowrap; }
+.ub-count b { font-variant-numeric: tabular-nums; }
+.usage-behaviour .usage-two { align-items: start; }
+.usage-behaviour .detail-section { display: grid; gap: 8px; align-content: start; }
+.ub-note { margin-top: -4px; color: #6b7f86; font-size: 12px; }
+.ub-table td { position: relative; padding-top: 7px; padding-bottom: 7px; }
+.ub-table td small { display: block; color: #7b9097; font-size: 11px; }
+.ub-bar {
+  display: block;
+  height: 3px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--brand-accent, #12b8a6);
+  opacity: 0.55;
+}
+.usage-modal .usage-behaviour { margin: 18px 0 4px; padding-top: 16px; border-top: 1px solid #e3ebed; }
+@media (max-width: 700px) {
+  .ub-list li { grid-template-columns: auto minmax(0, 1fr); }
+  .ub-count { grid-column: 2; text-align: left; }
+}
+
 /* Usuários: the row is the way into the person; hover like the rest, outline only. */
 .user-row { cursor: pointer; }
 .user-row td { transition: background-color 0.15s ease, box-shadow 0.15s ease; }

@@ -124,6 +124,84 @@ const cleanTarget = (value: string | null | undefined) => {
 };
 const since = (days: number) => new Date(Date.now() - days * 86_400_000);
 
+const SIGNALS = ['repeat', 'dead', 'modal', 'form_abandoned', 'empty_search', 'error'];
+
+/**
+ * How the platform is used, from the behaviour events (056): where people got stuck, how long
+ * a visit to each page lasts and which controls they use. For one person, or for everyone but
+ * the master accounts (the master's own clicking around is not how the plants use it).
+ */
+async function behaviour(
+  db: Database,
+  tenantId: string,
+  from: Date,
+  userId: string | null,
+  panels: Map<string, string>,
+) {
+  const who = userId ? 'AND user_id=$3' : "AND role IS DISTINCT FROM 'master'";
+  const params = userId ? [tenantId, from, userId] : [tenantId, from];
+  const base = `FROM usage_events WHERE tenant_id=$1 AND at>=$2 ${who}`;
+  try {
+    const [kinds, signals, screens, clicks, since] = await Promise.all([
+      db.query<{ kind: string; n: string; people: string }>(
+        `SELECT kind,count(*) n,count(DISTINCT user_id) people ${base} GROUP BY kind`,
+        params,
+      ),
+      db.query<{ kind: string; path: string; target: string | null; n: string; people: string; last: string }>(
+        `SELECT kind,path,target,count(*) n,count(DISTINCT user_id) people,max(at) last ${base}
+           AND kind = ANY($${params.length + 1}::text[])
+         GROUP BY 1,2,3 ORDER BY count(DISTINCT user_id) DESC,count(*) DESC,max(at) DESC LIMIT 40`,
+        [...params, SIGNALS],
+      ),
+      db.query<{ path: string; visits: string; avg_ms: string; total_ms: string; people: string }>(
+        `SELECT path,count(*) visits,avg(ms) avg_ms,sum(ms) total_ms,count(DISTINCT user_id) people
+         ${base} AND kind='screen' AND ms IS NOT NULL
+         GROUP BY path ORDER BY sum(ms) DESC LIMIT 20`,
+        params,
+      ),
+      db.query<{ path: string; target: string | null; n: string; people: string }>(
+        `SELECT path,target,count(*) n,count(DISTINCT user_id) people ${base} AND kind='click'
+         GROUP BY 1,2 ORDER BY count(*) DESC LIMIT 15`,
+        params,
+      ),
+      db.query<{ first: string | null }>(
+        'SELECT min(at) AS first FROM usage_events WHERE tenant_id=$1',
+        [tenantId],
+      ),
+    ]);
+    return {
+      since: since.rows[0]?.first ?? null,
+      kinds: Object.fromEntries(
+        kinds.rows.map((row) => [row.kind, { count: Number(row.n), people: Number(row.people) }]),
+      ),
+      signals: signals.rows.map((row) => ({
+        kind: row.kind,
+        page: pageLabel(row.path, panels),
+        target: row.target,
+        count: Number(row.n),
+        people: Number(row.people),
+        lastAt: row.last,
+      })),
+      screens: screens.rows.map((row) => ({
+        page: pageLabel(row.path, panels),
+        visits: Number(row.visits),
+        averageMs: Math.round(Number(row.avg_ms)),
+        totalMs: Number(row.total_ms),
+        people: Number(row.people),
+      })),
+      clicks: clicks.rows.map((row) => ({
+        page: pageLabel(row.path, panels),
+        target: row.target,
+        count: Number(row.n),
+        people: Number(row.people),
+      })),
+    };
+  } catch {
+    // Migration 056 not applied: the page still shows the minutes.
+    return null;
+  }
+}
+
 export function registerUsageRoutes(app: FastifyInstance, db: Database, access: Access) {
   // Once a minute from any signed-in screen. Never an error the person would see: a report that
   // cannot be written is simply lost.
@@ -242,8 +320,10 @@ export function registerUsageRoutes(app: FastifyInstance, db: Database, access: 
     ]);
     const visitsBy = new Map(visits.rows.map((row) => [row.user_id, Number(row.visits)]));
     const loginsBy = new Map(logins.rows.map((row) => [row.user_id, Number(row.logins)]));
+    const behaviourOf = await behaviour(db, tenantId, from, null, panels);
     return {
       days,
+      behaviour: behaviourOf,
       users: users.rows.map((row) => ({
         id: row.id,
         name: row.full_name,
@@ -353,8 +433,10 @@ export function registerUsageRoutes(app: FastifyInstance, db: Database, access: 
       weekday,
       minutes: Number(weekdays.rows.find((row) => Number(row.weekday) === weekday)?.minutes ?? 0),
     }));
+    const behaviourOf = await behaviour(db, tenantId, from, id, panels);
     return {
       days,
+      behaviour: behaviourOf,
       user: {
         id: user.rows[0].id,
         name: user.rows[0].full_name,

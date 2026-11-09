@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts';
 import { usePoll } from './data';
+import { UsageBehaviour, type Behaviour } from './UsageBehaviour';
 
 // The master's view of how each person uses the platform (migration 042): the ranking of
 // everyone, and one person's days, visits, pages, hours and logins. Read from the minutes the
@@ -36,11 +37,13 @@ export interface UsageRow {
 }
 export interface UsageOverview {
   days: number;
+  behaviour?: Behaviour | null;
   users: UsageRow[];
   daily: Array<{ day: string; users: number; openMinutes: number; activeMinutes: number }>;
 }
 interface UserUsage {
   days: number;
+  behaviour?: Behaviour | null;
   user: {
     id: string;
     name: string;
@@ -423,6 +426,8 @@ export function UserUsageModal({
                     </table>
                   </div>
                 </div>
+
+                <UsageBehaviour data={data.behaviour} everyone={false} />
 
                 <div className="detail-section">
                   <strong>Visitas</strong>

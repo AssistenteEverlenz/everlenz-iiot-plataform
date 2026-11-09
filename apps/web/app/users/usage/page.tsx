@@ -13,6 +13,7 @@ import {
   type UsageRow,
 } from '../../../components/UsageViews';
 import { ModalPortal } from '../../../components/ModalPortal';
+import { UsageBehaviour } from '../../../components/UsageBehaviour';
 
 // Who uses the platform and how much, for the master: the three leaders, the day-by-day use of
 // everyone together, and a ranking that sorts by any column. A row opens that person's detail.
@@ -135,6 +136,8 @@ export default function UsagePage() {
           </p>
         )}
       </section>
+
+      <UsageBehaviour data={overview.data?.behaviour} everyone />
 
       <section className="card table-scroll">
         <div className="usage-table-head">
