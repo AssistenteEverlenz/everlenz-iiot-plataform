@@ -3700,11 +3700,95 @@
   :root[data-theme='dark'] .usage-name:hover strong {
     color: var(--brand-accent, #7de8dc);
   }
-  :root[data-theme='dark'] .usage-modal .detail-summary small {
+  :root[data-theme='dark'] .uu-head .eyebrow {
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .uu-close {
+    border: 1px solid #243338;
+    background: #12191c;
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .uu-close:hover {
+    border-color: var(--brand-accent, #12b8a6);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .uu-sub p {
+    color: #a5b6bc;
+  }
+  :root[data-theme='dark'] .uu-stats div {
+    background: #182225;
+  }
+  :root[data-theme='dark'] .uu-stats span {
     color: #92a2a8;
   }
-  :root[data-theme='dark'] .usage-pages {
-    color: #a5b6bc;
+  :root[data-theme='dark'] .uu-stats small {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .uu-label {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .uu-empty {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .uu-prog {
+    background: #1d292d;
+  }
+  :root[data-theme='dark'] .uu-prog i {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .uu-devices svg {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .uu-bars {
+    border-bottom: 1px solid #202d32;
+  }
+  :root[data-theme='dark'] .uu-bars i {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 30%, transparent);
+  }
+  :root[data-theme='dark'] .uu-bars i b {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .uu-bars.hours i {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .uu-axis {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .uu-key i {
+    background: var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .uu-key i.open {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 30%, transparent);
+  }
+  :root[data-theme='dark'] .uu-item {
+    border-bottom: 1px solid #1d292d;
+  }
+  :root[data-theme='dark'] .uu-item:last-child {
+    border-bottom: 0;
+  }
+  :root[data-theme='dark'] .uu-item small {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .uu-ico {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 12%, transparent);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .uu-ico.blue {
+    background: #16202d;
+    color: #8badda;
+  }
+  :root[data-theme='dark'] .uu-ico.mute {
+    background: #1b262a;
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .usage-modal .usage-behaviour {
+    border-top: 0;
+  }
+  :root[data-theme='dark'] .usage-modal .usage-behaviour .detail-section > strong {
+    color: #92a2a8;
+  }
+  :root[data-theme='dark'] .usage-modal .ub-head strong {
+    color: #92a2a8;
   }
   :root[data-theme='dark'] .ub-head small {
     color: #92a2a8;
@@ -3757,9 +3841,6 @@
   }
   :root[data-theme='dark'] .ub-bar {
     background: var(--brand-accent, #12b8a6);
-  }
-  :root[data-theme='dark'] .usage-modal .usage-behaviour {
-    border-top: 1px solid #202d32;
   }
   :root[data-theme='dark'] .user-row:hover td,
   :root[data-theme='dark'] .user-row:focus-visible td {

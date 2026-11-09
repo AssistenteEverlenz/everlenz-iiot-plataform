@@ -12168,19 +12168,83 @@ button.mortar-spout:hover .mortar-spout-open {
   cursor: pointer;
 }
 .usage-name:hover strong { color: var(--brand-accent, #12b8a6); }
-.usage-modal .detail-summary small { color: #6b7f86; font-size: 12px; }
-.usage-modal .detail-summary + .detail-summary { margin-top: -6px; }
-.usage-modal .detail-step { flex-wrap: wrap; justify-content: flex-end; }
+/* One person's use (the person's window): compact figures, bars drawn in CSS, lists with an icon
+   per line. Same reading as the Comitiva window: what they use, when, where, how. */
+.usage-modal { width: min(900px, 100%); padding: 24px 28px 20px; border-radius: 22px; }
+.uu-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.uu-head .eyebrow { color: var(--brand-accent, #12b8a6); letter-spacing: 0.16em; }
+.uu-head h2 { margin: 6px 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.3px; }
+.uu-close {
+  width: 40px; height: 40px; padding: 0; flex: 0 0 40px;
+  display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid #dce6e8; background: #fff;
+  color: #4d6770; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.uu-close:hover { border-color: var(--brand-accent, #12b8a6); color: var(--brand-accent, #12b8a6); }
+.uu-sub { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 14px; }
+.uu-sub p { margin: 0; color: #4d6770; font-size: 14px; }
+.uu-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.uu-stats div { display: grid; gap: 2px; padding: 12px 14px; border-radius: 12px; background: #f3f7f8; }
+.uu-stats span { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7f86; }
+.uu-stats b { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
+.uu-stats small { font-size: 12px; color: #6b7f86; }
+.uu-label { margin: 22px 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #6b7f86; }
+.uu-empty { margin: 20px 0 0; padding: 20px 0; text-align: center; color: #6b7f86; }
+.uu-prog { display: block; height: 6px; border-radius: 3px; background: #e9eff1; overflow: hidden; }
+.uu-prog i { display: block; height: 100%; border-radius: 3px; background: var(--brand-accent, #12b8a6); }
+.uu-devices { display: grid; gap: 10px; }
+.uu-devices > div { display: grid; grid-template-columns: 130px minmax(0, 1fr) 120px; align-items: center; gap: 12px; font-size: 13.5px; }
+.uu-devices > div > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+.uu-devices svg { width: 16px; height: 16px; color: #6b7f86; }
+.uu-devices b { font-weight: 500; font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.uu-bars {
+  display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); align-items: end; gap: 2px;
+  height: 90px; padding: 4px 0; border-bottom: 1px solid #e3ebed;
+}
+.uu-bars i {
+  display: flex; align-items: flex-end; min-height: 2px; border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 30%, transparent);
+}
+.uu-bars i b { display: block; width: 100%; border-radius: 3px 3px 0 0; background: var(--brand-accent, #12b8a6); }
+.uu-bars.hours i { background: var(--brand-accent, #12b8a6); }
+.uu-axis { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 11px; color: #6b7f86; }
+.uu-key { display: inline-flex; align-items: center; gap: 5px; }
+.uu-key i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--brand-accent, #12b8a6); margin-left: 6px; }
+.uu-key i.open { background: color-mix(in srgb, var(--brand-accent, #12b8a6) 30%, transparent); }
+.uu-list { display: grid; }
+.uu-item {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  padding: 12px 6px; border-bottom: 1px solid #e9eff1; font-size: 14px;
+}
+.uu-item:last-child { border-bottom: 0; }
+.uu-item > span:nth-child(2) { min-width: 0; }
+.uu-item > span:nth-child(2) .uu-prog { margin-top: 7px; }
+.uu-item small { display: block; font-size: 12.5px; color: #6b7f86; }
+.uu-item > span:nth-child(2) small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uu-ico {
+  width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 10px;
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 12%, transparent);
+  color: var(--brand-accent, #12b8a6);
+}
+.uu-ico.blue { background: #e8f0fb; color: #2f6fc4; }
+.uu-ico.mute { background: #eef2f3; color: #6b7f86; }
+.uu-ico svg { width: 16px; height: 16px; }
+.uu-right { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.usage-modal .usage-behaviour { margin: 22px 0 0; padding-top: 0; border-top: 0; }
+.usage-modal .ub-kinds { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.usage-modal .usage-behaviour .detail-section > strong { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #6b7f86; }
+@media (max-width: 760px) { .usage-modal .ub-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.usage-modal .ub-head strong { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #6b7f86; }
 .usage-two {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
-.usage-chart-small { height: 180px; }
-.usage-pages { max-width: 360px; color: #4d6770; font-size: 12px; }
 @media (max-width: 700px) {
-  .usage-modal .detail-step { width: 100%; justify-content: space-between; }
-  .usage-pages { max-width: 220px; }
+  .usage-modal { padding: 20px 18px 16px; }
+  .uu-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .uu-devices > div { grid-template-columns: 104px minmax(0, 1fr) 92px; }
+  .uu-bars { gap: 1px; }
 }
 
 /* Como as pessoas usam (056): where a screen confused, time per page, what is clicked. */
@@ -12257,7 +12321,6 @@ button.mortar-spout:hover .mortar-spout-open {
   background: var(--brand-accent, #12b8a6);
   opacity: 0.55;
 }
-.usage-modal .usage-behaviour { margin: 18px 0 4px; padding-top: 16px; border-top: 1px solid #e3ebed; }
 @media (max-width: 700px) {
   .ub-list li { grid-template-columns: auto minmax(0, 1fr); }
   .ub-count { grid-column: 2; text-align: left; }
