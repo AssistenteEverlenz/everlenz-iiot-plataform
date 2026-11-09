@@ -27,6 +27,21 @@ const COLUMNS: Array<[SortKey, string]> = [
   ['lastSeenAt', 'Visto por último'],
 ];
 
+/** Computer or phone, as a share of the time with the platform open (TV apart). */
+function deviceSplit(row: UsageRow) {
+  const total = row.mobileMinutes + row.desktopMinutes;
+  if (!total) return '—';
+  const pct = (minutes: number) => `${Math.round((minutes / total) * 100)}%`;
+  if (!row.mobileMinutes) return 'Computador';
+  if (!row.desktopMinutes) return 'Celular';
+  return (
+    <>
+      Computador {pct(row.desktopMinutes)}
+      <small>Celular {pct(row.mobileMinutes)}</small>
+    </>
+  );
+}
+
 function leader(rows: UsageRow[], key: 'activeMinutes' | 'visits' | 'activeDays') {
   const best = [...rows].sort((a, b) => b[key] - a[key])[0];
   return best && best[key] > 0 ? best : null;
@@ -150,6 +165,7 @@ export default function UsagePage() {
                   </button>
                 </th>
               ))}
+              <th>Aparelho</th>
               <th>Mais vê</th>
             </tr>
           </thead>
@@ -174,6 +190,7 @@ export default function UsagePage() {
                 <td className="n">{row.activeDays || '—'}</td>
                 <td className="n">{row.logins || '—'}</td>
                 <td className="n">{when(row.lastSeenAt ?? row.lastLoginAt)}</td>
+                <td>{deviceSplit(row)}</td>
                 <td>{row.topPage ?? '—'}</td>
               </tr>
             ))}

@@ -8,6 +8,7 @@ import {
   closeShiftReports,
 } from './shift-production.js';
 import { pruneReadings } from './retention.js';
+import { pruneUsageEvents } from './usage.js';
 import { recordStops } from './production-stops.js';
 import { linkTruncatedRecipes } from './mortar-links.js';
 import { runProductionAudit } from './production-audit.js';
@@ -189,6 +190,16 @@ async function prune() {
       message: error instanceof Error ? error.message : String(error),
     });
     await recordJobFailure('prune_readings', error);
+  }
+  // Behaviour events (usage.ts, migration 056) live 90 days.
+  try {
+    const events = await pruneUsageEvents(database);
+    if (events) app.log.info({ event: 'usage_events_pruned', events });
+  } catch (error) {
+    app.log.warn({
+      event: 'usage_events_prune_failed',
+      message: error instanceof Error ? error.message : String(error),
+    });
   } finally {
     pruning = false;
   }

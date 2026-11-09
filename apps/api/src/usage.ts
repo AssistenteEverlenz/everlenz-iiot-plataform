@@ -81,6 +81,47 @@ const VISITS_SQL = `
   )`;
 
 const daysSchema = z.object({ days: z.coerce.number().int().min(1).max(400).default(30) });
+
+/** Behaviour events (migration 056) are kept 90 days; the API's retention job calls this. */
+export const USAGE_EVENTS_KEEP_DAYS = 90;
+export async function pruneUsageEvents(db: Database, now = new Date()) {
+  const result = await db.query(
+    `DELETE FROM usage_events WHERE at < $1`,
+    [new Date(now.getTime() - USAGE_EVENTS_KEEP_DAYS * 86_400_000)],
+  );
+  return result.rowCount ?? 0;
+}
+
+const PATH = /^\/[A-Za-z0-9/_-]{0,200}$/;
+const eventsSchema = z.object({
+  session: uuid,
+  device: z.enum(['desktop', 'mobile', 'tv']).default('desktop'),
+  events: z
+    .array(
+      z.object({
+        kind: z.enum([
+          'screen',
+          'click',
+          'repeat',
+          'dead',
+          'modal',
+          'form_abandoned',
+          'empty_search',
+          'error',
+        ]),
+        path: z.string().max(300),
+        target: z.string().max(300).nullish(),
+        ms: z.number().min(0).max(86_400_000).nullish(),
+      }),
+    )
+    .max(50),
+});
+
+/** A target is a control's name, never a value: digits masked, whitespace folded, 80 chars. */
+const cleanTarget = (value: string | null | undefined) => {
+  const text = (value ?? '').replace(/\d/g, '#').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return text || null;
+};
 const since = (days: number) => new Date(Date.now() - days * 86_400_000);
 
 export function registerUsageRoutes(app: FastifyInstance, db: Database, access: Access) {
@@ -112,6 +153,38 @@ export function registerUsageRoutes(app: FastifyInstance, db: Database, access: 
     return reply.code(204).send();
   });
 
+  // Where a screen confuses (migration 056), sent in batches by the browser. Like the beat,
+  // never an error the person would see.
+  app.post('/api/usage/events', async (request, reply) => {
+    const body = eventsSchema.parse(request.body);
+    const rows = body.events
+      .map((event) => ({ ...event, path: event.path.split('?')[0] }))
+      .filter((event) => PATH.test(event.path));
+    if (!rows.length) return reply.code(204).send();
+    const current = access.principal(request);
+    try {
+      await db.query(
+        `INSERT INTO usage_events(tenant_id,user_id,role,session,kind,path,target,ms,device)
+         SELECT $1,$2,$3,$4,e.kind,e.path,e.target,e.ms,$5
+         FROM unnest($6::text[],$7::text[],$8::text[],$9::int[]) AS e(kind,path,target,ms)`,
+        [
+          current.tenantId,
+          current.id,
+          current.role,
+          body.session,
+          body.device,
+          rows.map((row) => row.kind),
+          rows.map((row) => row.path),
+          rows.map((row) => cleanTarget(row.target)),
+          rows.map((row) => (row.ms == null ? null : Math.round(row.ms))),
+        ],
+      );
+    } catch {
+      // Table not applied yet, or a principal without a user row (authentication off).
+    }
+    return reply.code(204).send();
+  });
+
   // Everyone side by side: who comes, for how long, and how the platform is used day by day.
   app.get('/api/usage/overview', async (request, reply) => {
     if (!access.requireMaster(request, reply)) return;
@@ -129,6 +202,8 @@ export function registerUsageRoutes(app: FastifyInstance, db: Database, access: 
         open: string;
         active: string;
         tv: string;
+        mobile: string;
+        desktop: string;
         days: string;
         last_seen: string | null;
         top_path: string | null;
@@ -137,6 +212,8 @@ export function registerUsageRoutes(app: FastifyInstance, db: Database, access: 
            count(m.minute) FILTER (WHERE NOT m.tv) open,
            count(m.minute) FILTER (WHERE m.active AND NOT m.tv) active,
            count(m.minute) FILTER (WHERE m.tv) tv,
+           count(m.minute) FILTER (WHERE NOT m.tv AND m.device='mobile') mobile,
+           count(m.minute) FILTER (WHERE NOT m.tv AND m.device='desktop') desktop,
            count(DISTINCT (m.minute - interval '3 hours')::date) FILTER (WHERE NOT m.tv) days,
            max(m.minute) last_seen,
            mode() WITHIN GROUP (ORDER BY m.path) FILTER (WHERE NOT m.tv) top_path
@@ -178,6 +255,8 @@ export function registerUsageRoutes(app: FastifyInstance, db: Database, access: 
         openMinutes: Number(row.open),
         activeMinutes: Number(row.active),
         tvMinutes: Number(row.tv),
+        mobileMinutes: Number(row.mobile),
+        desktopMinutes: Number(row.desktop),
         activeDays: Number(row.days),
         visits: visitsBy.get(row.id) ?? 0,
         logins: loginsBy.get(row.id) ?? 0,

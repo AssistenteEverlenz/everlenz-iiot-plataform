@@ -5,6 +5,7 @@ import { usePlatform } from '../../components/PlatformShell';
 import { mutate, time, usePoll, type Device } from '../../components/data';
 import { DevicesTable } from '../../components/DevicesTable';
 import { ActionModal } from '../../components/ActionModal';
+import { useEmptySearch } from '../../components/useUsageEvents';
 
 interface Site {
   id: string;
@@ -237,6 +238,7 @@ export default function Devices() {
       ),
     [sites.data, siteSearch],
   );
+  useEmptySearch('Dispositivos · cliente', sites.data ? siteSearch : '', filteredSites.length);
   useEffect(() => {
     if (!form.siteId && sites.data?.[0])
       setForm((current) => ({ ...current, siteId: sites.data![0].id }));

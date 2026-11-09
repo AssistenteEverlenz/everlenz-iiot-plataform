@@ -27,6 +27,8 @@ export interface UsageRow {
   openMinutes: number;
   activeMinutes: number;
   tvMinutes: number;
+  mobileMinutes: number;
+  desktopMinutes: number;
   activeDays: number;
   visits: number;
   logins: number;

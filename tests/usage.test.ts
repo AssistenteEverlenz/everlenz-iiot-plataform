@@ -3,6 +3,7 @@ import { memoryDatabase } from './pglite.js';
 import { migrate } from '../packages/database/src/migrate.js';
 import { seed, TENANT } from '../packages/database/src/seed.js';
 import { createApp } from '../apps/api/src/app.js';
+import { pruneUsageEvents } from '../apps/api/src/usage.js';
 import { hashPassword } from '../packages/shared/src/index.js';
 
 /**
@@ -79,6 +80,8 @@ describe('uso da plataforma', () => {
       openMinutes: 9,
       activeMinutes: 4,
       tvMinutes: 60,
+      mobileMinutes: 8,
+      desktopMinutes: 1,
       visits: 3,
       logins: 1,
       activeDays: 2,
@@ -96,6 +99,64 @@ describe('uso da plataforma', () => {
     expect(detail.visits[2]).toMatchObject({ device: 'mobile', pages: ['Operação'] });
     expect(detail.pages).toContainEqual({ label: 'TV da operação', tv: true, minutes: 60, activeMinutes: 0 });
     expect(detail.logins).toHaveLength(1);
+    await api.close();
+  }, 60000);
+
+  it('keeps behaviour events without values, and forgets them after 90 days', async () => {
+    const { db } = await memoryDatabase();
+    await migrate(db);
+    await seed(db);
+    const userId = (
+      await db.query<{ id: string }>(
+        `INSERT INTO app_users(tenant_id,email,full_name,role,password_hash,must_change_password)
+         VALUES($1,'evento@usage.test','Evento','user',$2,false) RETURNING id`,
+        [TENANT, await hashPassword('UsageCheck9!x')],
+      )
+    ).rows[0].id;
+    const api = await createApp(db, { tenantId: TENANT, operatorRaw: false, authRequired: true });
+    const token = (
+      await api.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: 'evento@usage.test', password: 'UsageCheck9!x' },
+      })
+    ).json().token as string;
+    const session = '11111111-2222-4333-8444-555555555555';
+    const send = (events: unknown[]) =>
+      api.inject({
+        method: 'POST',
+        url: '/api/usage/events',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { session, device: 'mobile', events },
+      });
+    expect(
+      (
+        await send([
+          { kind: 'screen', path: '/production?tab=1', ms: 42_000.6 },
+          { kind: 'click', path: '/production', target: '  Lote   2026-11  ' },
+          { kind: 'dead', path: '/production', target: 'svg em Produção do dia' },
+          { kind: 'click', path: 'https://elsewhere', target: 'nope' },
+        ])
+      ).statusCode,
+    ).toBe(204);
+    expect((await send([{ kind: 'hack', path: '/' }])).statusCode).toBe(400);
+
+    const rows = await db.query(
+      `SELECT user_id,role,session,kind,path,target,ms,device FROM usage_events ORDER BY id`,
+    );
+    expect(rows.rows).toEqual([
+      { user_id: userId, role: 'user', session, kind: 'screen', path: '/production', target: null, ms: 42001, device: 'mobile' },
+      { user_id: userId, role: 'user', session, kind: 'click', path: '/production', target: 'Lote ####-##', ms: null, device: 'mobile' },
+      { user_id: userId, role: 'user', session, kind: 'dead', path: '/production', target: 'svg em Produção do dia', ms: null, device: 'mobile' },
+    ]);
+
+    await db.query(`UPDATE usage_events SET at=now()-interval '91 days' WHERE kind='screen'`);
+    expect(await pruneUsageEvents(db)).toBe(1);
+    expect(
+      (await db.query<{ kind: string }>('SELECT kind FROM usage_events ORDER BY id')).rows.map(
+        (row) => row.kind,
+      ),
+    ).toEqual(['click', 'dead']);
     await api.close();
   }, 60000);
 });

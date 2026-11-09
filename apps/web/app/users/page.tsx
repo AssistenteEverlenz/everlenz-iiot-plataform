@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ModalPortal } from '../../components/ModalPortal';
 import { avisar } from '../../components/Dialogs';
 import { UserUsageModal } from '../../components/UsageViews';
+import { useEmptySearch } from '../../components/useUsageEvents';
 
 interface ManagedUser {
   id: string;
@@ -81,6 +82,8 @@ export default function UsersPage() {
   const visibleDevices = useMemo(() => (devices.data ?? []).filter((device) =>
     `${device.name} ${device.device_code} ${device.site_name ?? ''}`.toLocaleLowerCase('pt-BR').includes(deviceSearch.toLocaleLowerCase('pt-BR'))
   ), [devices.data, deviceSearch]);
+  useEmptySearch('Usuários', users.data ? query : '', filteredUsers.length);
+  useEmptySearch('Usuário · equipamentos', devices.data ? deviceSearch : '', visibleDevices.length);
 
   function createUser() {
     setEditing(null);

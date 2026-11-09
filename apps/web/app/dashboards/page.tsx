@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { time, usePoll, type Dashboard } from '../../components/data';
+import { useEmptySearch } from '../../components/useUsageEvents';
 
 type StatusFilter = 'all' | 'online' | 'offline' | 'deactivated';
 
@@ -24,6 +25,7 @@ export default function Dashboards() {
       }),
     [dashboards.data, search, status],
   );
+  useEmptySearch('Painéis', dashboards.data ? search : '', filtered.length);
   const count = (filter: StatusFilter) =>
     (dashboards.data ?? []).filter((dashboard) =>
       filter === 'all'

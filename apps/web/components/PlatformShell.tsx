@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useUsageBeat } from './useUsageBeat';
+import { useUsageEvents } from './useUsageEvents';
 import { PageLoader } from './PageLoader';
 import { DialogHost } from './Dialogs';
 import { NavIcon, type NavIconName } from './NavIcon';
@@ -158,6 +159,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
 
   // The master's usage page counts the minutes each person has the platform on screen.
   useUsageBeat(Boolean(session) && pathname !== '/login', pathname);
+  // And where a screen confuses: clicks that do nothing, windows closed at once (056).
+  useUsageEvents(Boolean(session) && pathname !== '/login', pathname);
 
   const style = useMemo(
     () =>
