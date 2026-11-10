@@ -1,5 +1,6 @@
 'use client';
 
+import { setBrandAccent } from './brandColor';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Fragment, createContext, useContext, useEffect, useMemo, useState } from 'react';
@@ -162,6 +163,8 @@ export function PlatformShell({ children }: { children: React.ReactNode }) {
   // And where a screen confuses: clicks that do nothing, windows closed at once (056).
   useUsageEvents(Boolean(session) && pathname !== '/login', pathname);
 
+  // Code that needs the accent as a hex (chart shades) reads it from here.
+  setBrandAccent(branding.accent_color);
   const style = useMemo(
     () =>
       ({

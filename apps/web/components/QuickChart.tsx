@@ -1,5 +1,6 @@
 'use client';
 
+import { cardColor } from './brandColor';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useFirstDraw } from './firstDraw';
 import {
@@ -106,7 +107,7 @@ export function seriesColor(
   const override = productCode ? config.productColors?.[productCode] : undefined;
   if (override) return override;
   if (config.chartPalette === 'colorful') return productPalette[index % productPalette.length];
-  const [h, s, l] = hexToHsl(config.color ?? '#12b8a6');
+  const [h, s, l] = hexToHsl(cardColor(config.color));
   if (count <= 1) return hslToHex(h, s, l);
   const reach = Math.min(42, 90 - l);
   return hslToHex(h, s, Math.min(90, l + (index / (count - 1)) * reach));
@@ -499,7 +500,7 @@ export function QuickChart({
   const donut = widget.widget_type === 'donut';
   const horizontal = widget.widget_type === 'bar_horizontal';
   const byDay = widget.config.chartDimension === 'day';
-  const accent = widget.config.color ?? '#12b8a6';
+  const accent = cardColor(widget.config.color);
   const bars = byDay
     ? (statistics?.daily_series ?? []).map((day) => ({
         label: new Date(

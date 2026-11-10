@@ -1,4 +1,5 @@
 'use client';
+import { cardColor } from './brandColor';
 import { BriefingModal } from './BriefingModal';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFirstDraw } from './firstDraw';
@@ -509,7 +510,7 @@ function Widget({
   dragEnter: () => void;
   dragEnd: () => void;
 }) {
-  const color = widget.config.color ?? '#12b8a6';
+  const color = cardColor(widget.config.color);
   // The yield card's guide: what each line of its sum means (MortarGuide.tsx).
   const [guide, setGuide] = useState(false);
   // "Cortes por minuto" and the like: the plant's own arithmetic over the HMI's variables,
@@ -3142,7 +3143,7 @@ export function ProductionInsight({
   onHideProduct?: (productCode: string) => void;
   onRestoreProduct?: (productCode: string) => void;
 }) {
-  const color = widget.config.color ?? '#12b8a6';
+  const color = cardColor(widget.config.color);
   const hiddenProducts = statistics?.hidden_products ?? [];
   const [showHidden, setShowHidden] = useState(false);
   // A barra cresce uma vez; o rótulo no topo chega quando ela para (ver .bar-value).

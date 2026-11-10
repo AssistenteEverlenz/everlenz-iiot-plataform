@@ -153,7 +153,9 @@ export default function SettingsPage() {
         </form>
         <section
           className="brand-preview"
-          style={{ background: `linear-gradient(145deg,${form.primaryColor},#173f48)` }}
+          style={{
+            background: `linear-gradient(145deg,${form.primaryColor},color-mix(in srgb, ${form.primaryColor} 85%, #fff))`,
+          }}
         >
           <span style={{ background: form.accentColor }}>
             {form.logoUrl ? <img src={form.logoUrl} alt="" /> : 'e'}

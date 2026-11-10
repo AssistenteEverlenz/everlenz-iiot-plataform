@@ -249,7 +249,7 @@ export function ProductionBoard({ id }: { id: string }) {
                     stackId="day"
                     fill={colors.get(product)}
                     isAnimationActive={drawing}
-                animationDuration={700}
+                    animationDuration={700}
                   />
                 ))}
               </BarChart>
@@ -273,7 +273,7 @@ export function ProductionBoard({ id }: { id: string }) {
                     outerRadius="95%"
                     stroke="none"
                     isAnimationActive={drawing}
-                animationDuration={700}
+                    animationDuration={700}
                   >
                     {(mix?.today.products ?? []).map((product) => (
                       <Cell key={product.product_code} fill={colors.get(product.product_code)} />
@@ -351,10 +351,10 @@ export function ProductionBoard({ id }: { id: string }) {
                 <Tooltip formatter={(item) => fmt(Number(item), 1)} />
                 <Bar
                   dataKey="value"
-                  fill="#12b8a6"
+                  fill="var(--brand-accent, #12b8a6)"
                   radius={[6, 6, 0, 0]}
                   isAnimationActive={drawing}
-                animationDuration={700}
+                  animationDuration={700}
                 />
               </BarChart>
             </ResponsiveContainer>

@@ -1,5 +1,6 @@
 'use client';
 
+import { cardColor } from './brandColor';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Area,
@@ -535,7 +536,7 @@ function TvLine({ widget, deviceId, minutes }: { widget: DashboardWidget; device
             <CartesianGrid stroke="#8a9ca2" strokeOpacity={0.2} strokeDasharray="3 5" vertical={false} />
             <XAxis dataKey="t" tick={{ fontSize: 12, fill: '#71868d' }} tickLine={false} axisLine={false} minTickGap={36} />
             <YAxis width={48} tick={{ fontSize: 12, fill: '#71868d' }} tickLine={false} axisLine={false} />
-            <Area dataKey="v" stroke="#12b8a6" fill="#12b8a6" fillOpacity={0.18} strokeWidth={2} isAnimationActive={false} />
+            <Area dataKey="v" stroke="var(--brand-accent, #12b8a6)" fill="var(--brand-accent, #12b8a6)" fillOpacity={0.18} strokeWidth={2} isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -638,7 +639,7 @@ function TvPanelCard({
   );
   const text = PERIOD_TEXT[period] ?? 'últimos 7 dias';
   return (
-    <PanelScale columns={columns} color={widget.config.color ?? '#12b8a6'}>
+    <PanelScale columns={columns} color={cardColor(widget.config.color)}>
       <div className="widget-head has-period">
         <span />
         <div>
