@@ -3332,20 +3332,20 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       today,
       now,
     );
-    // The shift running, or the last one still waiting to close (it may yet stretch): until its
-    // report is written, the history shows it from the readings.
+    // The shift running and every shift still waiting to close (it may yet stretch): until its
+    // report is written, the history shows it from the readings. With back-to-back shifts the one
+    // that just ended waits up to the extension limit while the next one already runs, so both
+    // must show, or the ended shift vanishes from the day until its report is written.
     const reach = (await extensionMinutesOf(db, tenantId, config.site_id)) * 60_000;
-    const running =
-      worked.find((item) => item.start <= now && now < item.end) ??
-      [...worked]
-        .reverse()
-        .find(
-          (item) =>
-            item.end <= now &&
-            now.getTime() < Math.max(item.end.getTime(), registeredOf(item).end.getTime()) + reach,
-        );
-    let open = null;
-    if (running && running.productionDate >= query.from && running.productionDate <= query.to) {
+    const pending = worked.filter(
+      (item) =>
+        item.start <= now &&
+        now.getTime() < Math.max(item.end.getTime(), registeredOf(item).end.getTime()) + reach &&
+        item.productionDate >= query.from &&
+        item.productionDate <= query.to,
+    );
+    const opens = [];
+    for (const running of pending.reverse()) {
       const until = new Date(Math.min(now.getTime(), running.end.getTime()));
       const buckets = await loadBuckets(db, tenantId, id, running.start, until);
       const summary = summarize(
@@ -3355,8 +3355,8 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         until,
         closingSecondsOf(config),
       );
-      open = {
-        id: 'open',
+      opens.push({
+        id: `open-${registeredOf(running).start.getTime()}`,
         kind: 'shift',
         open: true,
         shift_id: isExtra(running) ? null : running.shiftId,
@@ -3375,21 +3375,21 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         target_metric: config.target_metric,
         target_value: (await targetFor(db, tenantId, id, config, now))?.value ?? null,
         products: summary.products,
-      };
+      });
     }
-    // A closed report of the running shift (its end was moved later) is the same shift: only the
-    // running row counts until the closer reopens it.
-    const startOfOpen = open ? open.planned_start.getTime() : null;
+    // A closed report of an open shift (its end was moved later) is the same shift: only the
+    // open row counts until the closer reopens it.
+    const startsOfOpen = new Set(opens.map((row) => row.planned_start.getTime()));
     const closed = reports.rows.filter(
       (row) =>
         !(
           row.source === 'auto' &&
           row.kind === 'shift' &&
-          new Date(row.planned_start as Date | string).getTime() === startOfOpen
+          startsOfOpen.has(new Date(row.planned_start as Date | string).getTime())
         ),
     );
     return {
-      reports: open ? [open, ...closed] : closed,
+      reports: [...opens, ...closed],
       defaultShifts: isDefault,
       shiftNames: shifts.map((shift) => shift.name),
       targetMetric: config.target_metric,
