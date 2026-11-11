@@ -13,6 +13,7 @@ import {
   DEFAULT_SHIFTS,
   env,
   expandShifts,
+  MIN_CLOSE_AFTER_MINUTES,
   plantDate,
   plantInstant,
   productiveSecondsIn,
@@ -292,6 +293,14 @@ export async function workedShifts(
 const registeredOf = (item: ShiftOccurrence) =>
   'planned' in item ? (item as EffectiveOccurrence).planned : { start: item.start, end: item.end };
 const isExtra = (item: ShiftOccurrence) => 'extra' in item && (item as EffectiveOccurrence).extra;
+/**
+ * When a worked shift's report is written: its own wait after the end (the later of the worked
+ * and the registered end), or the site's stretch limit when the shift has none (extra shifts,
+ * bases before 057).
+ */
+const closesAt = (item: ShiftOccurrence, reachMs: number) =>
+  Math.max(item.end.getTime(), registeredOf(item).end.getTime()) +
+  (item.closeAfterMinutes != null ? item.closeAfterMinutes * 60_000 : reachMs);
 
 export async function loadShifts(db: Database, tenantId: string, siteId: string) {
   const result = await db.query<{
@@ -301,9 +310,12 @@ export async function loadShifts(db: Database, tenantId: string, siteId: string)
     start_time: string;
     end_time: string;
     breaks: Array<{ start: string; end: string }>;
+    close_after: string | null;
   }>(
-    `SELECT id,name,weekdays,start_time,end_time,breaks FROM site_shifts
-     WHERE tenant_id=$1 AND site_id=$2 ORDER BY sort_order,start_time,name`,
+    // close_after_minutes read through to_jsonb: a base without migration 057 reads null.
+    `SELECT s.id,s.name,s.weekdays,s.start_time,s.end_time,s.breaks,
+       to_jsonb(s)->>'close_after_minutes' close_after FROM site_shifts s
+     WHERE s.tenant_id=$1 AND s.site_id=$2 ORDER BY s.sort_order,s.start_time,s.name`,
     [tenantId, siteId],
   );
   const shifts: ShiftDefinition[] = result.rows.map((row) => ({
@@ -313,6 +325,9 @@ export async function loadShifts(db: Database, tenantId: string, siteId: string)
     start: row.start_time,
     end: row.end_time,
     breaks: Array.isArray(row.breaks) ? row.breaks : [],
+    ...(row.close_after != null && Number.isFinite(Number(row.close_after))
+      ? { closeAfterMinutes: Math.max(MIN_CLOSE_AFTER_MINUTES, Number(row.close_after)) }
+      : {}),
   }));
   return shifts.length ? { shifts, isDefault: false } : { shifts: DEFAULT_SHIFTS, isDefault: true };
 }
@@ -1318,10 +1333,11 @@ export async function closeShiftReports(
       planned_start: Date | string;
       planned_end: Date | string;
       deleted_at: Date | string | null;
+      closed_at: Date | string;
       target_metric: string | null;
       target_value: string | number | null;
     }>(
-      `SELECT id,kind,planned_start,planned_end,deleted_at,target_metric,target_value FROM shift_reports
+      `SELECT id,kind,planned_start,planned_end,deleted_at,closed_at,target_metric,target_value FROM shift_reports
        WHERE device_id=$1 AND production_date>=$2 AND source='auto'`,
       [device.id, fromDate],
     );
@@ -1348,10 +1364,13 @@ export async function closeShiftReports(
       if (row.kind !== 'shift' || row.deleted_at) continue;
       const start = new Date(row.planned_start).getTime();
       const occurrence = occurrences.find((item) => registeredOf(item).start.getTime() === start);
+      // Also reopened: a shift that closed before its stretch was over (a wait shorter than the
+      // site's limit) and then worked past the moment its report was written.
       if (
         !occurrence ||
         isExtra(occurrence) ||
-        registeredOf(occurrence).end.getTime() === new Date(row.planned_end).getTime()
+        (registeredOf(occurrence).end.getTime() === new Date(row.planned_end).getTime() &&
+          occurrence.end.getTime() <= new Date(row.closed_at).getTime())
       )
         continue;
       await db.query('DELETE FROM shift_reports WHERE id=$1', [row.id]);
@@ -1375,8 +1394,8 @@ export async function closeShiftReports(
       await db.query(
         `INSERT INTO shift_reports(tenant_id,device_id,site_id,kind,shift_id,shift_name,production_date,
            planned_start,planned_end,planned_seconds,pieces,pallets,tons,producing_s,idle_s,manual_s,
-           offline_s,target_metric,target_value,products)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)
+           offline_s,target_metric,target_value,products,closed_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21)
          ON CONFLICT(device_id,kind,planned_start) WHERE source='auto' DO NOTHING`,
         [
           device.tenant_id,
@@ -1399,6 +1418,8 @@ export async function closeShiftReports(
           report.target?.metric ?? null,
           report.target?.value ?? null,
           JSON.stringify(report.summary.products),
+          // The closer's clock: a reopen compares the worked end with it.
+          now,
         ],
       );
       written += 1;
@@ -1407,8 +1428,7 @@ export async function closeShiftReports(
       const registeredWindow = registeredOf(occurrence);
       if (occurrence.productionDate < fromDate || occurrence.productionDate > lastDate) continue;
       if (occurrence.end.getTime() > now.getTime() - 60_000) continue;
-      if (now.getTime() < Math.max(occurrence.end.getTime(), registeredWindow.end.getTime()) + reach)
-        continue;
+      if (now.getTime() < closesAt(occurrence, reach)) continue;
       if (occurrence.start < since) continue;
       if (done.has(`shift|${registeredWindow.start.getTime()}`)) continue;
       const buckets = await loadBuckets(
@@ -2377,6 +2397,14 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
                 .array(z.object({ start: time, end: time }))
                 .max(12)
                 .default([]),
+              closeAfterMinutes: z
+                .number()
+                .int()
+                .min(MIN_CLOSE_AFTER_MINUTES, {
+                  message: `O turno fecha no mínimo ${MIN_CLOSE_AFTER_MINUTES} minutos depois do fim.`,
+                })
+                .max(720)
+                .optional(),
             }),
           )
           .max(6),
@@ -2384,6 +2412,14 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
       })
       .parse(req.body);
     const current = access.principal(req);
+    // Migration 057 not applied yet: the shifts are kept, each one's wait is not.
+    const closeAfterColumn =
+      (
+        await db.query(
+          `SELECT 1 FROM information_schema.columns
+           WHERE table_name='site_shifts' AND column_name='close_after_minutes' LIMIT 1`,
+        )
+      ).rows.length > 0;
     // Migration 047 not applied yet: the limit cannot be kept, the shifts still are.
     const extensionColumn =
       body.extensionMinutes !== undefined &&
@@ -2410,21 +2446,31 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         current.tenantId,
         id,
       ]);
-      for (const [index, shift] of shifts.entries())
-        await sql.query(
-          `INSERT INTO site_shifts(tenant_id,site_id,name,weekdays,start_time,end_time,breaks,sort_order)
-           VALUES($1,$2,$3,$4::smallint[],$5,$6,$7::jsonb,$8)`,
-          [
-            current.tenantId,
-            id,
-            shift.name,
-            shift.weekdays,
-            shift.start,
-            shift.end,
-            JSON.stringify(shift.breaks),
-            index,
-          ],
-        );
+      for (const [index, shift] of shifts.entries()) {
+        const values = [
+          current.tenantId,
+          id,
+          shift.name,
+          shift.weekdays,
+          shift.start,
+          shift.end,
+          JSON.stringify(shift.breaks),
+          index,
+        ];
+        if (closeAfterColumn)
+          await sql.query(
+            `INSERT INTO site_shifts(tenant_id,site_id,name,weekdays,start_time,end_time,breaks,sort_order,
+               close_after_minutes)
+             VALUES($1,$2,$3,$4::smallint[],$5,$6,$7::jsonb,$8,coalesce($9::int,120))`,
+            [...values, shift.closeAfterMinutes ?? null],
+          );
+        else
+          await sql.query(
+            `INSERT INTO site_shifts(tenant_id,site_id,name,weekdays,start_time,end_time,breaks,sort_order)
+             VALUES($1,$2,$3,$4::smallint[],$5,$6,$7::jsonb,$8)`,
+            values,
+          );
+      }
       if (extensionColumn)
         await sql.query('UPDATE sites SET shift_extension_minutes=$3 WHERE tenant_id=$1 AND id=$2', [
           current.tenantId,
@@ -2436,7 +2482,11 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
         targetType: 'site',
         targetId: id,
         summary: {
-          shifts: shifts.map((shift) => `${shift.name} ${shift.start}-${shift.end}`),
+          shifts: shifts.map(
+            (shift) =>
+              `${shift.name} ${shift.start}-${shift.end}` +
+              (shift.closeAfterMinutes != null ? ` fecha +${shift.closeAfterMinutes}min` : ''),
+          ),
           extensionMinutes: body.extensionMinutes ?? null,
         },
       });
@@ -3340,7 +3390,7 @@ export function registerShiftProductionRoutes(app: FastifyInstance, db: Database
     const pending = worked.filter(
       (item) =>
         item.start <= now &&
-        now.getTime() < Math.max(item.end.getTime(), registeredOf(item).end.getTime()) + reach &&
+        now.getTime() < closesAt(item, reach) &&
         item.productionDate >= query.from &&
         item.productionDate <= query.to,
     );

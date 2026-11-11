@@ -9,6 +9,8 @@
 export const PLANT_UTC_OFFSET = '-03:00';
 const PLANT_OFFSET_MS = -3 * 3600 * 1000;
 export const BUCKET_SECONDS = 300;
+/** The least a shift may wait after its end before its report is written. */
+export const MIN_CLOSE_AFTER_MINUTES = 15;
 const DAY_MS = 86400 * 1000;
 
 export interface ShiftBreak {
@@ -23,6 +25,12 @@ export interface ShiftDefinition {
   start: string;
   end: string;
   breaks: ShiftBreak[];
+  /**
+   * Minutes after the shift ends before its report is written (migration 057, 15 at least).
+   * Absent: the site's stretch limit, as before. Back-to-back shifts can use the minimum: the
+   * next shift starting stops the stretch.
+   */
+  closeAfterMinutes?: number;
 }
 export interface TimeWindow {
   start: Date;
@@ -38,6 +46,8 @@ export interface ShiftOccurrence {
   breaks: TimeWindow[];
   /** Shift span minus pauses, in seconds. */
   plannedSeconds: number;
+  /** See ShiftDefinition.closeAfterMinutes. */
+  closeAfterMinutes?: number;
 }
 
 /** Used while a plant has no shift registered. */
@@ -135,6 +145,7 @@ export function occurrenceOf(shift: ShiftDefinition, date: string): ShiftOccurre
     end,
     breaks,
     plannedSeconds: Math.round((end.getTime() - start.getTime()) / 1000 - pauseSeconds),
+    ...(shift.closeAfterMinutes != null ? { closeAfterMinutes: shift.closeAfterMinutes } : {}),
   };
 }
 

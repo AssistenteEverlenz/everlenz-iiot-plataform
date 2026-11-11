@@ -104,9 +104,14 @@ interface ShiftForm {
   start: string;
   end: string;
   breaks: Array<{ start: string; end: string }>;
+  /** Minutes after the end before the shift's report is written; text while it is typed. */
+  closeAfter: string;
 }
 
-const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+/** The least a shift may wait after its end before it closes (MIN_CLOSE_AFTER_MINUTES). */
+const MIN_CLOSE_AFTER = 15;
+
+const WEEKDAYS =['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const COLUMNS_KEY = 'everlenz-production-columns';
 const PERIODS = [
   ['today', 'Hoje'],
@@ -1126,6 +1131,7 @@ function ShiftsModal({
       start: string;
       end: string;
       breaks: Array<{ start: string; end: string }>;
+      closeAfterMinutes?: number;
     }>;
     isDefault: boolean;
     extensionMinutes?: number;
@@ -1147,6 +1153,7 @@ function ShiftsModal({
           start: shift.start,
           end: shift.end,
           breaks: shift.breaks,
+          closeAfter: String(shift.closeAfterMinutes ?? loaded.data?.extensionMinutes ?? 120),
         })),
       );
   }, [loaded.data, shifts]);
@@ -1159,12 +1166,24 @@ function ShiftsModal({
   }
   async function save() {
     if (!shifts) return;
+    const early = shifts.find(
+      (shift) => !(Number(shift.closeAfter) >= MIN_CLOSE_AFTER && Number(shift.closeAfter) <= 720),
+    );
+    if (early) {
+      setError(
+        `Turno "${early.name}": o turno fecha entre ${MIN_CLOSE_AFTER} e 720 minutos depois do fim.`,
+      );
+      return;
+    }
     setSaving(true);
     setError('');
     try {
       const minutes = Math.round(Number(extension));
       await mutate(`/sites/${siteId}/shifts`, 'PUT', {
-        shifts,
+        shifts: shifts.map(({ closeAfter, ...shift }) => ({
+          ...shift,
+          closeAfterMinutes: Math.round(Number(closeAfter)),
+        })),
         ...(Number.isFinite(minutes) && minutes >= 0 && minutes <= 720
           ? { extensionMinutes: minutes }
           : {}),
@@ -1191,7 +1210,9 @@ function ShiftsModal({
         <p className="shifts-help">
           Só o tempo dentro dos turnos, sem as pausas, conta para meta e aproveitamento. Produção
           fora deles aparece separada como &quot;fora de turno&quot;. Alterar os turnos vale para os
-          próximos turnos: o histórico já fechado não muda.
+          próximos turnos: o histórico já fechado não muda. <b>Fecha após</b> é quanto o turno espera
+          depois do fim para fechar (mínimo {MIN_CLOSE_AFTER} min); com um turno começando logo em
+          seguida, {MIN_CLOSE_AFTER} min basta.
           {loaded.data?.isDefault && ' Hoje está em uso o turno padrão (seg–sex 07:00–17:00).'}
         </p>
         {shifts?.map((shift, index) => (
@@ -1221,6 +1242,20 @@ function ShiftsModal({
                   step={300}
                   value={shift.end}
                   onChange={(event) => update(index, { end: event.target.value })}
+                />
+              </label>
+              <label
+                className="field"
+                title={`Quanto tempo depois do fim o turno fecha e o relatório é gravado. Até lá ele aparece pelas leituras. Se o próximo turno começa logo em seguida, use ${MIN_CLOSE_AFTER}: o turno não tem como se esticar.`}
+              >
+                Fecha após (min)
+                <input
+                  type="number"
+                  min={MIN_CLOSE_AFTER}
+                  max={720}
+                  step={5}
+                  value={shift.closeAfter}
+                  onChange={(event) => update(index, { closeAfter: event.target.value })}
                 />
               </label>
               <button
@@ -1317,6 +1352,7 @@ function ShiftsModal({
                   start: '07:00',
                   end: '17:00',
                   breaks: [],
+                  closeAfter: String(loaded.data?.extensionMinutes ?? 120),
                 },
               ])
             }

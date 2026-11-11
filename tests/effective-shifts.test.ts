@@ -158,6 +158,101 @@ describe('the shift as worked, on the board and in the reports', () => {
   }, 60_000);
 });
 
+describe('each shift says when it closes (057)', () => {
+  /** A device with pallets and the given shifts; a pallet every five minutes in [from, to). */
+  async function plant(
+    shifts: Array<{ name: string; start: string; end: string; closeAfter: number }>,
+    day: string,
+    runs: Array<[string, string]>,
+  ) {
+    const { db } = await memoryDatabase();
+    await migrate(db);
+    await seed(db);
+    const pallets = (
+      await db.query<{ id: string }>(
+        `INSERT INTO tags(tenant_id,device_id,key,name,data_type)
+         VALUES($1,$2,'Paletes','Paletes','number') RETURNING id`,
+        [TENANT, HAIWELL],
+      )
+    ).rows[0].id;
+    await db.query(
+      `INSERT INTO production_settings(device_id,tenant_id,pallets_tag_id,target_metric,target_per_shift)
+       VALUES($1,$2,$3,'pallets',100)
+       ON CONFLICT (device_id) DO UPDATE SET pallets_tag_id=$3,target_metric='pallets',target_per_shift=100`,
+      [HAIWELL, TENANT, pallets],
+    );
+    const site = (
+      await db.query<{ site_id: string }>('SELECT site_id FROM devices WHERE id=$1', [HAIWELL])
+    ).rows[0].site_id;
+    for (const [index, shift] of shifts.entries())
+      await db.query(
+        `INSERT INTO site_shifts(tenant_id,site_id,name,weekdays,start_time,end_time,breaks,sort_order,close_after_minutes)
+         VALUES($1,$2,$3,'{0,1,2,3,4,5,6}'::smallint[],$4,$5,'[]'::jsonb,$6,$7)`,
+        [TENANT, site, shift.name, shift.start, shift.end, index, shift.closeAfter],
+      );
+    for (const [from, to] of runs)
+      for (let t = at(day, from); t < at(day, to); t += 300_000)
+        await db.query(
+          `INSERT INTO production_buckets(tenant_id,device_id,bucket,product_code,pieces,pallets,tons,producing_s,idle_s,manual_s)
+           VALUES($1,$2,$3,'9x19',1200,1,3,280,20,0)`,
+          [TENANT, HAIWELL, new Date(t)],
+        );
+    const reports = async () =>
+      (
+        await db.query<{ shift_name: string; pallets: number }>(
+          `SELECT shift_name,pallets::float pallets FROM shift_reports
+           WHERE device_id=$1 AND kind='shift' AND deleted_at IS NULL ORDER BY planned_start`,
+          [HAIWELL],
+        )
+      ).rows.map((row) => `${row.shift_name} ${row.pallets}`);
+    return { db, reports };
+  }
+
+  it('closes a shift followed right away by the next one 15 minutes after its end', async () => {
+    // Campo Forte, 2026-11-11: Turno 1 02:00-10:00, Turno 2 10:00-18:00, the line never stops.
+    const day = '2026-10-06';
+    const { db, reports } = await plant(
+      [
+        { name: 'Turno 1', start: '02:00', end: '10:00', closeAfter: 15 },
+        { name: 'Turno 2', start: '10:00', end: '18:00', closeAfter: 15 },
+      ],
+      day,
+      [['02:00', '13:00']],
+    );
+    const options = { deviceId: HAIWELL, fromDate: day, toDate: day };
+    expect(await closeShiftReports(db, new Date(at(day, '10:10')), options)).toBe(0);
+    await closeShiftReports(db, new Date(at(day, '10:16')), options);
+    // Turno 1 alone, with its eight hours: the next shift stopped the stretch at 10:00.
+    expect(await reports()).toEqual(['Turno 1 96']);
+  }, 60_000);
+
+  it('reopens a shift that closed early and then worked past the moment it closed', async () => {
+    const day = '2026-10-06';
+    const { db, reports } = await plant(
+      [{ name: 'Turno', start: '07:00', end: '17:00', closeAfter: 15 }],
+      day,
+      [
+        ['07:00', '17:00'],
+        // Forty minutes stopped, then back: within the site's 120-minute stretch limit.
+        ['17:40', '18:00'],
+      ],
+    );
+    const options = { deviceId: HAIWELL, fromDate: day, toDate: day };
+    await closeShiftReports(db, new Date(at(day, '17:20')), options);
+    expect(await reports()).toEqual(['Turno 120']);
+    // 17:50: the line came back after the report was written -- it goes away until done.
+    await closeShiftReports(db, new Date(at(day, '17:50')), options);
+    expect(await reports()).toEqual([]);
+    // 18:20: a stretched shift runs until the site's limit passes after its last pallet (a stop
+    // going on counts in it), so the wait of 15 minutes does not cut it short.
+    await closeShiftReports(db, new Date(at(day, '18:20')), options);
+    expect(await reports()).toEqual([]);
+    // 20:05: past the limit -- written again, with the stretch in it.
+    await closeShiftReports(db, new Date(at(day, '20:05')), options);
+    expect(await reports()).toEqual(['Turno 124']);
+  }, 60_000);
+});
+
 describe('the day chart', () => {
   const day = (date: string) => ({
     start: plantInstant(date, '00:00'),
