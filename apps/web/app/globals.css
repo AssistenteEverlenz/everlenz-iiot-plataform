@@ -18494,3 +18494,260 @@ a.home-plant:hover, a.home-plant:focus-visible { outline-color: var(--brand-acce
 .cp-offline-note b {
   color: #20353d;
 }
+
+/* The setup guide of an HMI (HmiGuide.tsx), opened by the "i" on a device's sheet: numbered
+   steps, each with the values to type (ready to copy) and the print of the screen beside it. */
+.modal-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.guide-i {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  border: 1.5px solid var(--brand-accent, #12b8a6);
+  border-radius: 50%;
+  color: var(--brand-accent, #12b8a6);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+}
+.hmi-guide {
+  width: min(1040px, 100%);
+  container-type: inline-size;
+}
+.hmi-guide h2 small {
+  display: block;
+  margin-top: 3px;
+  color: #71868d;
+  font-size: 13px;
+  font-weight: 500;
+}
+.hmi-lead {
+  margin: 10px 0 0;
+  color: #40555d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.hmi-lead b {
+  color: #20353d;
+}
+.hmi-unverified {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f5f8f9;
+  color: #56696f;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.hmi-unverified b {
+  color: #20353d;
+}
+.hmi-steps {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.hmi-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(0, 0.9fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid #dfe8ea;
+  border-radius: 14px;
+}
+.hmi-step:not(:has(.hmi-print)) .hmi-body {
+  grid-column: 2 / -1;
+}
+.hmi-number {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--brand-accent, #12b8a6);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+.hmi-body h3,
+.hmi-errors h3 {
+  margin: 5px 0 0;
+  color: #16282f;
+  font-size: 15px;
+  font-weight: 650;
+}
+.hmi-where {
+  margin-top: 4px;
+  color: #71868d;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.hmi-body > p {
+  margin: 8px 0 0;
+  color: #40555d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.hmi-fields {
+  margin-top: 10px;
+  border: 1px solid #e3eaec;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.hmi-field {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.42fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.hmi-field + .hmi-field {
+  border-top: 1px solid #edf1f2;
+}
+.hmi-field > span {
+  color: #71868d;
+}
+.hmi-field > code {
+  padding: 0;
+  color: #16282f;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.hmi-field > em {
+  grid-column: 2 / -1;
+  color: #20353d;
+  font-style: normal;
+}
+.hmi-copy {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.hmi-copy:hover,
+.hmi-copy.copied {
+  outline: 1.5px solid var(--brand-accent, #12b8a6);
+  color: var(--brand-accent, #12b8a6);
+}
+.hmi-files {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.hmi-files a {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid #dfe8ea;
+  border-radius: 10px;
+  color: #16282f;
+  text-decoration: none;
+}
+.hmi-files a:hover {
+  outline: 1.5px solid var(--brand-accent, #12b8a6);
+}
+.hmi-files a > span {
+  grid-row: 1 / 3;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 14%, #fff);
+  color: var(--brand-accent, #12b8a6);
+  font-weight: 700;
+}
+.hmi-files a > b {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.hmi-files a > small {
+  color: #71868d;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.hmi-warn,
+.hmi-tip {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.hmi-warn {
+  background: #fff8e7;
+  color: #725817;
+}
+.hmi-tip {
+  background: color-mix(in srgb, var(--brand-accent, #12b8a6) 8%, #fff);
+  color: #20353d;
+}
+.hmi-warn > span,
+.hmi-tip > span {
+  flex: none;
+  font-weight: 700;
+}
+.hmi-tip > span {
+  color: var(--brand-accent, #12b8a6);
+}
+.hmi-print {
+  display: grid;
+  gap: 6px;
+  color: #71868d;
+  text-decoration: none;
+}
+.hmi-print img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #dfe8ea;
+  border-radius: 10px;
+}
+.hmi-print:hover img {
+  outline: 1.5px solid var(--brand-accent, #12b8a6);
+}
+.hmi-print small {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.hmi-errors {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f5f8f9;
+}
+.hmi-errors h3 {
+  margin: 0;
+}
+.hmi-errors .hmi-fields {
+  background: #fff;
+}
+@container (max-width: 760px) {
+  .hmi-step {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+  .hmi-print {
+    grid-column: 1 / -1;
+  }
+}
+@media print {
+  .hmi-copy {
+    display: none;
+  }
+}

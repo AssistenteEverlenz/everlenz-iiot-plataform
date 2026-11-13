@@ -6,6 +6,7 @@ import { mutate, time, usePoll, type Device } from '../../components/data';
 import { DevicesTable } from '../../components/DevicesTable';
 import { ActionModal } from '../../components/ActionModal';
 import { useEmptySearch } from '../../components/useUsageEvents';
+import { HmiGuide, hasHmiGuide } from '../../components/HmiGuide';
 
 interface Site {
   id: string;
@@ -203,6 +204,7 @@ export default function Devices() {
   const [saving, setSaving] = useState(false);
   const [siteSaving, setSiteSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [guide, setGuide] = useState(false);
   const [form, setForm] = useState({
     siteId: '',
     name: '',
@@ -453,7 +455,7 @@ export default function Devices() {
         <div className="modal-backdrop" onMouseDown={() => !saving && close()}>
           <div className="modal-card wizard-modal" onMouseDown={(event) => event.stopPropagation()}>
             {created ? (
-              <CredentialCard created={created} onClose={close} />
+              <CredentialCard created={created} onClose={close} onGuide={() => setGuide(true)} />
             ) : (
               <form onSubmit={selected ? saveDevice : create}>
                 <div className="modal-title">
@@ -463,9 +465,22 @@ export default function Devices() {
                     </div>
                     <h2>{selected ? selected.name : 'Novo dispositivo'}</h2>
                   </div>
-                  <button type="button" disabled={saving} className="icon-button" onClick={close}>
-                    ×
-                  </button>
+                  <div className="modal-title-actions">
+                    {selected && hasHmiGuide(selected.manufacturer) && (
+                      <button
+                        type="button"
+                        className="icon-button info-button"
+                        title="Como configurar a IHM"
+                        aria-label="Como configurar a IHM"
+                        onClick={() => setGuide(true)}
+                      >
+                        i
+                      </button>
+                    )}
+                    <button type="button" disabled={saving} className="icon-button" onClick={close}>
+                      ×
+                    </button>
+                  </div>
                 </div>
                 {selected && connection && (
                   <>
@@ -761,6 +776,14 @@ export default function Devices() {
           </div>
         </div>
       )}
+      {guide && connection && (created?.device ?? selected) && (
+        <HmiGuide
+          manufacturer={(created?.device ?? selected)!.manufacturer}
+          model={(created?.device ?? selected)!.model}
+          connection={connection}
+          onClose={() => setGuide(false)}
+        />
+      )}
       {confirmDelete && selected && (
         <ActionModal
           title="Excluir equipamento"
@@ -846,7 +869,15 @@ function CredentialRow({
     </div>
   );
 }
-function CredentialCard({ created, onClose }: { created: CreatedDevice; onClose: () => void }) {
+function CredentialCard({
+  created,
+  onClose,
+  onGuide,
+}: {
+  created: CreatedDevice;
+  onClose: () => void;
+  onGuide: () => void;
+}) {
   return (
     <>
       <div className="success-mark">✓</div>
@@ -864,6 +895,14 @@ function CredentialCard({ created, onClose }: { created: CreatedDevice; onClose:
         </div>
       )}
       <div className="modal-actions">
+        {hasHmiGuide(created.device.manufacturer) && (
+          <button type="button" onClick={onGuide}>
+            <span className="guide-i" aria-hidden="true">
+              i
+            </span>
+            Como configurar a IHM
+          </button>
+        )}
         <button onClick={() => window.print()}>Imprimir ficha</button>
         <button className="primary-button" onClick={onClose}>
           Concluir
