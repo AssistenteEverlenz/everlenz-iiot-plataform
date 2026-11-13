@@ -105,7 +105,7 @@ const timeRange = {
 // Only HMIs that can publish MQTT over Ethernet; keep in step with models in
 // apps/web/app/devices/page.tsx. Weintek: EasyBuilder Pro "Comparison of HMI Software
 // Features" (MQTT row) — the iP line has no MQTT. Delta: DOP-100 models with an Ethernet port
-// (MQTT in DOPSoft 4 / DIAScreen) and the DOP-300S line.
+// (MQTT in DOPSoft 4 / DIAScreen), the DOP-100L (Lite) line and the DOP-300S line.
 const hmiModels: Record<string, string[]> = {
   // Haiwell: the A series (SmartLink, already in the plants), plus the B and C series, which
   // Haiwell documents as IoT Cloud HMIs with a built-in MQTT server. The D, F and N series
@@ -201,6 +201,7 @@ const hmiModels: Record<string, string[]> = {
     'DOP-108IG',
     'DOP-110IS',
     'DOP-110IG',
+    'DOP-110DS',
     'DOP-103WQ',
     'DOP-107WV',
     'DOP-110WS',
@@ -208,6 +209,12 @@ const hmiModels: Record<string, string[]> = {
     'DOP-115WX',
     'DOP-112MX',
     'DOP-115MX',
+    // DOP-100L (Lite), the line that replaces the DOP-100
+    'DOP-107L1-01',
+    'DOP-107L2-01',
+    'DOP-110L1-01',
+    'DOP-110L2-01',
+    // DOP-300
     'DOP-3S07S3E2',
     'DOP-3S10S3E2',
   ],
