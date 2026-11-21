@@ -1,7 +1,7 @@
 -- "Ver tela da IHM" (2026-11-21): the HMI's screen in the browser, through the plant's VPN.
 --
 -- Each machine's router (MikroTik hAP) keeps a WireGuard tunnel to the platform's server, and a
--- noVNC gateway (separate Coolify resource, ihm.everlenz.com.br) opens the HMI's VNC through it.
+-- noVNC gateway (separate Coolify resource, acessoihm.everlenz.com.br) opens the HMI's VNC through it.
 -- The platform only says where the HMI answers inside the tunnel and signs a short-lived link;
 -- the address never comes from the browser.
 CREATE TABLE IF NOT EXISTS device_remote_access (

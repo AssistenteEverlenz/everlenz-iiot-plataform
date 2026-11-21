@@ -25,7 +25,7 @@ type Access = ReturnType<typeof createAccessControl>;
 const LINK_SECONDS = 300;
 
 const gatewayUrl = () =>
-  (process.env.REMOTE_GATEWAY_URL || 'https://ihm.everlenz.com.br').replace(/\/+$/, '');
+  (process.env.REMOTE_GATEWAY_URL || 'https://acessoihm.everlenz.com.br').replace(/\/+$/, '');
 const gatewayKey = () => (process.env.REMOTE_GATEWAY_JWT_KEY ?? '').trim();
 
 /** Before migration 058 is applied the tables do not exist: the feature stays hidden. */

@@ -113,7 +113,7 @@ services:
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-https://iotplataform.everlenz.com.br}
       # "Ver tela da IHM" (apps/api/src/remote-view.ts): the noVNC gateway and the key its links
       # are signed with (same value as GATEWAY_JWT_KEY on the gateway). Empty = button hidden.
-      REMOTE_GATEWAY_URL: ${REMOTE_GATEWAY_URL:-https://ihm.everlenz.com.br}
+      REMOTE_GATEWAY_URL: ${REMOTE_GATEWAY_URL:-https://acessoihm.everlenz.com.br}
       REMOTE_GATEWAY_JWT_KEY: ${REMOTE_GATEWAY_JWT_KEY:-}
       MQTT_PROVISION_DIR: /mqtt-provision/requests
       # Equipment commands ("Zerar contador" on the PLC). Empty password = read-only platform.

@@ -9,8 +9,9 @@ import type { NextConfig } from 'next';
 //   needs to embed a dashboard, replace 'none' with that specific origin, never with *.
 // The noVNC gateway that shows an HMI's screen (RemoteScreen.tsx, apps/api/src/remote-view.ts):
 // the only page the platform frames from another origin.
-const remoteGatewayOrigin = new URL(process.env.REMOTE_GATEWAY_URL || 'https://ihm.everlenz.com.br')
-  .origin;
+const remoteGatewayOrigin = new URL(
+  process.env.REMOTE_GATEWAY_URL || 'https://acessoihm.everlenz.com.br',
+).origin;
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'none'",

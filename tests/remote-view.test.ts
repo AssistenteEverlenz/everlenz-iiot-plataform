@@ -26,7 +26,7 @@ describe('remote view (Ver tela da IHM)', () => {
   });
 
   it('puts the token in the path noVNC opens its websocket on', () => {
-    const url = new URL(gatewayLink('https://ihm.everlenz.com.br', 'a.b.c', true));
+    const url = new URL(gatewayLink('https://acessoihm.everlenz.com.br', 'a.b.c', true));
     expect(url.pathname).toBe('/vnc.html');
     expect(url.searchParams.get('path')).toBe('websockify?token=a.b.c');
     expect(url.searchParams.get('view_only')).toBe('1');
