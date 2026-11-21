@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { mutate } from './data';
 
@@ -68,13 +68,24 @@ export function RemoteScreen({
     };
   }, [deviceId]);
 
+  // Leave full screen first and take the frame away only after the browser is out of it:
+  // removing the frame mid-transition left Chrome with a dead, unclickable patch in the
+  // top-right corner of every page until it was restarted (2026-11-21).
+  const close = useCallback(() => {
+    if (!document.fullscreenElement) return onClose();
+    document
+      .exitFullscreen()
+      .catch(() => undefined)
+      .finally(onClose);
+  }, [onClose]);
+
   useEffect(() => {
     let wasFull = Boolean(document.fullscreenElement);
     const change = () => {
       if (document.fullscreenElement) wasFull = true;
       else if (wasFull) onClose();
     };
-    const key = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    const key = (event: KeyboardEvent) => event.key === 'Escape' && close();
     document.addEventListener('fullscreenchange', change);
     document.addEventListener('keydown', key);
     return () => {
@@ -82,7 +93,7 @@ export function RemoteScreen({
       document.removeEventListener('keydown', key);
       if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
     };
-  }, [onClose]);
+  }, [onClose, close]);
 
   return createPortal(
     <div
@@ -95,7 +106,9 @@ export function RemoteScreen({
         <iframe
           src={session.url}
           title={`Tela da IHM · ${deviceName}`}
-          allow="fullscreen; clipboard-read; clipboard-write"
+          // No full screen inside the frame: the platform already holds it, and noVNC's own
+          // full-screen button (hidden when it may not) nested a second one over ours.
+          allow="fullscreen 'none'; clipboard-read; clipboard-write"
         />
       ) : (
         <div className="remote-screen-state">
@@ -114,7 +127,7 @@ export function RemoteScreen({
       )}
       <div className="remote-screen-bar">
         {session?.mode === 'view' && <span>Só visualização</span>}
-        <button type="button" onClick={onClose} aria-label="Fechar a tela da IHM">
+        <button type="button" onClick={close} aria-label="Fechar a tela da IHM">
           × Fechar
         </button>
       </div>
