@@ -7,6 +7,10 @@ import type { NextConfig } from 'next';
 // - img-src allows https: so tenant_branding.logo_url can point at a customer CDN.
 // - frame-ancestors 'none' blocks clickjacking of the admin screens. If a customer ever
 //   needs to embed a dashboard, replace 'none' with that specific origin, never with *.
+// The noVNC gateway that shows an HMI's screen (RemoteScreen.tsx, apps/api/src/remote-view.ts):
+// the only page the platform frames from another origin.
+const remoteGatewayOrigin = new URL(process.env.REMOTE_GATEWAY_URL || 'https://ihm.everlenz.com.br')
+  .origin;
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'none'",
@@ -18,6 +22,7 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "connect-src 'self'",
+  `frame-src 'self' ${remoteGatewayOrigin}`,
   'upgrade-insecure-requests',
 ].join('; ');
 

@@ -24,6 +24,11 @@ interface Connection {
   clientReference: string;
   credentialActive?: boolean;
 }
+interface RemoteAccess {
+  hmiIp?: string | null;
+  hmiPort?: number;
+  customerControl?: boolean;
+}
 interface CreatedDevice {
   device: Device;
   connection: Connection;
@@ -217,6 +222,10 @@ export default function Devices() {
     legacyPlainMqtt: false,
     legacyAllowedIps: [] as string[],
   });
+  // "Ver tela da IHM": where the HMI answers inside the machine's VPN (remote-view.ts).
+  // Kept apart from the device form: it is saved by its own route, and an empty IP turns it off.
+  const [remote, setRemote] = useState({ hmiIp: '', hmiPort: '5900', customerControl: false });
+  const [remoteWas, setRemoteWas] = useState(false);
   const [cities, setCities] = useState<string[]>([]);
   useEffect(() => {
     if (!form.state) {
@@ -280,6 +289,8 @@ export default function Devices() {
       const result = await mutate<CreatedDevice>('/devices', 'POST', {
         ...form,
         serialNumber: form.serialNumber || null,
+        hmiIp: remote.hmiIp.trim() || null,
+        hmiPort: Number(remote.hmiPort) || 5900,
       });
       setCreated(result);
       await devices.refresh();
@@ -312,6 +323,20 @@ export default function Devices() {
       legacyPlainMqtt: device.legacy_plain_mqtt ?? false,
       legacyAllowedIps: device.legacy_allowed_ips ?? [],
     });
+    setRemote({ hmiIp: '', hmiPort: '5900', customerControl: false });
+    setRemoteWas(false);
+    void fetch(`/api/devices/${device.id}/remote-access`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((value: RemoteAccess | null) => {
+        if (!value?.hmiIp) return;
+        setRemote({
+          hmiIp: value.hmiIp,
+          hmiPort: String(value.hmiPort ?? 5900),
+          customerControl: Boolean(value.customerControl),
+        });
+        setRemoteWas(true);
+      })
+      .catch(() => undefined);
     setOpen(true);
   }
   async function releaseAddress(ip: string) {
@@ -346,6 +371,13 @@ export default function Devices() {
         ...form,
         serialNumber: form.serialNumber || null,
       });
+      if (remote.hmiIp.trim() || remoteWas)
+        await mutate(`/devices/${selected.id}/remote-access`, 'PUT', {
+          hmiIp: remote.hmiIp.trim() || null,
+          hmiPort: Number(remote.hmiPort) || 5900,
+          enabled: true,
+          customerControl: remote.customerControl,
+        });
       if (form.city && form.state)
         await mutate(`/devices/${selected.id}/location`, 'PATCH', {
           address: form.address || null,
@@ -741,6 +773,52 @@ export default function Devices() {
                         )}
                       </div>
                     </>
+                  )}
+                </div>
+                <div className="legacy-section remote-section">
+                  <span className="remote-title">
+                    <b>Tela remota da IHM</b>
+                    Endereço da IHM na rede da máquina, alcançado pela VPN do roteador. Com ele, o
+                    painel ganha “Ver tela da IHM” em Ações. Pode ficar vazio e ser preenchido
+                    depois.
+                  </span>
+                  <div className="remote-fields">
+                    <label className="field">
+                      IP da IHM
+                      <input
+                        value={remote.hmiIp}
+                        inputMode="decimal"
+                        onChange={(event) => setRemote({ ...remote, hmiIp: event.target.value })}
+                        placeholder="192.168.77.50"
+                      />
+                    </label>
+                    <label className="field remote-port">
+                      Porta VNC
+                      <input
+                        value={remote.hmiPort}
+                        inputMode="numeric"
+                        onChange={(event) =>
+                          setRemote({ ...remote, hmiPort: event.target.value.replace(/\D/g, '') })
+                        }
+                        placeholder="5900"
+                      />
+                    </label>
+                  </div>
+                  {selected && remote.hmiIp.trim() && (
+                    <label className="legacy-toggle">
+                      <input
+                        type="checkbox"
+                        checked={remote.customerControl}
+                        onChange={(event) =>
+                          setRemote({ ...remote, customerControl: event.target.checked })
+                        }
+                      />
+                      <span>
+                        <b>O cliente pode operar a tela</b>
+                        Sem esta opção, os usuários da cerâmica só assistem; o administrador sempre
+                        opera.
+                      </span>
+                    </label>
                   )}
                 </div>
                 <div className="notice">

@@ -1,7 +1,7 @@
 'use client';
 import { cardColor } from './brandColor';
 import { BriefingModal } from './BriefingModal';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFirstDraw } from './firstDraw';
 import { createPortal } from 'react-dom';
 import {
@@ -45,6 +45,7 @@ import {
 
 import { ScrollHint } from './ScrollHint';
 import { DashboardChrome } from './DashboardChrome';
+import { RemoteScreen, openRemoteFullscreen } from './RemoteScreen';
 import { DashboardTabs, TabsModal } from './DashboardTabs';
 import { Section } from './Section';
 import type { DashboardTab } from './data';
@@ -1041,6 +1042,13 @@ export function DashboardCanvas({ id }: { id: string }) {
   const refreshMs = dashboard.data?.refresh_ms ?? 2000;
   const deviceId = dashboard.data?.device_id ?? '';
   const device = usePoll<Device>(deviceId ? `/devices/${deviceId}` : null, refreshMs);
+  // "Ver tela da IHM" shows in Ações only for a machine with its HMI reachable (remote-view.ts).
+  const remoteAccess = usePoll<{ available: boolean }>(
+    deviceId ? `/devices/${deviceId}/remote-access` : null,
+    120000,
+  );
+  const [remoteOpen, setRemoteOpen] = useState(false);
+  const closeRemote = useCallback(() => setRemoteOpen(false), []);
   const latest = usePoll<Sample[]>(deviceId ? `/devices/${deviceId}/latest` : null, refreshMs);
   // The catalogue of published variables changes when the HMI program changes, not by the second.
   const signals = usePoll<Signal[]>(deviceId ? `/devices/${deviceId}/signals` : null, 30000);
@@ -1763,7 +1771,22 @@ export function DashboardCanvas({ id }: { id: string }) {
             ? () => setProductsOpen(true)
             : undefined
         }
+        onRemoteView={
+          remoteAccess.data?.available
+            ? () => {
+                openRemoteFullscreen();
+                setRemoteOpen(true);
+              }
+            : undefined
+        }
       />
+      {remoteOpen && deviceId && (
+        <RemoteScreen
+          deviceId={deviceId}
+          deviceName={device.data?.name ?? ''}
+          onClose={closeRemote}
+        />
+      )}
       {productsOpen && (
         <ModalPortal>
           <ProductsModal onClose={() => setProductsOpen(false)} />

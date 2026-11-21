@@ -15,6 +15,7 @@ import { registerUsageRoutes } from './usage.js';
 import { registerProductionMessageRoutes } from './production-messages.js';
 import { registerBriefingRoutes } from './briefing.js';
 import { registerDeviceConnectionRoutes } from './device-connections.js';
+import { isPrivateIpv4, registerRemoteViewRoutes, saveRemoteAccess } from './remote-view.js';
 import { registerProductionAuditRoutes } from './production-audit.js';
 import { registerWhatsappAssistantRoutes } from './whatsapp-assistant.js';
 import { registerWearRoutes } from './wear.js';
@@ -799,6 +800,7 @@ export async function createApp(
   registerProductionMessageRoutes(app, db, access);
   registerBriefingRoutes(app, db, access);
   registerDeviceConnectionRoutes(app, db, access);
+  registerRemoteViewRoutes(app, db, access);
   registerProductionAuditRoutes(app, db, access);
   registerWhatsappAssistantRoutes(app, db);
   registerOperationTvRoutes(app, db, access);
@@ -1058,6 +1060,15 @@ export async function createApp(
         // Legacy HMI whose TLS client cannot reach the broker: plain MQTT on the compatibility
         // port, from addresses released on the device page (apps/api/src/legacy-mqtt.ts).
         legacyPlainMqtt: z.boolean().optional(),
+        // "Ver tela da IHM" (remote-view.ts): where the HMI answers inside the machine's VPN.
+        // Optional here; the device sheet sets or changes it later.
+        hmiIp: z
+          .string()
+          .trim()
+          .refine(isPrivateIpv4, 'Use o IP da IHM na rede da máquina (ex. 192.168.77.50)')
+          .nullable()
+          .optional(),
+        hmiPort: z.coerce.number().int().min(1).max(65535).optional(),
       })
       .parse(req.body);
     if (!hmiModels[body.manufacturer]?.includes(body.model))
@@ -1136,6 +1147,21 @@ export async function createApp(
       });
       return created.rows[0];
     });
+    // Outside the transaction: a missing 058 table must not stop a device from being created.
+    let remoteSaved = false;
+    if (body.hmiIp)
+      remoteSaved = await saveRemoteAccess(db, current.tenantId, id, {
+        hmiIp: body.hmiIp,
+        hmiPort: body.hmiPort ?? 5900,
+        enabled: true,
+        customerControl: false,
+      }).then(
+        () => true,
+        (error: unknown) => {
+          req.log.warn({ err: error, deviceId: id }, 'remote access not saved');
+          return false;
+        },
+      );
     const credentialActive = await provisionMqttRequest(
       'upsert',
       mqttUsername,
@@ -1145,6 +1171,7 @@ export async function createApp(
     return reply.code(201).send({
       device: row,
       dashboardId,
+      remoteSaved,
       connection: {
         host: env.MQTT_PUBLIC_HOST ?? env.MQTT_HOST,
         ...brokerPort(body.legacyPlainMqtt ?? false),
@@ -2213,7 +2240,15 @@ export async function createApp(
     const current = access.principal(req);
     const { id } = z.object({ id: uuid }).parse(req.params);
     const body = z
-      .object({ name: z.string().trim().min(1).max(40), icon: z.string().trim().regex(/^[a-z0-9-]{1,40}$/).nullable().optional() })
+      .object({
+        name: z.string().trim().min(1).max(40),
+        icon: z
+          .string()
+          .trim()
+          .regex(/^[a-z0-9-]{1,40}$/)
+          .nullable()
+          .optional(),
+      })
       .parse(req.body);
     if (!access.requireMaster(req, reply)) return;
     const view = await dashboardView(db, current, id, await access.accessibleDeviceIds(req));
@@ -2223,7 +2258,9 @@ export async function createApp(
       `INSERT INTO dashboard_tabs(tenant_id,dashboard_id,name,position${withIcon ? ',icon' : ''})
        VALUES($1,$2,$3,(SELECT COALESCE(max(position)+1,0) FROM dashboard_tabs WHERE tenant_id=$1 AND dashboard_id=$2)${withIcon ? ',$4' : ''})
        RETURNING id,name,position,${TAB_ICON_SELECT}`,
-      withIcon ? [current.tenantId, id, body.name, body.icon ?? null] : [current.tenantId, id, body.name],
+      withIcon
+        ? [current.tenantId, id, body.name, body.icon ?? null]
+        : [current.tenantId, id, body.name],
     );
     await recordAudit(db, req, current, {
       action: 'dashboard_tab.created',
@@ -2241,7 +2278,12 @@ export async function createApp(
       .object({
         name: z.string().trim().min(1).max(40).optional(),
         position: z.coerce.number().int().min(0).max(200).optional(),
-        icon: z.string().trim().regex(/^[a-z0-9-]{1,40}$/).nullable().optional(),
+        icon: z
+          .string()
+          .trim()
+          .regex(/^[a-z0-9-]{1,40}$/)
+          .nullable()
+          .optional(),
       })
       .parse(req.body);
     if (!access.requireMaster(req, reply)) return;

@@ -83,6 +83,7 @@ export function logger(service: string) {
       'MQTT_PASSWORD',
       'MQTT_SIMULATOR_PASSWORD',
       'MQTT_COMMAND_PASSWORD',
+      'REMOTE_GATEWAY_JWT_KEY',
       'req.headers.authorization',
     ],
   });

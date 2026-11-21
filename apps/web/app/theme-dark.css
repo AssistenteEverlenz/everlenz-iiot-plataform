@@ -5975,4 +5975,136 @@
   :root[data-theme='dark'] .cp-offline-note b {
     color: #ced8db;
   }
+  :root[data-theme='dark'] .guide-i {
+    border: 1.5px solid var(--brand-accent, #12b8a6);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .hmi-guide h2 small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .hmi-lead {
+    color: #b2c1c6;
+  }
+  :root[data-theme='dark'] .hmi-lead b {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .hmi-unverified {
+    background: #172024;
+    color: #a3b3b8;
+  }
+  :root[data-theme='dark'] .hmi-unverified b {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .hmi-step {
+    border: 1px solid #223035;
+  }
+  :root[data-theme='dark'] .hmi-number {
+    background: var(--brand-accent, #12b8a6);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .hmi-body h3,
+  :root[data-theme='dark'] .hmi-errors h3 {
+    color: #d8e0e3;
+  }
+  :root[data-theme='dark'] .hmi-where {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .hmi-body > p {
+    color: #b2c1c6;
+  }
+  :root[data-theme='dark'] .hmi-fields {
+    border: 1px solid #202e32;
+  }
+  :root[data-theme='dark'] .hmi-field + .hmi-field {
+    border-top: 1px solid #1b272b;
+  }
+  :root[data-theme='dark'] .hmi-field > span {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .hmi-field > code {
+    color: #d8e0e3;
+  }
+  :root[data-theme='dark'] .hmi-field > em {
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .hmi-copy:hover,
+  :root[data-theme='dark'] .hmi-copy.copied {
+    outline: 1.5px solid var(--brand-accent, #12b8a6);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .hmi-files a {
+    border: 1px solid #223035;
+    color: #d8e0e3;
+  }
+  :root[data-theme='dark'] .hmi-files a:hover {
+    outline: 1.5px solid var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .hmi-files a > span {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 14%, #12191c);
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .hmi-files a > small {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .hmi-warn {
+    background: #302710;
+    color: #dec587;
+  }
+  :root[data-theme='dark'] .hmi-tip {
+    background: color-mix(in srgb, var(--brand-accent, #12b8a6) 8%, #12191c);
+    color: #ced8db;
+  }
+  :root[data-theme='dark'] .hmi-tip > span {
+    color: var(--brand-accent, #7de8dc);
+  }
+  :root[data-theme='dark'] .hmi-print {
+    color: #8d9ea3;
+  }
+  :root[data-theme='dark'] .hmi-print img {
+    border: 1px solid #223035;
+  }
+  :root[data-theme='dark'] .hmi-print:hover img {
+    outline: 1.5px solid var(--brand-accent, #12b8a6);
+  }
+  :root[data-theme='dark'] .hmi-errors {
+    background: #172024;
+  }
+  :root[data-theme='dark'] .hmi-errors .hmi-fields {
+    background: #12191c;
+  }
+  :root[data-theme='dark'] .remote-section {
+    border-color: #253439;
+    background: #162023;
+  }
+  :root[data-theme='dark'] .remote-title {
+    color: #a4b6bc;
+  }
+  :root[data-theme='dark'] .remote-title b {
+    color: #d5dde0;
+  }
+  :root[data-theme='dark'] .remote-screen {
+    background: #000;
+  }
+  :root[data-theme='dark'] .remote-screen iframe {
+    border: 0;
+    background: #000;
+  }
+  :root[data-theme='dark'] .remote-screen-state {
+    color: #e8eef0;
+  }
+  :root[data-theme='dark'] .remote-screen-state span {
+    color: #9fb0b6;
+  }
+  :root[data-theme='dark'] .remote-screen-bar span {
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .remote-screen-bar button {
+    border: 1px solid rgba(18, 25, 28, 0.35);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+  }
+  :root[data-theme='dark'] .remote-screen-bar button:hover {
+    border-color: var(--brand-accent);
+  }
 }

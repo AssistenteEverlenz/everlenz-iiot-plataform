@@ -28,6 +28,8 @@ interface DashboardChromeProps {
   onSnapshot: () => void;
   /** Mortar plants: the products and the recipes linked to them (masters only). */
   onProducts?: () => void;
+  /** "Ver tela da IHM": only when the machine has the VPN and the HMI's address set. */
+  onRemoteView?: () => void;
 }
 
 export function DashboardChrome(props: DashboardChromeProps) {
@@ -77,6 +79,7 @@ function ActionsButton({
   tvHref,
   onSnapshot,
   onProducts,
+  onRemoteView,
 }: DashboardChromeProps & { variant: 'menu' | 'fab' }) {
   const [open, setOpen] = useState(false);
   const { user } = usePlatform();
@@ -99,6 +102,7 @@ function ActionsButton({
       <button className="primary-button" onClick={run(onAdd)}>
         + Adicionar indicador
       </button>
+      {onRemoteView && <button onClick={run(onRemoteView)}>Ver tela da IHM</button>}
       <button onClick={run(onPdf)}>Exportar PDF</button>
       <a className="secondary-button" href={csvHref} onClick={() => setOpen(false)}>
         Exportar CSV

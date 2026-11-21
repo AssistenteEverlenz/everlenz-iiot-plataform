@@ -5004,6 +5004,8 @@ body:not(.print-layout) .platform-main div:not(.tv-shell) > .dashboard-toolbar {
 }
 .legacy-toggle input {
   width: 18px;
+  /* The generic input rule gives every input 200px of min-width. */
+  min-width: 0;
   height: 18px;
   margin-top: 2px;
 }
@@ -18750,4 +18752,91 @@ a.home-plant:hover, a.home-plant:focus-visible { outline-color: var(--brand-acce
   .hmi-copy {
     display: none;
   }
+}
+
+/* "Ver tela da IHM" (RemoteScreen.tsx): the HMI's screen over everything, full screen. */
+.remote-section {
+  border-color: #d9e2e7;
+  background: #f6f9fa;
+}
+.remote-title {
+  display: grid;
+  gap: 3px;
+  color: #51646d;
+  font-size: 12px;
+}
+.remote-title b {
+  color: #1d2b31;
+  font-size: 13px;
+}
+.remote-fields {
+  display: flex;
+  gap: 10px;
+}
+.remote-fields .field {
+  flex: 1;
+  min-width: 0;
+}
+.remote-fields .remote-port {
+  flex: 0 0 110px;
+}
+.remote-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.remote-screen iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}
+.remote-screen-state {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: #e8eef0;
+  text-align: center;
+}
+.remote-screen-state span {
+  color: #9fb0b6;
+  font-size: 13px;
+}
+.remote-screen-bar {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.remote-screen-bar:hover,
+.remote-screen-bar:focus-within {
+  opacity: 1;
+}
+.remote-screen-bar span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
+}
+.remote-screen-bar button {
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.remote-screen-bar button:hover {
+  border-color: var(--brand-accent);
 }
