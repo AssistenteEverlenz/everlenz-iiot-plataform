@@ -853,7 +853,8 @@ orquestrador({
   ),
   config: OFICIAL_CONFIG,
   normalizaEntrada: `${embed('entrada-oficial.mjs')}
-return entradaOficial($input.all().map((item) => item.json)).map((json) => ({ json }));`,
+// The trigger by name: $input here is the Configuração node's output.
+return entradaOficial($('Mensagem recebida').all().map((item) => item.json)).map((json) => ({ json }));`,
   send: sendOficial,
   openai: OFICIAL.openai,
   postgres: OFICIAL.postgres,
