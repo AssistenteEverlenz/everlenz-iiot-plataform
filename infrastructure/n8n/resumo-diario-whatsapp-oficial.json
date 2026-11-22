@@ -1,0 +1,666 @@
+{
+  "name": "IIoT - Resumo diário de produção no WhatsApp (API oficial)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Resumo diário de produção — API oficial\n\nA plataforma chama este webhook quando um dia de produção fecha, **uma mensagem por vez** (07h–21h, no mínimo 3 min entre envios). Envia o texto e as imagens de produção e de paradas.\n\nA Meta só aceita texto livre até 24 h depois da última mensagem da pessoa. Fora dessa janela sai o template **TEMPLATE_RESUMO** com o botão *Ver resumo*; o toque abre a janela e o assistente responde o dia no layout do resumo.\n\n1. Preencha **Configuração**.\n2. Credencial **WhatsApp IIoT** nos nós da Meta.\n3. Ative e copie a URL de produção de **Resumo recebido** para **N8N_SUMMARY_WEBHOOK_URL** (Coolify).",
+        "height": 360,
+        "width": 620,
+        "color": 5
+      },
+      "id": "616e8485-a427-4c0b-a53f-827796106f8f",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "everlenz-iiot-resumo",
+        "options": {}
+      },
+      "id": "e73dd7ad-2206-4039-95bc-e5a52a7dc1dc",
+      "name": "Resumo recebido",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        100
+      ],
+      "webhookId": "86689bda-b26d-4cad-9c94-81590ea37145"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d7ed0a4b-ba5e-40d6-a6ae-17011e2ad2e5",
+              "name": "PLATAFORMA_URL",
+              "value": "https://iotplataform.everlenz.com.br",
+              "type": "string"
+            },
+            {
+              "id": "0aef90e3-d2e2-47a1-b59a-fbfee6c22738",
+              "name": "PLATAFORMA_CHAVE",
+              "value": "COLE_AQUI_A_N8N_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "cbea81b1-b093-4793-b60a-8eb862f2b399",
+              "name": "WHATSAPP_GRAPH",
+              "value": "https://graph.facebook.com/v23.0",
+              "type": "string"
+            },
+            {
+              "id": "eacce6e3-6663-42b8-b18a-72967636413e",
+              "name": "WHATSAPP_NUMERO_ID",
+              "value": "1508068655713793",
+              "type": "string"
+            },
+            {
+              "id": "d60c5ac7-1ee4-4a4f-af9f-f73778c3c4ed",
+              "name": "TEMPLATE_RESUMO",
+              "value": "resumo_producao_pronto",
+              "type": "string"
+            },
+            {
+              "id": "c1f857d4-1cb6-4f0b-9cbf-cc5750fbafa9",
+              "name": "TEMPLATE_IDIOMA",
+              "value": "pt_BR",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8e34bd8c-305a-4041-a8ca-f13994b642e2",
+      "name": "Configuração",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "daa60551-4900-4bad-92dc-c304751db1f2",
+              "leftValue": "={{ $('Resumo recebido').first().json.headers['x-n8n-key'] }}",
+              "rightValue": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aab6d367-4fbb-45a0-9e9a-a90898f991e2",
+      "name": "Chave válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        100
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "1c5488a0-11cf-4c2c-8f60-68beb2d53f69",
+      "name": "Ignora",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        660,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $('Resumo recebido').first().json.body.waitSeconds || 10 }}"
+      },
+      "id": "56525ae4-41fe-419c-bff2-47c9324c6e21",
+      "name": "Espera aleatória",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').first().json.WHATSAPP_GRAPH }}/{{ $('Configuração').first().json.WHATSAPP_NUMERO_ID }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { messaging_product: 'whatsapp', recipient_type: 'individual', to: String($('Resumo recebido').first().json.body.number).split('@')[0].replace(/\\D/g, ''), type: 'text', text: { body: $('Resumo recebido').first().json.body.text, preview_url: false } } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "51c809a9-7e8c-4d38-9bd0-61256ef22b12",
+      "name": "Envia resumo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "",
+          "name": "WhatsApp IIoT"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8b1622b4-df46-4f44-9991-adcb1ed8ed5b",
+              "leftValue": "={{ ($('Resumo recebido').first().json.body.images || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f63e787b-a004-4a26-ae4a-86d3465aec1d",
+      "name": "Tem imagens?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Produção e paradas de cada equipamento, na ordem em que a plataforma mandou.\nreturn ($('Resumo recebido').first().json.body.images || []).map((image) => ({ json: image }));"
+      },
+      "id": "de37cd5a-4483-4f15-a145-94f853f6c126",
+      "name": "Separa imagens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "d7fe1f09-b091-4abc-8b7e-4b8c1a516b63",
+      "name": "Uma imagem por vez",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1560,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ 3 + Math.floor(Math.random() * 4) }}"
+      },
+      "id": "52c09be4-f615-453d-96de-80e0ee5a1f1e",
+      "name": "Pausa entre imagens",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1780,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "base64",
+        "binaryPropertyName": "data",
+        "options": {
+          "fileName": "={{ $json.fileName }}",
+          "mimeType": "={{ $json.mimetype }}"
+        }
+      },
+      "id": "d88fe897-78d3-4f5f-bbf5-6065834ccabf",
+      "name": "Converte imagem",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').first().json.WHATSAPP_GRAPH }}/{{ $('Configuração').first().json.WHATSAPP_NUMERO_ID }}/media",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "type",
+              "value": "={{ $('Uma imagem por vez').item.json.mimetype }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "e8f442ad-9a31-4c18-b8e8-b3fc35601eb5",
+      "name": "Sobe imagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2220,
+        -120
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "",
+          "name": "WhatsApp IIoT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').first().json.WHATSAPP_GRAPH }}/{{ $('Configuração').first().json.WHATSAPP_NUMERO_ID }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { messaging_product: 'whatsapp', to: String($('Resumo recebido').first().json.body.number).split('@')[0].replace(/\\D/g, ''), type: 'image', image: { id: $json.id, caption: $('Uma imagem por vez').item.json.caption } } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "a9935482-a5dd-4d65-89a9-d035bc9d065e",
+      "name": "Envia imagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2440,
+        -120
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "",
+          "name": "WhatsApp IIoT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Resumo recebido').first().json.body.resultUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-key",
+              "value": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { ok: true } }}",
+        "options": {}
+      },
+      "id": "a8beb19b-5d2b-4301-9fe2-b2e0b9332cdb",
+      "name": "Confirma envio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        -320
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f5284dd5-d2cd-47ca-a889-cde3b1854125",
+              "leftValue": "={{ JSON.stringify($json).includes('131047') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bc147750-6f7b-4247-b279-0500976327e6",
+      "name": "Fora da janela de 24 h?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuração').first().json.WHATSAPP_GRAPH }}/{{ $('Configuração').first().json.WHATSAPP_NUMERO_ID }}/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { messaging_product: 'whatsapp', to: String($('Resumo recebido').first().json.body.number).split('@')[0].replace(/\\D/g, ''), type: 'template', template: { name: $('Configuração').first().json.TEMPLATE_RESUMO, language: { code: $('Configuração').first().json.TEMPLATE_IDIOMA }, components: [ { type: 'body', parameters: [ { type: 'text', text: String($('Resumo recebido').first().json.body.name || '').trim().split(/\\s+/)[0] || 'equipe' }, { type: 'text', text: String($('Resumo recebido').first().json.body.productionDate || '').split('-').reverse().join('/') || 'ontem' } ] }, { type: 'button', sub_type: 'quick_reply', index: '0', parameters: [ { type: 'payload', payload: 'resumo:' + ($('Resumo recebido').first().json.body.productionDate || '') } ] } ] } } }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "c386b927-d85e-4917-afbb-4807f8c58d70",
+      "name": "Envia aviso (template)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        60
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "",
+          "name": "WhatsApp IIoT"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Resumo recebido').first().json.body.resultUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-key",
+              "value": "={{ $('Configuração').first().json.PLATAFORMA_CHAVE }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { ok: false, error: String($json.error?.description ?? $json.error?.message ?? $json.message ?? 'falha na API do WhatsApp').slice(0, 400) } }}",
+        "options": {}
+      },
+      "id": "b043d4e5-cea3-4d3f-b577-b0a76a539fb2",
+      "name": "Registra falha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        220
+      ],
+      "executeOnce": true
+    }
+  ],
+  "connections": {
+    "Resumo recebido": {
+      "main": [
+        [
+          {
+            "node": "Configuração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuração": {
+      "main": [
+        [
+          {
+            "node": "Chave válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chave válida?": {
+      "main": [
+        [
+          {
+            "node": "Espera aleatória",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignora",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera aleatória": {
+      "main": [
+        [
+          {
+            "node": "Envia resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envia resumo": {
+      "main": [
+        [
+          {
+            "node": "Tem imagens?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fora da janela de 24 h?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fora da janela de 24 h?": {
+      "main": [
+        [
+          {
+            "node": "Envia aviso (template)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registra falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envia aviso (template)": {
+      "main": [
+        [
+          {
+            "node": "Confirma envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registra falha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem imagens?": {
+      "main": [
+        [
+          {
+            "node": "Separa imagens",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirma envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separa imagens": {
+      "main": [
+        [
+          {
+            "node": "Uma imagem por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Uma imagem por vez": {
+      "main": [
+        [
+          {
+            "node": "Confirma envio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pausa entre imagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pausa entre imagens": {
+      "main": [
+        [
+          {
+            "node": "Converte imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Converte imagem": {
+      "main": [
+        [
+          {
+            "node": "Sobe imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sobe imagem": {
+      "main": [
+        [
+          {
+            "node": "Envia imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Envia imagem": {
+      "main": [
+        [
+          {
+            "node": "Uma imagem por vez",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {},
+  "tags": []
+}

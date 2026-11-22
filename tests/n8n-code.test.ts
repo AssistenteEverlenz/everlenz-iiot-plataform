@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain JavaScript embedded into the n8n Code nodes
 import { normalizar } from '../infrastructure/n8n/code/normalizador.mjs';
+// @ts-expect-error plain JavaScript embedded into the n8n Code nodes
+import { entradaOficial } from '../infrastructure/n8n/code/entrada-oficial.mjs';
 
 /** The deterministic steps of the WhatsApp orchestrator (infrastructure/n8n). */
 const hoje = '2026-10-11';
@@ -41,5 +43,27 @@ describe('normalizador do assistente', () => {
   it('lets the router talk when it has something to ask', () => {
     expect(normalizar(saida({ tipo_consulta: 'dia' }, 'Pergunte qual equipamento')).acao).toBe('conversa');
     expect(normalizar(saida({ tipo_consulta: 'agora', equipamento: 'capixaba' })).consulta.device).toBe('capixaba');
+  });
+});
+
+describe('entrada pela API oficial', () => {
+  const texto = (from: string, body: string) => ({ messages: [{ from, id: 'wamid.1', type: 'text', text: { body } }] });
+
+  it('reads a text in the trigger shape and in the raw webhook shape', () => {
+    expect(entradaOficial([texto('554791457639', ' oi ')])).toEqual([
+      { jid: '554791457639@s.whatsapp.net', phone: '554791457639', text: 'oi', messageId: 'wamid.1' },
+    ]);
+    const bruto = { body: { object: 'whatsapp_business_account', entry: [{ changes: [{ value: texto('5547999015533', 'ontem?') }] }] } };
+    expect(entradaOficial([bruto])[0].text).toBe('ontem?');
+  });
+
+  it('ignores status updates and empty messages', () => {
+    expect(entradaOficial([{ statuses: [{ id: 'x', status: 'read' }] }])).toEqual([]);
+    expect(entradaOficial([texto('554791457639', '   ')])).toEqual([]);
+  });
+
+  it('turns the summary button into the question for that day', () => {
+    const botao = { messages: [{ from: '5547999015533', id: 'w2', type: 'button', button: { payload: 'resumo:2026-11-21', text: 'Ver resumo' } }] };
+    expect(entradaOficial([botao])[0].text).toBe('Como foi a produção do dia 2026-11-21?');
   });
 });

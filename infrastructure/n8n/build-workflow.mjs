@@ -2,6 +2,7 @@
 //   node infrastructure/n8n/build-workflow.mjs
 //     -> resumo-diario-whatsapp.json   the daily summary the platform pushes when a day closes
 //     -> orquestrador-whatsapp.json    the assistant that answers production questions
+//     -> *-oficial.json                the same two on the official WhatsApp API, for the Everlenz n8n
 // Kept as a script so the JSON (ids, positions, connections) is generated, never hand-edited, and
 // so the deterministic Code nodes come from code/*.mjs, which tests/n8n-code.test.ts tests.
 // Credentials point to the DR Fin n8n ("OpenAI Dr Fin", "Postgres Credential"); n8n asks to pick
@@ -391,35 +392,35 @@ return [{ json: normalizar({ saida, hoje: $('Busca contato').first().json.today 
  */
 const answerQuery = `={{ ${cfg('PLATAFORMA_URL')} }}/api/n8n/whatsapp/answer?phone={{ encodeURIComponent(${entrada('phone')}) }}&kind={{ $json.consulta.kind }}{{ $json.consulta.from ? '&from=' + $json.consulta.from : '' }}{{ $json.consulta.to ? '&to=' + $json.consulta.to : '' }}&dates={{ encodeURIComponent($json.consulta.dates || '') }}&device={{ encodeURIComponent($json.consulta.device || '') }}`;
 
-write('orquestrador-whatsapp.json', {
+const FLUXO =
+  '**Entrada** → debounce (a plataforma junta a rajada; só a última mensagem segue) → contato pelo ' +
+  'telefone → **AI Roteador** (entende e extrai) → **Normaliza saída** (datas, limites, decide a ' +
+  'consulta) → **Responde** (a plataforma escreve a resposta no layout do resumo diário) → envio ' +
+  'picado. A **Mensageira** só conversa (cumprimentos, dúvidas), nunca escreve números.\n\n';
+
+/**
+ * The assistant, the same for every channel: the channel brings its entry node, its Configuração,
+ * the code that turns its payload into { jid, phone, text, messageId }, the send node and the
+ * credentials of the n8n it is imported into.
+ */
+function orquestrador({ file, nota, entry, config, normalizaEntrada, send, openai, postgres }) {
+  const OPENAI = openai;
+  const POSTGRES = postgres;
+  const sendText = send;
+  write(file, {
   name: 'IIoT - Orquestrador do assistente no WhatsApp',
   nodes: [
     node('Nota', 'n8n-nodes-base.stickyNote', 1, [-80, -420], {
-      content:
-        '## Assistente de produção no WhatsApp\n\n' +
-        '**Entrada** → debounce (a plataforma junta a rajada; só a última mensagem segue) → contato pelo ' +
-        'telefone → **AI Roteador** (entende e extrai) → **Normaliza saída** (datas, limites, decide a ' +
-        'consulta) → **Responde** (a plataforma escreve a resposta no layout do resumo diário) → envio ' +
-        'picado. A **Mensageira** só conversa (cumprimentos, dúvidas), nunca escreve números.\n\n' +
-        '1. Preencha **Configuração**.\n2. Na Evolution, aponte o webhook (ou a integração n8n) da ' +
-        'instância para a URL de produção do nó **Mensagem recebida**.\n3. Credenciais: OpenAI e ' +
-        'Postgres (memória) — as mesmas do DR Fin.\n\n`/reset` limpa a memória da conversa.',
+      content: `## Assistente de produção no WhatsApp\n\n${FLUXO}${nota}\n\n\`/reset\` limpa a memória da conversa.`,
       height: 380,
       width: 620,
       color: 5,
     }),
-    node(
-      'Mensagem recebida',
-      'n8n-nodes-base.webhook',
-      2.1,
-      [0, 100],
-      { httpMethod: 'POST', path: 'everlenz-iiot-assistente', options: {} },
-      { webhookId: randomUUID() },
-    ),
-    node('Configuração', 'n8n-nodes-base.set', 3.4, [200, 100], set(CONFIG)),
+    entry,
+    node('Configuração', 'n8n-nodes-base.set', 3.4, [200, 100], set(config)),
     node('Normaliza entrada', 'n8n-nodes-base.code', 2, [400, 100], {
       mode: 'runOnceForAllItems',
-      jsCode: NORMALIZA_ENTRADA,
+      jsCode: normalizaEntrada,
     }),
     node('É /reset?', 'n8n-nodes-base.if', 2.2, [600, 100], ifEquals('={{ $json.text.trim().toLowerCase() }}', '/reset', false)),
     node(
@@ -597,6 +598,265 @@ write('orquestrador-whatsapp.json', {
   settings,
   pinData: {},
   tags: [],
+  });
+}
+
+orquestrador({
+  file: 'orquestrador-whatsapp.json',
+  nota:
+    '1. Preencha **Configuração**.\n2. Na Evolution, aponte o webhook (ou a integração n8n) da ' +
+    'instância para a URL de produção do nó **Mensagem recebida**.\n3. Credenciais: OpenAI e ' +
+    'Postgres (memória) — as mesmas do DR Fin.',
+  entry: node(
+    'Mensagem recebida',
+    'n8n-nodes-base.webhook',
+    2.1,
+    [0, 100],
+    { httpMethod: 'POST', path: 'everlenz-iiot-assistente', options: {} },
+    { webhookId: randomUUID() },
+  ),
+  config: CONFIG,
+  normalizaEntrada: NORMALIZA_ENTRADA,
+  send: sendText,
+  openai: OPENAI,
+  postgres: POSTGRES,
+});
+
+// ---------------------------------------------------------------------------------------------
+// 3. The same two flows on the official WhatsApp API (Meta Cloud API), for the Everlenz n8n
+// (app-auto.everlenz.com.br): number +55 47 9189-3069 in its own WABA, so nothing goes through
+// Evolution or the DR Fin n8n. Credentials are matched by name on import.
+// ---------------------------------------------------------------------------------------------
+const OFICIAL_CONFIG = [
+  ['PLATAFORMA_URL', 'https://iotplataform.everlenz.com.br'],
+  ['PLATAFORMA_CHAVE', 'COLE_AQUI_A_N8N_API_KEY'],
+  ['WHATSAPP_GRAPH', 'https://graph.facebook.com/v23.0'],
+  ['WHATSAPP_NUMERO_ID', '1508068655713793'],
+  ['TEMPLATE_RESUMO', 'resumo_producao_pronto'],
+  ['TEMPLATE_IDIOMA', 'pt_BR'],
+];
+const OFICIAL = {
+  whatsapp: { whatsAppApi: { id: '', name: 'WhatsApp IIoT' } },
+  trigger: { whatsAppTriggerApi: { id: '', name: 'WhatsApp OAuth IIoT' } },
+  openai: { openAiApi: { id: '', name: 'OpenAI Everlenz' } },
+  postgres: { postgres: { id: '', name: 'Postgres Everlenz' } },
+};
+const graph = (path) => `={{ ${cfg('WHATSAPP_GRAPH')} }}/{{ ${cfg('WHATSAPP_NUMERO_ID')} }}/${path}`;
+/** The "WhatsApp IIoT" credential signs the call: no token inside the flow. */
+const graphAuth = { authentication: 'predefinedCredentialType', nodeCredentialType: 'whatsAppApi' };
+/** An n8n field ("={{ x }}" or "=literal") as a plain expression to place inside another one. */
+const inner = (value) =>
+  value.startsWith('={{ ') && value.endsWith(' }}') ? value.slice(4, -3) : JSON.stringify(value.replace(/^=/, ''));
+/** The Cloud API takes the number as digits only, without "+" or "@s.whatsapp.net". */
+const digits = (expr) => `String(${expr}).split('@')[0].replace(/\\D/g, '')`;
+const graphPost = (name, position, jsonBody, extra = {}) =>
+  node(
+    name,
+    'n8n-nodes-base.httpRequest',
+    4.2,
+    position,
+    { method: 'POST', url: graph('messages'), ...graphAuth, sendBody: true, specifyBody: 'json', jsonBody, options: { timeout: 60000 } },
+    { credentials: OFICIAL.whatsapp, ...extra },
+  );
+/** A text message, with the same signature as the Evolution sendText. */
+const sendOficial = (name, position, number, text, extra = {}) =>
+  graphPost(
+    name,
+    position,
+    `={{ { messaging_product: 'whatsapp', recipient_type: 'individual', to: ${digits(inner(number))}, type: 'text', text: { body: ${inner(text)}, preview_url: false } } }}`,
+    extra,
+  );
+
+write('resumo-diario-whatsapp-oficial.json', {
+  name: 'IIoT - Resumo diário de produção no WhatsApp (API oficial)',
+  nodes: [
+    node('Nota', 'n8n-nodes-base.stickyNote', 1, [-80, -320], {
+      content:
+        '## Resumo diário de produção — API oficial\n\n' +
+        'A plataforma chama este webhook quando um dia de produção fecha, **uma mensagem por vez** ' +
+        '(07h–21h, no mínimo 3 min entre envios). Envia o texto e as imagens de produção e de paradas.\n\n' +
+        'A Meta só aceita texto livre até 24 h depois da última mensagem da pessoa. Fora dessa janela ' +
+        'sai o template **TEMPLATE_RESUMO** com o botão *Ver resumo*; o toque abre a janela e o ' +
+        'assistente responde o dia no layout do resumo.\n\n' +
+        '1. Preencha **Configuração**.\n2. Credencial **WhatsApp IIoT** nos nós da Meta.\n' +
+        '3. Ative e copie a URL de produção de **Resumo recebido** para **N8N_SUMMARY_WEBHOOK_URL** (Coolify).',
+      height: 360,
+      width: 620,
+      color: 5,
+    }),
+    node(
+      'Resumo recebido',
+      'n8n-nodes-base.webhook',
+      2.1,
+      [0, 100],
+      { httpMethod: 'POST', path: 'everlenz-iiot-resumo', options: {} },
+      { webhookId: randomUUID() },
+    ),
+    node('Configuração', 'n8n-nodes-base.set', 3.4, [220, 100], set(OFICIAL_CONFIG)),
+    node(
+      'Chave válida?',
+      'n8n-nodes-base.if',
+      2.2,
+      [440, 100],
+      ifEquals("={{ $('Resumo recebido').first().json.headers['x-n8n-key'] }}", `={{ ${cfg('PLATAFORMA_CHAVE')} }}`),
+    ),
+    node('Ignora', 'n8n-nodes-base.noOp', 1, [660, 260], {}),
+    node('Espera aleatória', 'n8n-nodes-base.wait', 1.1, [660, 0], {
+      amount: `={{ ${body('waitSeconds')} || 10 }}`,
+    }),
+    sendOficial('Envia resumo', [880, 0], `={{ ${body('number')} }}`, `={{ ${body('text')} }}`, {
+      onError: 'continueErrorOutput',
+    }),
+    node('Tem imagens?', 'n8n-nodes-base.if', 2.2, [1120, -80], {
+      conditions: {
+        options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 },
+        conditions: [
+          {
+            id: randomUUID(),
+            leftValue: `={{ (${body('images')} || []).length }}`,
+            rightValue: 0,
+            operator: { type: 'number', operation: 'gt' },
+          },
+        ],
+        combinator: 'and',
+      },
+      options: {},
+    }),
+    node('Separa imagens', 'n8n-nodes-base.code', 2, [1340, -200], {
+      mode: 'runOnceForAllItems',
+      jsCode: `// Produção e paradas de cada equipamento, na ordem em que a plataforma mandou.
+return ($('Resumo recebido').first().json.body.images || []).map((image) => ({ json: image }));`,
+    }),
+    node('Uma imagem por vez', 'n8n-nodes-base.splitInBatches', 3, [1560, -200], { options: {} }),
+    node('Pausa entre imagens', 'n8n-nodes-base.wait', 1.1, [1780, -120], {
+      amount: '={{ 3 + Math.floor(Math.random() * 4) }}',
+    }),
+    // The Cloud API takes an image by upload (media id), not as base64 in the message.
+    node('Converte imagem', 'n8n-nodes-base.convertToFile', 1.1, [2000, -120], {
+      operation: 'toBinary',
+      sourceProperty: 'base64',
+      binaryPropertyName: 'data',
+      options: { fileName: '={{ $json.fileName }}', mimeType: '={{ $json.mimetype }}' },
+    }),
+    node(
+      'Sobe imagem',
+      'n8n-nodes-base.httpRequest',
+      4.2,
+      [2220, -120],
+      {
+        method: 'POST',
+        url: graph('media'),
+        ...graphAuth,
+        sendBody: true,
+        contentType: 'multipart-form-data',
+        bodyParameters: {
+          parameters: [
+            { name: 'messaging_product', value: 'whatsapp' },
+            { name: 'type', value: "={{ $('Uma imagem por vez').item.json.mimetype }}" },
+            { parameterType: 'formBinaryData', name: 'file', inputDataFieldName: 'data' },
+          ],
+        },
+        options: { timeout: 60000 },
+      },
+      { credentials: OFICIAL.whatsapp, onError: 'continueRegularOutput' },
+    ),
+    graphPost(
+      'Envia imagem',
+      [2440, -120],
+      `={{ { messaging_product: 'whatsapp', to: ${digits(body('number'))}, type: 'image', image: { id: $json.id, caption: $('Uma imagem por vez').item.json.caption } } }}`,
+      { onError: 'continueRegularOutput' },
+    ),
+    node('Confirma envio', 'n8n-nodes-base.httpRequest', 4.2, [1780, -320], {
+      method: 'POST',
+      url: `={{ ${body('resultUrl')} }}`,
+      ...platformHeaders,
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: '={{ { ok: true } }}',
+      options: {},
+    }, { executeOnce: true }),
+    // Meta's 131047: more than 24 h since the person last wrote, only a template goes through.
+    node(
+      'Fora da janela de 24 h?',
+      'n8n-nodes-base.if',
+      2.2,
+      [1120, 160],
+      {
+        conditions: {
+          options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 },
+          conditions: [
+            {
+              id: randomUUID(),
+              leftValue: "={{ JSON.stringify($json).includes('131047') }}",
+              rightValue: true,
+              operator: { type: 'boolean', operation: 'true', singleValue: true },
+            },
+          ],
+          combinator: 'and',
+        },
+        options: {},
+      },
+    ),
+    graphPost(
+      'Envia aviso (template)',
+      [1340, 60],
+      `={{ { messaging_product: 'whatsapp', to: ${digits(body('number'))}, type: 'template', template: { name: ${cfg('TEMPLATE_RESUMO')}, language: { code: ${cfg('TEMPLATE_IDIOMA')} }, components: [ { type: 'body', parameters: [ { type: 'text', text: String(${body('name')} || '').trim().split(/\\s+/)[0] || 'equipe' }, { type: 'text', text: String(${body('productionDate')} || '').split('-').reverse().join('/') || 'ontem' } ] }, { type: 'button', sub_type: 'quick_reply', index: '0', parameters: [ { type: 'payload', payload: 'resumo:' + (${body('productionDate')} || '') } ] } ] } } }}`,
+      { onError: 'continueErrorOutput' },
+    ),
+    node('Registra falha', 'n8n-nodes-base.httpRequest', 4.2, [1560, 220], {
+      method: 'POST',
+      url: `={{ ${body('resultUrl')} }}`,
+      ...platformHeaders,
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody:
+        "={{ { ok: false, error: String($json.error?.description ?? $json.error?.message ?? $json.message ?? 'falha na API do WhatsApp').slice(0, 400) } }}",
+      options: {},
+    }, { executeOnce: true }),
+  ],
+  connections: {
+    'Resumo recebido': { main: [[to('Configuração')]] },
+    Configuração: { main: [[to('Chave válida?')]] },
+    'Chave válida?': { main: [[to('Espera aleatória')], [to('Ignora')]] },
+    'Espera aleatória': { main: [[to('Envia resumo')]] },
+    'Envia resumo': { main: [[to('Tem imagens?')], [to('Fora da janela de 24 h?')]] },
+    'Fora da janela de 24 h?': { main: [[to('Envia aviso (template)')], [to('Registra falha')]] },
+    'Envia aviso (template)': { main: [[to('Confirma envio')], [to('Registra falha')]] },
+    'Tem imagens?': { main: [[to('Separa imagens')], [to('Confirma envio')]] },
+    'Separa imagens': { main: [[to('Uma imagem por vez')]] },
+    'Uma imagem por vez': { main: [[to('Confirma envio')], [to('Pausa entre imagens')]] },
+    'Pausa entre imagens': { main: [[to('Converte imagem')]] },
+    'Converte imagem': { main: [[to('Sobe imagem')]] },
+    'Sobe imagem': { main: [[to('Envia imagem')]] },
+    'Envia imagem': { main: [[to('Uma imagem por vez')]] },
+  },
+  active: false,
+  settings,
+  pinData: {},
+  tags: [],
+});
+
+orquestrador({
+  file: 'orquestrador-whatsapp-oficial.json',
+  nota:
+    '**API oficial**: o gatilho é o **WhatsApp Trigger** (credencial *WhatsApp OAuth IIoT*); ao ' +
+    'ativar, ele registra o webhook no app Everlenz IIoT da Meta. Depois ligue *Subscribe webhooks* ' +
+    'só na conta Everlenz IIot.\n\n1. Preencha **Configuração**.\n2. Credenciais: *WhatsApp IIoT* ' +
+    '(envio), *OpenAI Everlenz*, *Postgres Everlenz* (memória).',
+  entry: node(
+    'Mensagem recebida',
+    'n8n-nodes-base.whatsAppTrigger',
+    1,
+    [0, 100],
+    { updates: ['messages'], options: {} },
+    { webhookId: randomUUID(), credentials: OFICIAL.trigger },
+  ),
+  config: OFICIAL_CONFIG,
+  normalizaEntrada: `${embed('entrada-oficial.mjs')}
+return entradaOficial($input.all().map((item) => item.json)).map((json) => ({ json }));`,
+  send: sendOficial,
+  openai: OFICIAL.openai,
+  postgres: OFICIAL.postgres,
 });
 
 // The answer-once flow is superseded: the orchestrator answers everyone, unknown numbers included.
